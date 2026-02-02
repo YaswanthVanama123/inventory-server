@@ -1,12 +1,9 @@
 const mongoose = require('mongoose');
 
-/**
- * Settings Model
- * Stores system-wide configuration including categories and units
- */
+
 const settingsSchema = new mongoose.Schema(
   {
-    // Categories for inventory items
+    
     categories: [
       {
         value: {
@@ -36,7 +33,7 @@ const settingsSchema = new mongoose.Schema(
       },
     ],
 
-    // Unit types for inventory items
+    
     units: [
       {
         value: {
@@ -66,7 +63,7 @@ const settingsSchema = new mongoose.Schema(
       },
     ],
 
-    // SKU configuration
+    
     skuConfig: {
       prefix: {
         type: String,
@@ -81,15 +78,15 @@ const settingsSchema = new mongoose.Schema(
       format: {
         type: String,
         default: '{PREFIX}-{YEAR}{MONTH}-{NUMBER}',
-        // Supports: {PREFIX}, {YEAR}, {MONTH}, {DAY}, {NUMBER}
+        
       },
       numberLength: {
         type: Number,
-        default: 4, // Zero-padded length for the number
+        default: 4, 
       },
     },
 
-    // Singleton pattern - only one settings document
+    
     singleton: {
       type: Boolean,
       default: true,
@@ -101,7 +98,7 @@ const settingsSchema = new mongoose.Schema(
   }
 );
 
-// Ensure only one settings document exists
+
 settingsSchema.pre('save', async function (next) {
   if (this.isNew) {
     const count = await mongoose.models.Settings.countDocuments();
@@ -112,11 +109,11 @@ settingsSchema.pre('save', async function (next) {
   next();
 });
 
-// Static method to get or create settings
+
 settingsSchema.statics.getSettings = async function () {
   let settings = await this.findOne();
   if (!settings) {
-    // Create default settings with some predefined categories and units
+    
     settings = await this.create({
       categories: [
         { value: 'electronics', label: 'Electronics' },
@@ -143,16 +140,16 @@ settingsSchema.statics.getSettings = async function () {
   return settings;
 };
 
-// Method to generate next SKU
+
 settingsSchema.methods.generateSKU = async function () {
   const config = this.skuConfig;
   const now = new Date();
 
-  // Increment the number
+  
   this.skuConfig.lastNumber += 1;
   const number = String(this.skuConfig.lastNumber).padStart(config.numberLength, '0');
 
-  // Replace placeholders in format
+  
   let sku = config.format
     .replace('{PREFIX}', config.prefix)
     .replace('{YEAR}', now.getFullYear())
@@ -160,7 +157,7 @@ settingsSchema.methods.generateSKU = async function () {
     .replace('{DAY}', String(now.getDate()).padStart(2, '0'))
     .replace('{NUMBER}', number);
 
-  // Save the updated number
+  
   await this.save();
 
   return sku;

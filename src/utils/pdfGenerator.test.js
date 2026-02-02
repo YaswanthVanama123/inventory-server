@@ -1,13 +1,10 @@
-/**
- * Comprehensive Test Suite for PDF Generator
- * Tests various scenarios and edge cases
- */
+
 
 const { generateInvoicePDF, formatCurrency, formatDate } = require('./pdfGenerator');
 const fs = require('fs').promises;
 const path = require('path');
 
-// Test utilities
+
 const testResults = {
   passed: 0,
   failed: 0,
@@ -26,7 +23,7 @@ function logTest(name, passed, error = null) {
   }
 }
 
-// Test data sets
+
 const minimalInvoice = {
   invoiceNumber: 'INV-MIN-001',
   invoiceDate: new Date(),
@@ -150,7 +147,7 @@ const multiPageInvoice = {
   company: { name: 'Test Company' }
 };
 
-// Calculate totals for multi-page invoice
+
 multiPageInvoice.items.forEach(item => {
   item.total = item.quantity * item.unitPrice;
 });
@@ -177,14 +174,14 @@ const currencyTestInvoice = {
   company: { name: 'Test Company' }
 };
 
-// Run tests
+
 async function runTests() {
   console.log('\n=== PDF Generator Test Suite ===\n');
 
   const tempDir = path.join(__dirname, '../../temp/tests');
   await fs.mkdir(tempDir, { recursive: true });
 
-  // Test 1: Format Currency
+  
   console.log('Testing helper functions...');
   try {
     const usd = formatCurrency(1299.99, 'USD');
@@ -199,7 +196,7 @@ async function runTests() {
     logTest('Format currency', false, error);
   }
 
-  // Test 2: Format Date
+  
   try {
     const formatted = formatDate(new Date('2026-02-01'));
     logTest('Format date', formatted === 'February 1, 2026');
@@ -207,7 +204,7 @@ async function runTests() {
     logTest('Format date', false, error);
   }
 
-  // Test 3: Minimal Invoice
+  
   console.log('\nTesting invoice generation...');
   try {
     const pdf = await generateInvoicePDF(minimalInvoice, { includeQR: false });
@@ -220,7 +217,7 @@ async function runTests() {
     logTest('Generate minimal invoice', false, error);
   }
 
-  // Test 4: Full Invoice with all features
+  
   try {
     const pdf = await generateInvoicePDF(fullInvoice, { includeQR: true });
     logTest('Generate full-featured invoice', pdf instanceof Buffer && pdf.length > 0);
@@ -232,7 +229,7 @@ async function runTests() {
     logTest('Generate full-featured invoice', false, error);
   }
 
-  // Test 5: Multi-page Invoice
+  
   try {
     const pdf = await generateInvoicePDF(multiPageInvoice, { includeQR: true });
     logTest('Generate multi-page invoice', pdf instanceof Buffer && pdf.length > 0);
@@ -244,7 +241,7 @@ async function runTests() {
     logTest('Generate multi-page invoice', false, error);
   }
 
-  // Test 6: Different currencies
+  
   console.log('\nTesting currency support...');
   const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'AUD', 'CAD'];
   for (const currency of currencies) {
@@ -257,7 +254,7 @@ async function runTests() {
     }
   }
 
-  // Test 7: Invoice without QR code
+  
   console.log('\nTesting optional features...');
   try {
     const pdf = await generateInvoicePDF(minimalInvoice, { includeQR: false });
@@ -266,7 +263,7 @@ async function runTests() {
     logTest('Generate invoice without QR code', false, error);
   }
 
-  // Test 8: Invoice with discount
+  
   console.log('\nTesting financial calculations...');
   try {
     const discountInvoice = {
@@ -286,7 +283,7 @@ async function runTests() {
     logTest('Generate invoice with percentage discount', false, error);
   }
 
-  // Test 9: Invoice with fixed discount
+  
   try {
     const discountInvoice = {
       ...minimalInvoice,
@@ -305,7 +302,7 @@ async function runTests() {
     logTest('Generate invoice with fixed discount', false, error);
   }
 
-  // Test 10: Invoice with tax
+  
   try {
     const taxInvoice = {
       ...minimalInvoice,
@@ -323,7 +320,7 @@ async function runTests() {
     logTest('Generate invoice with tax', false, error);
   }
 
-  // Test 11: Error handling - missing invoice data
+  
   console.log('\nTesting error handling...');
   try {
     await generateInvoicePDF(null);
@@ -332,7 +329,7 @@ async function runTests() {
     logTest('Handle null invoice', error.message === 'Invoice data is required');
   }
 
-  // Test 12: Error handling - empty items
+  
   try {
     await generateInvoicePDF({ ...minimalInvoice, items: [] });
     logTest('Handle empty items array', false);
@@ -340,7 +337,7 @@ async function runTests() {
     logTest('Handle empty items array', error.message === 'Invoice must have at least one item');
   }
 
-  // Test 13: Different invoice statuses
+  
   console.log('\nTesting invoice statuses...');
   const statuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
   for (const status of statuses) {
@@ -353,7 +350,7 @@ async function runTests() {
     }
   }
 
-  // Print results
+  
   console.log('\n=== Test Results ===');
   console.log(`Total Tests: ${testResults.total}`);
   console.log(`Passed: ${testResults.passed} ✓`);
@@ -367,7 +364,7 @@ async function runTests() {
   }
 }
 
-// Run tests if executed directly
+
 if (require.main === module) {
   runTests()
     .then(() => {

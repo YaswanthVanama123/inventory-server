@@ -5,11 +5,7 @@ const Coupon = require('../models/Coupon');
 const PaymentType = require('../models/PaymentType');
 const AuditLog = require('../models/AuditLog');
 
-/**
- * Get all deleted items across all models
- * @route GET /api/trash
- * @access Private/Admin
- */
+
 exports.getAllDeletedItems = async (req, res) => {
   try {
     const { type, search, page = 1, limit = 20 } = req.query;
@@ -17,7 +13,7 @@ exports.getAllDeletedItems = async (req, res) => {
 
     let items = [];
 
-    // Fetch deleted inventory items
+    
     if (!type || type === 'all' || type === 'inventory') {
       const inventoryItems = await Inventory.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -39,7 +35,7 @@ exports.getAllDeletedItems = async (req, res) => {
       ];
     }
 
-    // Fetch deleted invoices
+    
     if (!type || type === 'all' || type === 'invoices') {
       const invoiceItems = await Invoice.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -61,7 +57,7 @@ exports.getAllDeletedItems = async (req, res) => {
       ];
     }
 
-    // Fetch deleted users
+    
     if (!type || type === 'all' || type === 'users') {
       const userItems = await User.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -83,7 +79,7 @@ exports.getAllDeletedItems = async (req, res) => {
       ];
     }
 
-    // Fetch deleted coupons
+    
     if (!type || type === 'all' || type === 'coupons') {
       const couponItems = await Coupon.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -105,7 +101,7 @@ exports.getAllDeletedItems = async (req, res) => {
       ];
     }
 
-    // Fetch deleted payment types
+    
     if (!type || type === 'all' || type === 'payment-types') {
       const paymentTypeItems = await PaymentType.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -127,14 +123,14 @@ exports.getAllDeletedItems = async (req, res) => {
       ];
     }
 
-    // Apply search filter if provided
+    
     if (search) {
       items = items.filter(item =>
         item.name.toLowerCase().includes(search.toLowerCase())
       );
     }
 
-    // Sort all items by deletedAt
+    
     items.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
 
     res.status(200).json({
@@ -154,11 +150,7 @@ exports.getAllDeletedItems = async (req, res) => {
   }
 };
 
-/**
- * Restore a deleted item
- * @route POST /api/trash/:type/:id/restore
- * @access Private/Admin
- */
+
 exports.restoreItem = async (req, res) => {
   try {
     const { type, id } = req.params;
@@ -207,7 +199,7 @@ exports.restoreItem = async (req, res) => {
     item.deletedBy = null;
     await item.save();
 
-    // Map type to resource name for audit log
+    
     const resourceMap = {
       'inventory': 'INVENTORY',
       'invoices': 'INVOICE',
@@ -216,10 +208,10 @@ exports.restoreItem = async (req, res) => {
       'payment-types': 'PAYMENT_TYPE',
     };
 
-    // Get item name for audit details
+    
     const itemName = item.itemName || item.invoiceNumber || item.username || item.fullName || item.code || item.displayName || 'Unknown';
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'RESTORE',
       resource: resourceMap[type] || 'TRASH',
@@ -250,11 +242,7 @@ exports.restoreItem = async (req, res) => {
   }
 };
 
-/**
- * Permanently delete an item
- * @route DELETE /api/trash/:type/:id
- * @access Private/Admin
- */
+
 exports.permanentlyDeleteItem = async (req, res) => {
   try {
     const { type, id } = req.params;
@@ -314,11 +302,7 @@ exports.permanentlyDeleteItem = async (req, res) => {
   }
 };
 
-/**
- * Empty trash (permanently delete all deleted items)
- * @route DELETE /api/trash/empty
- * @access Private/Admin
- */
+
 exports.emptyTrash = async (req, res) => {
   try {
     const results = await Promise.all([

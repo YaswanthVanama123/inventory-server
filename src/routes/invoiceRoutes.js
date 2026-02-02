@@ -14,17 +14,17 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { invoiceValidation, validate } = require('../middleware/validation');
 const { param } = require('express-validator');
 
-// All routes require authentication and admin role
+
 router.use(authenticate);
 router.use(requireAdmin());
 
-// GET /api/invoices/stats - Get invoice statistics (must be before /:id route)
+
 router.get('/stats', getInvoiceStats);
 
-// GET /api/invoices - List all invoices with pagination, filtering, and search
+
 router.get('/', getAllInvoices);
 
-// GET /api/invoices/:id - Get single invoice by ID
+
 router.get(
   '/:id',
   param('id').isMongoId().withMessage('Invalid invoice ID'),
@@ -32,7 +32,7 @@ router.get(
   getInvoice
 );
 
-// POST /api/invoices - Create new invoice
+
 router.post(
   '/',
   invoiceValidation.create,
@@ -40,7 +40,7 @@ router.post(
   createInvoice
 );
 
-// PUT /api/invoices/:id - Update existing invoice
+
 router.put(
   '/:id',
   invoiceValidation.update,
@@ -48,7 +48,7 @@ router.put(
   updateInvoice
 );
 
-// DELETE /api/invoices/:id - Delete invoice
+
 router.delete(
   '/:id',
   param('id').isMongoId().withMessage('Invalid invoice ID'),
@@ -56,7 +56,7 @@ router.delete(
   deleteInvoice
 );
 
-// GET /api/invoices/:id/pdf - Download invoice as PDF
+
 router.get(
   '/:id/pdf',
   param('id').isMongoId().withMessage('Invalid invoice ID'),
@@ -64,7 +64,7 @@ router.get(
   generateInvoicePDF
 );
 
-// POST /api/invoices/:id/send-email - Send invoice via email
+
 router.post(
   '/:id/send-email',
   invoiceValidation.sendEmail,

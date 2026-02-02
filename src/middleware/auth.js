@@ -2,16 +2,16 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const jwtConfig = require('../config/jwt');
 
-// Middleware to protect routes - verifies JWT token
+
 const authenticate = async (req, res, next) => {
   try {
-    // Get token from header
+    
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 
-    // Check if token exists
+    
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -23,10 +23,10 @@ const authenticate = async (req, res, next) => {
     }
 
     try {
-      // Verify token
+      
       const decoded = jwt.verify(token, jwtConfig.secret);
 
-      // Check if user still exists
+      
       const user = await User.findById(decoded.id).select('+password');
       if (!user) {
         return res.status(401).json({
@@ -38,7 +38,7 @@ const authenticate = async (req, res, next) => {
         });
       }
 
-      // Check if user is active
+      
       if (!user.isActive) {
         return res.status(401).json({
           success: false,
@@ -49,7 +49,7 @@ const authenticate = async (req, res, next) => {
         });
       }
 
-      // Check if user changed password after token was issued
+      
       if (user.changedPasswordAfter(decoded.iat)) {
         return res.status(401).json({
           success: false,
@@ -60,7 +60,7 @@ const authenticate = async (req, res, next) => {
         });
       }
 
-      // Grant access to protected route
+      
       req.user = {
         id: user._id,
         username: user.username,
@@ -101,7 +101,7 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// Middleware to check if user has required role(s)
+
 const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -128,10 +128,10 @@ const requireRole = (...roles) => {
   };
 };
 
-// Shorthand middleware for admin only routes
+
 const requireAdmin = () => requireRole('admin');
 
-// Shorthand middleware for employee and admin routes
+
 const requireEmployee = () => requireRole('employee', 'admin');
 
 module.exports = {

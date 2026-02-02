@@ -1,11 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 
-/**
- * Get all activities with filtering and pagination
- * @route GET /api/activities
- * @access Private/Admin
- */
+
 exports.getAllActivities = async (req, res) => {
   try {
     const {
@@ -19,25 +15,25 @@ exports.getAllActivities = async (req, res) => {
       search,
     } = req.query;
 
-    // Build query
+    
     const query = {};
 
-    // Filter by employee
+    
     if (employeeId) {
       query.performedBy = employeeId;
     }
 
-    // Filter by action type
+    
     if (action) {
       query.action = action;
     }
 
-    // Filter by resource type
+    
     if (resource) {
       query.resource = resource;
     }
 
-    // Filter by date range
+    
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) {
@@ -48,7 +44,7 @@ exports.getAllActivities = async (req, res) => {
       }
     }
 
-    // Search in details
+    
     if (search) {
       query.$or = [
         { 'details.itemName': { $regex: search, $options: 'i' } },
@@ -91,17 +87,13 @@ exports.getAllActivities = async (req, res) => {
   }
 };
 
-/**
- * Get employee activity summary
- * @route GET /api/activities/summary/:employeeId
- * @access Private/Admin
- */
+
 exports.getEmployeeSummary = async (req, res) => {
   try {
     const { employeeId } = req.params;
     const { startDate, endDate } = req.query;
 
-    // Verify employee exists
+    
     const employee = await User.findOne({ _id: employeeId, isDeleted: false });
     if (!employee) {
       return res.status(404).json({
@@ -113,7 +105,7 @@ exports.getEmployeeSummary = async (req, res) => {
       });
     }
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.timestamp = {};
@@ -125,7 +117,7 @@ exports.getEmployeeSummary = async (req, res) => {
       }
     }
 
-    // Get activity counts by action
+    
     const activityCounts = await AuditLog.aggregate([
       {
         $match: {
@@ -141,7 +133,7 @@ exports.getEmployeeSummary = async (req, res) => {
       },
     ]);
 
-    // Get activity counts by resource
+    
     const resourceCounts = await AuditLog.aggregate([
       {
         $match: {
@@ -157,7 +149,7 @@ exports.getEmployeeSummary = async (req, res) => {
       },
     ]);
 
-    // Get recent activities
+    
     const recentActivities = await AuditLog.find({
       performedBy: employeeId,
       ...dateFilter,
@@ -166,7 +158,7 @@ exports.getEmployeeSummary = async (req, res) => {
       .limit(10)
       .populate('performedBy', 'username fullName');
 
-    // Total activities
+    
     const totalActivities = await AuditLog.countDocuments({
       performedBy: employeeId,
       ...dateFilter,
@@ -202,16 +194,12 @@ exports.getEmployeeSummary = async (req, res) => {
   }
 };
 
-/**
- * Get activity statistics for dashboard
- * @route GET /api/activities/stats
- * @access Private/Admin
- */
+
 exports.getActivityStats = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.timestamp = {};
@@ -223,7 +211,7 @@ exports.getActivityStats = async (req, res) => {
       }
     }
 
-    // Get most active employees
+    
     const mostActiveEmployees = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -253,7 +241,7 @@ exports.getActivityStats = async (req, res) => {
       },
     ]);
 
-    // Get activity breakdown by action
+    
     const actionBreakdown = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -265,7 +253,7 @@ exports.getActivityStats = async (req, res) => {
       { $sort: { count: -1 } },
     ]);
 
-    // Get activity breakdown by resource
+    
     const resourceBreakdown = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -277,7 +265,7 @@ exports.getActivityStats = async (req, res) => {
       { $sort: { count: -1 } },
     ]);
 
-    // Get daily activity trend (last 7 days)
+    
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -298,7 +286,7 @@ exports.getActivityStats = async (req, res) => {
       { $sort: { _id: 1 } },
     ]);
 
-    // Total activities
+    
     const totalActivities = await AuditLog.countDocuments(dateFilter);
 
     res.status(200).json({
@@ -323,16 +311,12 @@ exports.getActivityStats = async (req, res) => {
   }
 };
 
-/**
- * Get sales activities (invoices created by employees)
- * @route GET /api/activities/sales
- * @access Private/Admin
- */
+
 exports.getSalesActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    // Build query
+    
     const query = {
       action: 'CREATE',
       resource: 'INVOICE',
@@ -385,16 +369,12 @@ exports.getSalesActivities = async (req, res) => {
   }
 };
 
-/**
- * Get stock activities (inventory additions/reductions)
- * @route GET /api/activities/stock
- * @access Private/Admin
- */
+
 exports.getStockActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    // Build query
+    
     const query = {
       action: { $in: ['STOCK_ADD', 'STOCK_REDUCE', 'STOCK_ADJUST', 'CREATE', 'UPDATE'] },
       resource: 'INVENTORY',
@@ -447,16 +427,12 @@ exports.getStockActivities = async (req, res) => {
   }
 };
 
-/**
- * Get delete activities (items deleted by employees)
- * @route GET /api/activities/deletions
- * @access Private/Admin
- */
+
 exports.getDeleteActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    // Build query
+    
     const query = {
       action: 'DELETE',
     };

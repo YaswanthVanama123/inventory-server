@@ -1,16 +1,11 @@
-/**
- * Test Script for Upload Middleware
- *
- * This script tests the upload middleware configuration
- * Run with: node src/tests/testUpload.js
- */
+
 
 const path = require('path');
 const fs = require('fs');
 
 console.log('\n=== Upload Middleware Test ===\n');
 
-// Test 1: Check if upload middleware exists
+
 console.log('Test 1: Checking upload middleware...');
 try {
   const uploadMiddleware = require('../middleware/upload');
@@ -28,7 +23,7 @@ try {
 
 console.log('\n');
 
-// Test 2: Check if uploads directory exists
+
 console.log('Test 2: Checking upload directories...');
 const uploadsDir = path.join(__dirname, '../../uploads/items');
 if (fs.existsSync(uploadsDir)) {
@@ -43,7 +38,7 @@ if (fs.existsSync(uploadsDir)) {
 
 console.log('\n');
 
-// Test 3: Check if multer is installed
+
 console.log('Test 3: Checking multer package...');
 try {
   const multer = require('multer');
@@ -57,7 +52,7 @@ try {
 
 console.log('\n');
 
-// Test 4: Check error handler for multer support
+
 console.log('Test 4: Checking error handler...');
 try {
   const errorHandlerPath = path.join(__dirname, '../middleware/errorHandler.js');
@@ -74,7 +69,7 @@ try {
 
 console.log('\n');
 
-// Test 5: Test filename sanitization (unit test)
+
 console.log('Test 5: Testing filename sanitization logic...');
 const testFilename = 'test file with spaces & special!@#chars.jpg';
 const sanitized = testFilename.replace(/[^a-zA-Z0-9.]/g, '_');
@@ -84,7 +79,7 @@ console.log('✓ Filename sanitization works');
 
 console.log('\n');
 
-// Test 6: Test file type validation logic
+
 console.log('Test 6: Testing file type validation...');
 const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
 const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -106,9 +101,9 @@ testCases.forEach(test => {
 
 console.log('\n');
 
-// Test 7: Test file size validation
+
 console.log('Test 7: Testing file size limits...');
-const maxSize = 5 * 1024 * 1024; // 5MB
+const maxSize = 5 * 1024 * 1024; 
 const testSizes = [
   { size: 1024, expected: true, label: '1KB' },
   { size: 1024 * 1024, expected: true, label: '1MB' },
@@ -126,7 +121,7 @@ testSizes.forEach(test => {
 
 console.log('\n');
 
-// Test 8: Check static file serving configuration
+
 console.log('Test 8: Checking server configuration...');
 try {
   const serverPath = path.join(__dirname, '../server.js');
@@ -150,7 +145,7 @@ try {
 
 console.log('\n');
 
-// Summary
+
 console.log('=== Test Summary ===');
 console.log('All core functionality tests passed!');
 console.log('\nNext steps:');

@@ -1,17 +1,11 @@
-/**
- * Email Service Test/Example File
- * This file demonstrates how to use the email service
- * Run this file to test your email configuration
- */
+
 
 const emailService = require('./emailService');
 
-// Test Configuration
+
 const TEST_EMAIL = process.env.TEST_EMAIL || 'your-email@example.com';
 
-/**
- * Test 1: Email Service Connection
- */
+
 async function testConnection() {
   console.log('\n🔍 Testing email service connection...');
 
@@ -26,9 +20,7 @@ async function testConnection() {
   return result.success;
 }
 
-/**
- * Test 2: Welcome Email
- */
+
 async function testWelcomeEmail() {
   console.log('\n📧 Testing welcome email...');
 
@@ -53,9 +45,7 @@ async function testWelcomeEmail() {
   return result.success;
 }
 
-/**
- * Test 3: Password Reset Email
- */
+
 async function testPasswordResetEmail() {
   console.log('\n🔐 Testing password reset email...');
 
@@ -79,9 +69,7 @@ async function testPasswordResetEmail() {
   return result.success;
 }
 
-/**
- * Test 4: Low Stock Alert Email
- */
+
 async function testLowStockAlert() {
   console.log('\n⚠️  Testing low stock alert email...');
 
@@ -121,9 +109,7 @@ async function testLowStockAlert() {
   return result.success;
 }
 
-/**
- * Test 5: Invoice Email (with mock PDF)
- */
+
 async function testInvoiceEmail() {
   console.log('\n📄 Testing invoice email...');
 
@@ -135,7 +121,7 @@ async function testInvoiceEmail() {
     currency: 'USD'
   };
 
-  // Create a simple mock PDF buffer (in real use, generate actual PDF)
+  
   const mockPdfContent = `
     ====================================
     INVOICE #${testInvoice.invoiceNumber}
@@ -168,9 +154,7 @@ async function testInvoiceEmail() {
   return result.success;
 }
 
-/**
- * Test 6: Custom Email
- */
+
 async function testCustomEmail() {
   console.log('\n✉️  Testing custom email...');
 
@@ -215,9 +199,7 @@ async function testCustomEmail() {
   return result.success;
 }
 
-/**
- * Run All Tests
- */
+
 async function runAllTests() {
   console.log('═══════════════════════════════════════════════════');
   console.log('    Email Service Test Suite');
@@ -235,7 +217,7 @@ async function runAllTests() {
   };
 
   try {
-    // Test 1: Connection
+    
     results.connection = await testConnection();
 
     if (!results.connection) {
@@ -244,30 +226,30 @@ async function runAllTests() {
       return results;
     }
 
-    // Add small delay between tests
+    
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Test 2: Welcome Email
+    
     await delay(2000);
     results.welcome = await testWelcomeEmail();
 
-    // Test 3: Password Reset
+    
     await delay(2000);
     results.passwordReset = await testPasswordResetEmail();
 
-    // Test 4: Low Stock Alert
+    
     await delay(2000);
     results.lowStock = await testLowStockAlert();
 
-    // Test 5: Invoice Email
+    
     await delay(2000);
     results.invoice = await testInvoiceEmail();
 
-    // Test 6: Custom Email
+    
     await delay(2000);
     results.custom = await testCustomEmail();
 
-    // Summary
+    
     console.log('\n═══════════════════════════════════════════════════');
     console.log('    Test Results Summary');
     console.log('═══════════════════════════════════════════════════');
@@ -292,9 +274,7 @@ async function runAllTests() {
   return results;
 }
 
-/**
- * Individual Test Functions (can be run separately)
- */
+
 module.exports = {
   testConnection,
   testWelcomeEmail,
@@ -305,9 +285,9 @@ module.exports = {
   runAllTests
 };
 
-// Run tests if this file is executed directly
+
 if (require.main === module) {
-  // Load environment variables
+  
   require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
   runAllTests()

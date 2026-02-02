@@ -5,10 +5,10 @@ const connectDB = require('../config/database');
 
 const seedAdmin = async () => {
   try {
-    // Connect to database
+    
     await connectDB();
 
-    // Check if admin already exists
+    
     const existingAdmin = await User.findOne({ username: 'admin' });
 
     if (existingAdmin) {
@@ -17,11 +17,11 @@ const seedAdmin = async () => {
       process.exit(0);
     }
 
-    // Create default admin user
+    
     const adminUser = await User.create({
       username: 'admin',
       email: 'admin@inventory.com',
-      password: 'Admin@123',  // Change this password immediately after first login
+      password: 'Admin@123',  
       fullName: 'System Administrator',
       role: 'admin',
       isActive: true

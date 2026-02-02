@@ -54,7 +54,7 @@ const couponSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
-  // Soft delete fields
+  
   isDeleted: {
     type: Boolean,
     default: false,
@@ -73,24 +73,24 @@ const couponSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Index for faster code lookups
+
 couponSchema.index({ code: 1 });
 
-// Method to check if coupon is valid
+
 couponSchema.methods.isValid = function() {
   const now = new Date();
 
-  // Check if expired
+  
   if (this.expiryDate < now) {
     return { valid: false, message: 'Coupon has expired' };
   }
 
-  // Check if active
+  
   if (!this.isActive) {
     return { valid: false, message: 'Coupon is inactive' };
   }
 
-  // Check usage limit
+  
   if (this.usageLimit && this.usedCount >= this.usageLimit) {
     return { valid: false, message: 'Coupon usage limit reached' };
   }
@@ -98,9 +98,9 @@ couponSchema.methods.isValid = function() {
   return { valid: true };
 };
 
-// Method to calculate discount amount
+
 couponSchema.methods.calculateDiscount = function(subtotal) {
-  // Check minimum purchase requirement
+  
   if (subtotal < this.minimumPurchase) {
     return {
       valid: false,
@@ -114,10 +114,10 @@ couponSchema.methods.calculateDiscount = function(subtotal) {
   if (this.discountType === 'fixed') {
     discountAmount = Math.min(this.discountValue, subtotal);
   } else {
-    // percentage
+    
     discountAmount = (subtotal * this.discountValue) / 100;
 
-    // Apply max discount cap if set
+    
     if (this.maxDiscount) {
       discountAmount = Math.min(discountAmount, this.maxDiscount);
     }
@@ -125,7 +125,7 @@ couponSchema.methods.calculateDiscount = function(subtotal) {
 
   return {
     valid: true,
-    discountAmount: Math.round(discountAmount * 100) / 100, // Round to 2 decimals
+    discountAmount: Math.round(discountAmount * 100) / 100, 
   };
 };
 

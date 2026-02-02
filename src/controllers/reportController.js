@@ -5,40 +5,40 @@ const Invoice = require('../models/Invoice');
 const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 
-// @desc    Get dashboard statistics
-// @route   GET /api/reports/dashboard
-// @access  Private/Admin
+
+
+
 const getDashboard = async (req, res, next) => {
   try {
-    // Total items
+    
     const totalItems = await Inventory.countDocuments({ isActive: true });
 
-    // Total inventory value
+    
     const items = await Inventory.find({ isActive: true });
     const totalValue = items.reduce((sum, item) => {
       return sum + (item.pricing.sellingPrice * item.quantity.current);
     }, 0);
 
-    // Low stock count
+    
     const lowStockCount = items.filter(item => item.isLowStock).length;
 
-    // Items needing reorder
+    
     const reorderCount = items.filter(item => item.needsReorder).length;
 
-    // Category distribution
+    
     const categoryStats = await Inventory.aggregate([
       { $match: { isActive: true } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
 
-    // Recent activity (last 10 audit logs)
+    
     const recentActivity = await AuditLog.find({ resource: 'INVENTORY' })
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .limit(10);
 
-    // Top value items
+    
     const topValueItems = items
       .map(item => ({
         id: item._id,
@@ -70,9 +70,9 @@ const getDashboard = async (req, res, next) => {
   }
 };
 
-// @desc    Get stock summary report
-// @route   GET /api/reports/stock-summary
-// @access  Private/Admin
+
+
+
 const getStockSummary = async (req, res, next) => {
   try {
     const { category } = req.query;
@@ -97,7 +97,7 @@ const getStockSummary = async (req, res, next) => {
       status: item.isLowStock ? 'Low Stock' : 'Adequate'
     }));
 
-    // Calculate totals
+    
     const totals = {
       totalItems: summary.length,
       totalQuantity: summary.reduce((sum, item) => sum + item.currentStock, 0),
@@ -118,9 +118,9 @@ const getStockSummary = async (req, res, next) => {
   }
 };
 
-// @desc    Get profit margin report
-// @route   GET /api/reports/profit-margin
-// @access  Private/Admin
+
+
+
 const getProfitMarginReport = async (req, res, next) => {
   try {
     const { sortBy = 'margin' } = req.query;
@@ -149,7 +149,7 @@ const getProfitMarginReport = async (req, res, next) => {
       };
     });
 
-    // Sort based on query
+    
     if (sortBy === 'margin') {
       profitData.sort((a, b) => b.profitMargin - a.profitMargin);
     } else if (sortBy === 'profit') {
@@ -158,7 +158,7 @@ const getProfitMarginReport = async (req, res, next) => {
       profitData.sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
-    // Calculate overall stats
+    
     const overallStats = {
       totalRevenue: profitData.reduce((sum, item) => sum + item.totalRevenue, 0),
       totalCost: profitData.reduce((sum, item) => sum + item.totalCost, 0),
@@ -179,9 +179,9 @@ const getProfitMarginReport = async (req, res, next) => {
   }
 };
 
-// @desc    Get reorder list
-// @route   GET /api/reports/reorder-list
-// @access  Private/Admin
+
+
+
 const getReorderList = async (req, res, next) => {
   try {
     const items = await Inventory.find({ isActive: true })
@@ -222,9 +222,9 @@ const getReorderList = async (req, res, next) => {
   }
 };
 
-// @desc    Get audit logs
-// @route   GET /api/reports/audit-logs
-// @access  Private/Admin
+
+
+
 const getAuditLogs = async (req, res, next) => {
   try {
     const { action, resource, from, to, page = 1, limit = 50 } = req.query;
@@ -265,14 +265,14 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
-// @desc    Get sales report with analytics
-// @route   GET /api/reports/sales
-// @access  Private/Admin
+
+
+
 const getSalesReport = async (req, res, next) => {
   try {
     const { startDate, endDate, category, groupBy = 'day' } = req.query;
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -280,14 +280,14 @@ const getSalesReport = async (req, res, next) => {
       if (endDate) dateFilter.invoiceDate.$lte = new Date(endDate);
     }
 
-    // Get invoices
+    
     const query = { status: { $ne: 'cancelled' }, ...dateFilter };
     const invoices = await Invoice.find(query)
       .populate('createdBy', 'username fullName')
       .populate('items.inventory', 'pricing category')
       .sort({ invoiceDate: -1 });
 
-    // Filter by category if provided
+    
     let filteredInvoices = invoices;
     if (category) {
       filteredInvoices = invoices.filter(invoice =>
@@ -297,7 +297,7 @@ const getSalesReport = async (req, res, next) => {
       );
     }
 
-    // Calculate overall statistics with profit from inventory
+    
     const totalSales = filteredInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
     let totalCost = 0;
     let totalProfit = 0;
@@ -315,7 +315,7 @@ const getSalesReport = async (req, res, next) => {
     const totalInvoices = filteredInvoices.length;
     const averageOrderValue = totalInvoices > 0 ? totalSales / totalInvoices : 0;
 
-    // Group sales by time period for chart data
+    
     const salesByPeriod = {};
     filteredInvoices.forEach(invoice => {
       let periodKey;
@@ -346,7 +346,7 @@ const getSalesReport = async (req, res, next) => {
       salesByPeriod[periodKey].sales += invoice.totalAmount;
       salesByPeriod[periodKey].invoices += 1;
 
-      // Calculate cost and profit for this invoice
+      
       invoice.items.forEach(item => {
         if (item.inventory && item.inventory.pricing) {
           const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
@@ -356,12 +356,12 @@ const getSalesReport = async (req, res, next) => {
       });
     });
 
-    // Convert to array and sort
+    
     const chartData = Object.values(salesByPeriod).sort((a, b) =>
       a.period.localeCompare(b.period)
     );
 
-    // Sales by category
+    
     const categoryStats = {};
     filteredInvoices.forEach(invoice => {
       invoice.items.forEach(item => {
@@ -383,14 +383,14 @@ const getSalesReport = async (req, res, next) => {
       });
     });
 
-    // Payment status breakdown
+    
     const paymentStatusStats = filteredInvoices.reduce((acc, invoice) => {
       const status = invoice.paymentStatus || 'pending';
       acc[status] = (acc[status] || 0) + 1;
       return acc;
     }, {});
 
-    // Recent invoices
+    
     const recentInvoices = filteredInvoices.slice(0, 10).map(inv => {
       let invoiceProfit = 0;
       inv.items.forEach(item => {
@@ -434,9 +434,9 @@ const getSalesReport = async (req, res, next) => {
   }
 };
 
-// @desc    Get inventory valuation report
-// @route   GET /api/reports/valuation
-// @access  Private/Admin
+
+
+
 const getInventoryValuation = async (req, res, next) => {
   try {
     const { category } = req.query;
@@ -447,7 +447,7 @@ const getInventoryValuation = async (req, res, next) => {
     const items = await Inventory.find(query)
       .select('itemName skuCode category quantity pricing supplier');
 
-    // Calculate valuation
+    
     const valuationData = items.map(item => {
       const costValue = item.pricing.purchasePrice * item.quantity.current;
       const sellingValue = item.pricing.sellingPrice * item.quantity.current;
@@ -470,10 +470,10 @@ const getInventoryValuation = async (req, res, next) => {
       };
     });
 
-    // Sort by selling value
+    
     valuationData.sort((a, b) => b.sellingValue - a.sellingValue);
 
-    // Calculate totals
+    
     const totals = {
       totalItems: valuationData.length,
       totalQuantity: valuationData.reduce((sum, item) => sum + item.quantity, 0),
@@ -483,7 +483,7 @@ const getInventoryValuation = async (req, res, next) => {
       averageProfitMargin: valuationData.reduce((sum, item) => sum + item.profitMargin, 0) / valuationData.length || 0
     };
 
-    // Category breakdown
+    
     const categoryBreakdown = {};
     valuationData.forEach(item => {
       if (!categoryBreakdown[item.category]) {
@@ -501,7 +501,7 @@ const getInventoryValuation = async (req, res, next) => {
       categoryBreakdown[item.category].potentialProfit += item.potentialProfit;
     });
 
-    // Top value items (top 10)
+    
     const topValueItems = valuationData.slice(0, 10);
 
     res.status(200).json({
@@ -519,14 +519,14 @@ const getInventoryValuation = async (req, res, next) => {
   }
 };
 
-// @desc    Get top selling items report
-// @route   GET /api/reports/top-selling
-// @access  Private/Admin
+
+
+
 const getTopSellingItems = async (req, res, next) => {
   try {
     const { startDate, endDate, limit = 20, category } = req.query;
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -534,17 +534,17 @@ const getTopSellingItems = async (req, res, next) => {
       if (endDate) dateFilter.invoiceDate.$lte = new Date(endDate);
     }
 
-    // Get invoices
+    
     const query = { status: { $ne: 'cancelled' }, ...dateFilter };
     const invoices = await Invoice.find(query).populate('items.inventory', 'pricing category');
 
-    // Aggregate item sales
+    
     const itemSales = {};
     invoices.forEach(invoice => {
       invoice.items.forEach(item => {
         const itemCategory = item.inventory?.category || 'Uncategorized';
 
-        // Filter by category if provided
+        
         if (category && itemCategory !== category) return;
 
         const key = item.skuCode || item.itemName;
@@ -564,7 +564,7 @@ const getTopSellingItems = async (req, res, next) => {
         itemSales[key].totalQuantitySold += item.quantity;
         itemSales[key].totalRevenue += item.subtotal;
 
-        // Calculate profit if inventory data available
+        
         if (item.inventory && item.inventory.pricing) {
           const itemProfit = item.subtotal - (item.inventory.pricing.purchasePrice * item.quantity);
           itemSales[key].totalProfit += itemProfit;
@@ -574,7 +574,7 @@ const getTopSellingItems = async (req, res, next) => {
       });
     });
 
-    // Calculate average price and convert to array
+    
     const topSellingItems = Object.values(itemSales)
       .map(item => ({
         ...item,
@@ -584,7 +584,7 @@ const getTopSellingItems = async (req, res, next) => {
       .sort((a, b) => b.totalQuantitySold - a.totalQuantitySold)
       .slice(0, parseInt(limit));
 
-    // Calculate summary statistics
+    
     const summary = {
       totalItems: topSellingItems.length,
       totalQuantitySold: topSellingItems.reduce((sum, item) => sum + item.totalQuantitySold, 0),
@@ -605,14 +605,14 @@ const getTopSellingItems = async (req, res, next) => {
   }
 };
 
-// @desc    Get customer purchase history report
-// @route   GET /api/reports/customers
-// @access  Private/Admin
+
+
+
 const getCustomerReport = async (req, res, next) => {
   try {
     const { startDate, endDate, email, sortBy = 'totalSpent' } = req.query;
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -620,7 +620,7 @@ const getCustomerReport = async (req, res, next) => {
       if (endDate) dateFilter.invoiceDate.$lte = new Date(endDate);
     }
 
-    // Build query
+    
     const query = { status: { $ne: 'cancelled' }, ...dateFilter };
     if (email) query['customer.email'] = email.toLowerCase();
 
@@ -628,7 +628,7 @@ const getCustomerReport = async (req, res, next) => {
       .populate('items.inventory', 'pricing')
       .sort({ invoiceDate: -1 });
 
-    // Aggregate customer data
+    
     const customerData = {};
     invoices.forEach(invoice => {
       const customerKey = invoice.customer.email || invoice.customer.name;
@@ -653,7 +653,7 @@ const getCustomerReport = async (req, res, next) => {
       customerData[customerKey].totalSpent += invoice.totalAmount;
       customerData[customerKey].itemsPurchased += invoice.items.reduce((sum, item) => sum + item.quantity, 0);
 
-      // Calculate profit for this invoice
+      
       let invoiceProfit = 0;
       invoice.items.forEach(item => {
         if (item.inventory && item.inventory.pricing) {
@@ -662,7 +662,7 @@ const getCustomerReport = async (req, res, next) => {
       });
       customerData[customerKey].totalProfit += invoiceProfit;
 
-      // Update dates
+      
       if (invoice.invoiceDate > customerData[customerKey].lastPurchaseDate) {
         customerData[customerKey].lastPurchaseDate = invoice.invoiceDate;
       }
@@ -670,7 +670,7 @@ const getCustomerReport = async (req, res, next) => {
         customerData[customerKey].firstPurchaseDate = invoice.invoiceDate;
       }
 
-      // Add invoice details
+      
       customerData[customerKey].invoices.push({
         invoiceNumber: invoice.invoiceNumber,
         invoiceDate: invoice.invoiceDate,
@@ -680,13 +680,13 @@ const getCustomerReport = async (req, res, next) => {
       });
     });
 
-    // Calculate average order value and convert to array
+    
     let customers = Object.values(customerData).map(customer => ({
       ...customer,
       averageOrderValue: customer.totalInvoices > 0 ? customer.totalSpent / customer.totalInvoices : 0
     }));
 
-    // Sort customers
+    
     if (sortBy === 'totalSpent') {
       customers.sort((a, b) => b.totalSpent - a.totalSpent);
     } else if (sortBy === 'totalInvoices') {
@@ -695,7 +695,7 @@ const getCustomerReport = async (req, res, next) => {
       customers.sort((a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate));
     }
 
-    // Calculate summary
+    
     const summary = {
       totalCustomers: customers.length,
       totalRevenue: customers.reduce((sum, c) => sum + c.totalSpent, 0),
@@ -718,9 +718,9 @@ const getCustomerReport = async (req, res, next) => {
   }
 };
 
-// @desc    Get enhanced low stock report with supplier details
-// @route   GET /api/reports/low-stock
-// @access  Private/Admin
+
+
+
 const getLowStockReport = async (req, res, next) => {
   try {
     const { category, includeReorderOnly = 'false' } = req.query;
@@ -732,7 +732,7 @@ const getLowStockReport = async (req, res, next) => {
       .populate('createdBy', 'username fullName')
       .sort({ 'quantity.current': 1 });
 
-    // Filter low stock or reorder items
+    
     const filteredItems = items.filter(item => {
       if (includeReorderOnly === 'true') {
         return item.needsReorder;
@@ -741,7 +741,7 @@ const getLowStockReport = async (req, res, next) => {
     });
 
     const lowStockItems = filteredItems.map(item => {
-      const daysOfStockLeft = item.quantity.current; // Simplified calculation
+      const daysOfStockLeft = item.quantity.current; 
       const suggestedOrderQuantity = Math.max(
         item.supplier.minimumOrderQuantity,
         item.quantity.minimum - item.quantity.current + 20
@@ -779,7 +779,7 @@ const getLowStockReport = async (req, res, next) => {
       };
     });
 
-    // Sort by priority and current stock
+    
     lowStockItems.sort((a, b) => {
       const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
       if (priorityOrder[b.priority] !== priorityOrder[a.priority]) {
@@ -788,7 +788,7 @@ const getLowStockReport = async (req, res, next) => {
       return a.currentStock - b.currentStock;
     });
 
-    // Calculate summary
+    
     const summary = {
       totalItems: lowStockItems.length,
       highPriority: lowStockItems.filter(i => i.priority === 'High').length,
@@ -810,14 +810,14 @@ const getLowStockReport = async (req, res, next) => {
   }
 };
 
-// @desc    Get detailed profit analysis with chart data
-// @route   GET /api/reports/profit-analysis
-// @access  Private/Admin
+
+
+
 const getProfitAnalysis = async (req, res, next) => {
   try {
     const { startDate, endDate, groupBy = 'month' } = req.query;
 
-    // Build date filter
+    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -825,16 +825,16 @@ const getProfitAnalysis = async (req, res, next) => {
       if (endDate) dateFilter.invoiceDate.$lte = new Date(endDate);
     }
 
-    // Get invoices for actual sales
+    
     const invoiceQuery = { status: { $ne: 'cancelled' }, ...dateFilter };
     const invoices = await Invoice.find(invoiceQuery)
       .populate('items.inventory', 'pricing category')
       .sort({ invoiceDate: 1 });
 
-    // Get current inventory for potential profit
+    
     const inventory = await Inventory.find({ isActive: true });
 
-    // Analyze profit by time period
+    
     const profitByPeriod = {};
     invoices.forEach(invoice => {
       let periodKey;
@@ -866,7 +866,7 @@ const getProfitAnalysis = async (req, res, next) => {
       profitByPeriod[periodKey].revenue += invoice.totalAmount;
       profitByPeriod[periodKey].invoices += 1;
 
-      // Calculate cost and profit
+      
       invoice.items.forEach(item => {
         if (item.inventory && item.inventory.pricing) {
           const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
@@ -876,7 +876,7 @@ const getProfitAnalysis = async (req, res, next) => {
       });
     });
 
-    // Calculate profit margins
+    
     const chartData = Object.values(profitByPeriod)
       .map(period => ({
         ...period,
@@ -884,7 +884,7 @@ const getProfitAnalysis = async (req, res, next) => {
       }))
       .sort((a, b) => a.period.localeCompare(b.period));
 
-    // Profit by category
+    
     const categoryProfit = {};
     invoices.forEach(invoice => {
       invoice.items.forEach(item => {
@@ -912,7 +912,7 @@ const getProfitAnalysis = async (req, res, next) => {
       });
     });
 
-    // Calculate category profit margins
+    
     const categoryChartData = Object.values(categoryProfit)
       .map(cat => ({
         ...cat,
@@ -920,7 +920,7 @@ const getProfitAnalysis = async (req, res, next) => {
       }))
       .sort((a, b) => b.profit - a.profit);
 
-    // Overall statistics
+    
     const totalRevenue = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
     let totalCost = 0;
     let totalProfit = 0;
@@ -937,7 +937,7 @@ const getProfitAnalysis = async (req, res, next) => {
 
     const totalInvoices = invoices.length;
 
-    // Inventory potential profit
+    
     const inventoryValue = inventory.reduce((sum, item) => {
       return sum + (item.pricing.sellingPrice * item.quantity.current);
     }, 0);
@@ -946,7 +946,7 @@ const getProfitAnalysis = async (req, res, next) => {
     }, 0);
     const potentialProfit = inventoryValue - inventoryCost;
 
-    // Top profitable items from invoices
+    
     const itemProfitMap = {};
     invoices.forEach(invoice => {
       invoice.items.forEach(item => {
@@ -1005,9 +1005,9 @@ const getProfitAnalysis = async (req, res, next) => {
   }
 };
 
-// @desc    Export report to CSV
-// @route   GET /api/reports/:type/export/csv
-// @access  Private/Admin
+
+
+
 const exportReportToCSV = async (req, res, next) => {
   try {
     const { type } = req.params;
@@ -1017,7 +1017,7 @@ const exportReportToCSV = async (req, res, next) => {
     let fields = [];
     let filename = `${type}-report`;
 
-    // Generate data based on report type
+    
     switch (type) {
       case 'sales':
         const salesQuery = { status: { $ne: 'cancelled' } };
@@ -1125,11 +1125,11 @@ const exportReportToCSV = async (req, res, next) => {
         });
     }
 
-    // Generate CSV
+    
     const json2csvParser = new Parser({ fields });
     const csv = json2csvParser.parse(data);
 
-    // Set headers and send CSV
+    
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}-${Date.now()}.csv"`);
     res.status(200).send(csv);
@@ -1140,32 +1140,32 @@ const exportReportToCSV = async (req, res, next) => {
   }
 };
 
-// @desc    Export report to PDF
-// @route   GET /api/reports/:type/export/pdf
-// @access  Private/Admin
+
+
+
 const exportReportToPDF = async (req, res, next) => {
   try {
     const { type } = req.params;
     const queryParams = req.query;
 
-    // Create PDF document
+    
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
-    // Set response headers
+    
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${type}-report-${Date.now()}.pdf"`);
 
-    // Pipe PDF to response
+    
     doc.pipe(res);
 
-    // Add header
+    
     doc.fontSize(20).text(`${type.toUpperCase().replace('-', ' ')} REPORT`, { align: 'center' });
     doc.fontSize(10).text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' });
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
     doc.moveDown();
 
-    // Generate content based on report type
+    
     switch (type) {
       case 'sales':
         const salesQuery = { status: { $ne: 'cancelled' } };
@@ -1265,7 +1265,7 @@ const exportReportToPDF = async (req, res, next) => {
         doc.text('Report type not supported for PDF export');
     }
 
-    // Finalize PDF
+    
     doc.end();
 
   } catch (error) {
@@ -1274,14 +1274,14 @@ const exportReportToPDF = async (req, res, next) => {
   }
 };
 
-// @desc    Get recent activity/audit logs
-// @route   GET /api/reports/recent-activity
-// @access  Private
+
+
+
 const getRecentActivity = async (req, res, next) => {
   try {
     const { limit = 20 } = req.query;
 
-    // Get recent audit logs with user details
+    
     const activities = await AuditLog.find()
       .populate('performedBy', 'username fullName role')
       .sort({ timestamp: -1 })

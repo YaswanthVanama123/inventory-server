@@ -2,10 +2,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs').promises;
 const path = require('path');
 
-/**
- * Email Service Utility
- * Handles all email-related operations including invoice PDFs, alerts, and user notifications
- */
+
 
 class EmailService {
   constructor() {
@@ -13,12 +10,10 @@ class EmailService {
     this.emailQueue = [];
     this.isProcessing = false;
     this.maxRetries = 3;
-    this.retryDelay = 5000; // 5 seconds
+    this.retryDelay = 5000; 
   }
 
-  /**
-   * Initialize email transporter based on environment configuration
-   */
+  
   async initialize() {
     try {
       const emailProvider = process.env.EMAIL_PROVIDER || 'smtp';
@@ -31,7 +26,7 @@ class EmailService {
             service: 'gmail',
             auth: {
               user: process.env.GMAIL_USER,
-              pass: process.env.GMAIL_APP_PASSWORD // Use App Password, not regular password
+              pass: process.env.GMAIL_APP_PASSWORD 
             }
           };
           break;
@@ -53,7 +48,7 @@ class EmailService {
           transportConfig = {
             host: process.env.SMTP_HOST || 'smtp.gmail.com',
             port: parseInt(process.env.SMTP_PORT) || 587,
-            secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+            secure: process.env.SMTP_SECURE === 'true', 
             auth: {
               user: process.env.SMTP_USER,
               pass: process.env.SMTP_PASSWORD
@@ -67,20 +62,18 @@ class EmailService {
 
       this.transporter = nodemailer.createTransport(transportConfig);
 
-      // Verify connection configuration
+      
       await this.transporter.verify();
       console.log('Email service initialized successfully');
       return true;
     } catch (error) {
       console.error('Email service initialization failed:', error.message);
-      // Don't throw error, allow app to continue without email functionality
+      
       return false;
     }
   }
 
-  /**
-   * Get email transporter, initialize if not already done
-   */
+  
   async getTransporter() {
     if (!this.transporter) {
       await this.initialize();
@@ -88,9 +81,7 @@ class EmailService {
     return this.transporter;
   }
 
-  /**
-   * Load email template from file
-   */
+  
   async loadTemplate(templateName) {
     try {
       const templatePath = path.join(__dirname, '../templates/emails', `${templateName}.html`);
@@ -102,9 +93,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Replace placeholders in template with actual values
-   */
+  
   replacePlaceholders(template, data) {
     let result = template;
     for (const [key, value] of Object.entries(data)) {
@@ -114,9 +103,7 @@ class EmailService {
     return result;
   }
 
-  /**
-   * Send email with retry logic
-   */
+  
   async sendEmail(mailOptions, retries = 0) {
     try {
       const transporter = await this.getTransporter();
@@ -125,7 +112,7 @@ class EmailService {
         throw new Error('Email service is not available');
       }
 
-      // Add default from address if not specified
+      
       if (!mailOptions.from) {
         mailOptions.from = process.env.EMAIL_FROM || process.env.SMTP_USER;
       }
@@ -140,7 +127,7 @@ class EmailService {
     } catch (error) {
       console.error('Email send error:', error);
 
-      // Retry logic
+      
       if (retries < this.maxRetries) {
         console.log(`Retrying email send (${retries + 1}/${this.maxRetries})...`);
         await new Promise(resolve => setTimeout(resolve, this.retryDelay));
@@ -154,9 +141,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Add email to queue for batch processing
-   */
+  
   addToQueue(mailOptions) {
     this.emailQueue.push(mailOptions);
     if (!this.isProcessing) {
@@ -164,9 +149,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Process email queue
-   */
+  
   async processQueue() {
     if (this.emailQueue.length === 0) {
       this.isProcessing = false;
@@ -178,19 +161,14 @@ class EmailService {
     while (this.emailQueue.length > 0) {
       const mailOptions = this.emailQueue.shift();
       await this.sendEmail(mailOptions);
-      // Small delay between emails to avoid rate limiting
+      
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     this.isProcessing = false;
   }
 
-  /**
-   * Send invoice email with PDF attachment
-   * @param {Object} invoice - Invoice object containing invoice details
-   * @param {String} recipientEmail - Email address of recipient
-   * @param {Buffer} pdfBuffer - PDF file as buffer
-   */
+  
   async sendInvoiceEmail(invoice, recipientEmail, pdfBuffer) {
     try {
       const template = await this.loadTemplate('invoice');
@@ -232,16 +210,12 @@ class EmailService {
     }
   }
 
-  /**
-   * Send low stock alert email
-   * @param {Array} items - Array of low stock items
-   * @param {String} recipientEmail - Email address of recipient (usually admin)
-   */
+  
   async sendLowStockAlert(items, recipientEmail) {
     try {
       const template = await this.loadTemplate('lowStock');
 
-      // Generate items table rows
+      
       const itemRows = items.map(item => `
         <tr>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${item.itemName || 'N/A'}</td>
@@ -282,11 +256,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Send welcome email to new user
-   * @param {Object} user - User object containing user details
-   * @param {String} temporaryPassword - Temporary password for first login
-   */
+  
   async sendWelcomeEmail(user, temporaryPassword) {
     try {
       const template = await this.loadTemplate('welcome');
@@ -321,11 +291,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Send password reset email
-   * @param {Object} user - User object containing user details
-   * @param {String} newPassword - New temporary password
-   */
+  
   async sendPasswordResetEmail(user, newPassword) {
     try {
       const template = await this.loadTemplate('passwordReset');
@@ -360,13 +326,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Send custom email (for flexible use cases)
-   * @param {String} to - Recipient email
-   * @param {String} subject - Email subject
-   * @param {String} htmlContent - HTML content
-   * @param {Array} attachments - Optional attachments
-   */
+  
   async sendCustomEmail(to, subject, htmlContent, attachments = []) {
     try {
       const mailOptions = {
@@ -386,9 +346,7 @@ class EmailService {
     }
   }
 
-  /**
-   * Test email configuration
-   */
+  
   async testConnection() {
     try {
       const transporter = await this.getTransporter();
@@ -413,6 +371,6 @@ class EmailService {
   }
 }
 
-// Export singleton instance
+
 const emailService = new EmailService();
 module.exports = emailService;

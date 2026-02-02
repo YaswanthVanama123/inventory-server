@@ -2,11 +2,11 @@ const Inventory = require('../models/Inventory');
 const AuditLog = require('../models/AuditLog');
 const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../utils/imgbbUpload');
 
-// Transform frontend data to backend format
+
 const transformToBackendFormat = (data) => {
   const transformed = { ...data };
 
-  // Convert flat structure to nested for quantity
+  
   if (data.currentQuantity !== undefined || data.minimumQuantity !== undefined || data.unit !== undefined) {
     transformed.quantity = {
       current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : undefined,
@@ -18,7 +18,7 @@ const transformToBackendFormat = (data) => {
     delete transformed.unit;
   }
 
-  // Convert flat structure to nested for pricing
+  
   if (data.purchasePrice !== undefined || data.sellingPrice !== undefined) {
     transformed.pricing = {
       purchasePrice: data.purchasePrice !== undefined ? Number(data.purchasePrice) : undefined,
@@ -29,7 +29,7 @@ const transformToBackendFormat = (data) => {
     delete transformed.sellingPrice;
   }
 
-  // Convert flat structure to nested for supplier
+  
   if (data.supplierName || data.contactPerson || data.supplierEmail || data.supplierPhone || data.supplierAddress || data.leadTime || data.reorderPoint || data.minOrderQuantity) {
     transformed.supplier = {
       name: data.supplierName || data.supplier?.name,
@@ -51,7 +51,7 @@ const transformToBackendFormat = (data) => {
     delete transformed.minOrderQuantity;
   }
 
-  // Handle primaryImageIndex
+  
   if (data.primaryImageIndex !== undefined) {
     transformed.primaryImage = Number(data.primaryImageIndex);
     delete transformed.primaryImageIndex;
@@ -60,22 +60,22 @@ const transformToBackendFormat = (data) => {
   return transformed;
 };
 
-// Transform inventory item to frontend format
+
 const transformItem = (item) => {
   if (!item) return null;
 
   const itemObj = item.toObject ? item.toObject({ virtuals: true }) : item;
 
-  // Transform images to include ImgBB URLs
+  
   const transformedImages = (itemObj.images || []).map(img => {
     if (typeof img === 'string') {
-      return { path: img }; // Already a URL, wrap in object
+      return { path: img }; 
     }
 
-    // For ImgBB images, use the display_url or url directly
+    
     const imagePath = img.path || img.url || img.display_url || img;
 
-    // Return object with all ImgBB data
+    
     return {
       _id: img._id,
       path: imagePath,
@@ -101,7 +101,7 @@ const transformItem = (item) => {
     description: itemObj.description,
     category: itemObj.category,
     tags: itemObj.tags || [],
-    // For list view and detail view (multiple aliases)
+    
     quantity: itemObj.quantity?.current ?? 0,
     currentStock: itemObj.quantity?.current ?? 0,
     currentQuantity: itemObj.quantity?.current ?? 0,
@@ -113,12 +113,12 @@ const transformItem = (item) => {
     sellingPrice: itemObj.pricing?.sellingPrice ?? 0,
     currency: itemObj.pricing?.currency ?? 'USD',
     profitMargin: itemObj.pricing?.profitMargin,
-    // Images - use ImgBB URLs directly
+    
     image: transformedImages.length > 0 ? (transformedImages[itemObj.primaryImage || 0].path || transformedImages[itemObj.primaryImage || 0]) : null,
     images: transformedImages,
     primaryImageIndex: itemObj.primaryImage || 0,
     primaryImage: itemObj.primaryImage,
-    // Supplier info (nested and flat)
+    
     supplier: itemObj.supplier,
     supplierName: itemObj.supplier?.name || '',
     contactPerson: itemObj.supplier?.contactPerson || '',
@@ -128,7 +128,7 @@ const transformItem = (item) => {
     leadTime: itemObj.supplier?.leadTime || '',
     reorderPoint: itemObj.supplier?.reorderPoint || '',
     minOrderQuantity: itemObj.supplier?.minimumOrderQuantity || '',
-    // Meta
+    
     stockHistory: itemObj.stockHistory,
     isActive: itemObj.isActive,
     isLowStock: itemObj.isLowStock,
@@ -140,14 +140,14 @@ const transformItem = (item) => {
   };
 };
 
-// @desc    Get all inventory items
-// @route   GET /api/inventory
-// @access  Private (Employee + Admin)
+
+
+
 const getInventoryItems = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, category, search, lowStock } = req.query;
 
-    // Build query
+    
     const query = { isActive: true, isDeleted: false };
     if (category) query.category = category;
     if (search) {
@@ -169,7 +169,7 @@ const getInventoryItems = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit));
 
-      // Filter for low stock
+      
       items = items.filter(item => item.isLowStock);
       const total = items.length;
 
@@ -214,9 +214,9 @@ const getInventoryItems = async (req, res, next) => {
   }
 };
 
-// @desc    Get single inventory item
-// @route   GET /api/inventory/:id
-// @access  Private (Employee + Admin)
+
+
+
 const getInventoryItem = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false })
@@ -244,15 +244,15 @@ const getInventoryItem = async (req, res, next) => {
   }
 };
 
-// @desc    Create inventory item
-// @route   POST /api/inventory
-// @access  Private/Admin
+
+
+
 const createInventoryItem = async (req, res, next) => {
   try {
-    // Check if SKU already exists (not deleted)
+    
     const existing = await Inventory.findOne({ skuCode: req.body.skuCode.toUpperCase(), isDeleted: false });
     if (existing) {
-      // Clean up uploaded files if any
+      
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -268,23 +268,23 @@ const createInventoryItem = async (req, res, next) => {
       });
     }
 
-    // Prepare item data
+    
     const itemData = transformToBackendFormat({
       ...req.body,
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
 
-    // Upload images to ImgBB if provided
+    
     if (req.files && req.files.length > 0) {
       try {
         const uploadResults = await uploadMultipleToImgBB(req.files);
 
-        // Filter successful uploads
+        
         const successfulUploads = uploadResults.filter(result => result.success);
 
         if (successfulUploads.length === 0) {
-          // Clean up local files
+          
           for (const file of req.files) {
             await deleteLocalFile(file.path);
           }
@@ -298,7 +298,7 @@ const createInventoryItem = async (req, res, next) => {
           });
         }
 
-        // Store ImgBB image data
+        
         itemData.images = successfulUploads.map((result, index) => ({
           filename: result.data.filename,
           path: result.data.display_url,
@@ -312,14 +312,14 @@ const createInventoryItem = async (req, res, next) => {
           uploadedBy: req.user.id
         }));
 
-        // Clean up local files after successful upload
+        
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
       } catch (uploadError) {
         console.error('ImgBB upload error:', uploadError);
 
-        // Clean up local files
+        
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -337,7 +337,7 @@ const createInventoryItem = async (req, res, next) => {
 
     const item = await Inventory.create(itemData);
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'INVENTORY',
@@ -354,7 +354,7 @@ const createInventoryItem = async (req, res, next) => {
       message: 'Inventory item created successfully'
     });
   } catch (error) {
-    // Clean up uploaded files on error
+    
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -366,15 +366,15 @@ const createInventoryItem = async (req, res, next) => {
   }
 };
 
-// @desc    Update inventory item
-// @route   PUT /api/inventory/:id
-// @access  Private/Admin
+
+
+
 const updateInventoryItem = async (req, res, next) => {
   try {
     let item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
 
     if (!item) {
-      // Clean up uploaded files if any
+      
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -390,7 +390,7 @@ const updateInventoryItem = async (req, res, next) => {
       });
     }
 
-    // Transform and update fields
+    
     const updateData = transformToBackendFormat(req.body);
     Object.keys(updateData).forEach(key => {
       if (key !== 'createdBy' && key !== 'stockHistory' && key !== 'images') {
@@ -398,12 +398,12 @@ const updateInventoryItem = async (req, res, next) => {
       }
     });
 
-    // Add new images if uploaded
+    
     if (req.files && req.files.length > 0) {
       try {
         const uploadResults = await uploadMultipleToImgBB(req.files);
 
-        // Filter successful uploads
+        
         const successfulUploads = uploadResults.filter(result => result.success);
 
         if (successfulUploads.length > 0) {
@@ -422,14 +422,14 @@ const updateInventoryItem = async (req, res, next) => {
           item.images.push(...newImages);
         }
 
-        // Clean up local files after upload
+        
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
       } catch (uploadError) {
         console.error('ImgBB upload error:', uploadError);
 
-        // Clean up local files
+        
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -448,7 +448,7 @@ const updateInventoryItem = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -465,7 +465,7 @@ const updateInventoryItem = async (req, res, next) => {
       message: 'Inventory item updated successfully'
     });
   } catch (error) {
-    // Clean up uploaded files on error
+    
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -477,9 +477,9 @@ const updateInventoryItem = async (req, res, next) => {
   }
 };
 
-// @desc    Delete inventory item
-// @route   DELETE /api/inventory/:id
-// @access  Private/Admin
+
+
+
 const deleteInventoryItem = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
@@ -494,14 +494,14 @@ const deleteInventoryItem = async (req, res, next) => {
       });
     }
 
-    // Soft delete by marking as deleted
+    
     item.isDeleted = true;
     item.deletedAt = Date.now();
     item.deletedBy = req.user.id;
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'INVENTORY',
@@ -522,9 +522,9 @@ const deleteInventoryItem = async (req, res, next) => {
   }
 };
 
-// @desc    Update stock quantity
-// @route   PATCH /api/inventory/:id/stock
-// @access  Private (Employee + Admin)
+
+
+
 const updateStock = async (req, res, next) => {
   try {
     const { quantity, action, reason } = req.body;
@@ -544,7 +544,7 @@ const updateStock = async (req, res, next) => {
     const previousQuantity = item.quantity.current;
     let newQuantity = previousQuantity;
 
-    // Calculate new quantity based on action
+    
     switch (action) {
       case 'add':
         newQuantity = previousQuantity + quantity;
@@ -574,7 +574,7 @@ const updateStock = async (req, res, next) => {
         });
     }
 
-    // Update quantity and add to history
+    
     item.quantity.current = newQuantity;
     item.stockHistory.push({
       action: action === 'add' ? 'added' : action === 'remove' ? 'removed' : 'adjusted',
@@ -588,7 +588,7 @@ const updateStock = async (req, res, next) => {
 
     await item.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -610,9 +610,9 @@ const updateStock = async (req, res, next) => {
   }
 };
 
-// @desc    Get stock history
-// @route   GET /api/inventory/:id/history
-// @access  Private (Employee + Admin)
+
+
+
 const getStockHistory = async (req, res, next) => {
   try {
     const { limit = 50 } = req.query;
@@ -645,9 +645,9 @@ const getStockHistory = async (req, res, next) => {
   }
 };
 
-// @desc    Get low stock items
-// @route   GET /api/inventory/low-stock
-// @access  Private (Employee + Admin)
+
+
+
 const getLowStockItems = async (req, res, next) => {
   try {
     const items = await Inventory.find({ isActive: true, isDeleted: false })
@@ -668,9 +668,9 @@ const getLowStockItems = async (req, res, next) => {
   }
 };
 
-// @desc    Get all categories
-// @route   GET /api/inventory/categories
-// @access  Private (Employee + Admin)
+
+
+
 const getCategories = async (req, res, next) => {
   try {
     const categories = await Inventory.distinct('category');
@@ -685,15 +685,15 @@ const getCategories = async (req, res, next) => {
   }
 };
 
-// @desc    Upload images to inventory item
-// @route   POST /api/inventory/:id/images
-// @access  Private/Admin
+
+
+
 const uploadImages = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
 
     if (!item) {
-      // Clean up uploaded files
+      
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -720,14 +720,14 @@ const uploadImages = async (req, res, next) => {
     }
 
     try {
-      // Upload images to ImgBB
+      
       const uploadResults = await uploadMultipleToImgBB(req.files);
 
-      // Filter successful uploads
+      
       const successfulUploads = uploadResults.filter(result => result.success);
 
       if (successfulUploads.length === 0) {
-        // Clean up local files
+        
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -741,7 +741,7 @@ const uploadImages = async (req, res, next) => {
         });
       }
 
-      // Add images to item
+      
       const newImages = successfulUploads.map(result => ({
         filename: result.data.filename,
         path: result.data.display_url,
@@ -759,12 +759,12 @@ const uploadImages = async (req, res, next) => {
       item.lastUpdatedBy = req.user.id;
       await item.save();
 
-      // Clean up local files after successful upload
+      
       for (const file of req.files) {
         await deleteLocalFile(file.path);
       }
 
-      // Create audit log
+      
       await AuditLog.create({
         action: 'UPDATE',
         resource: 'INVENTORY',
@@ -783,7 +783,7 @@ const uploadImages = async (req, res, next) => {
     } catch (uploadError) {
       console.error('ImgBB upload error:', uploadError);
 
-      // Clean up local files
+      
       for (const file of req.files) {
         await deleteLocalFile(file.path);
       }
@@ -798,7 +798,7 @@ const uploadImages = async (req, res, next) => {
       });
     }
   } catch (error) {
-    // Clean up uploaded files on error
+    
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -810,9 +810,9 @@ const uploadImages = async (req, res, next) => {
   }
 };
 
-// @desc    Delete image from inventory item
-// @route   DELETE /api/inventory/:id/images/:imageId
-// @access  Private/Admin
+
+
+
 const deleteImage = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
@@ -840,10 +840,10 @@ const deleteImage = async (req, res, next) => {
       });
     }
 
-    // Get image details before deletion
+    
     const imageToDelete = item.images[imageIndex];
 
-    // Delete file from filesystem
+    
     const fs = require('fs').promises;
     try {
       await fs.unlink(imageToDelete.path);
@@ -851,10 +851,10 @@ const deleteImage = async (req, res, next) => {
       console.error('Error deleting file from filesystem:', err);
     }
 
-    // Remove image from array
+    
     item.images.splice(imageIndex, 1);
 
-    // Adjust primaryImage if necessary
+    
     if (item.primaryImage === imageIndex) {
       item.primaryImage = 0;
     } else if (item.primaryImage > imageIndex) {
@@ -864,7 +864,7 @@ const deleteImage = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -886,9 +886,9 @@ const deleteImage = async (req, res, next) => {
   }
 };
 
-// @desc    Set primary image for inventory item
-// @route   PATCH /api/inventory/:id/images/primary
-// @access  Private/Admin
+
+
+
 const setPrimaryImage = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
@@ -929,7 +929,7 @@ const setPrimaryImage = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',

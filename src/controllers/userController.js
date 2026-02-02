@@ -1,14 +1,14 @@
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 
-// @desc    Get all users
-// @route   GET /api/users
-// @access  Private/Admin
+
+
+
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
 
-    // Build query - filter out deleted users
+    
     const query = { isDeleted: false };
     if (role) query.role = role;
     if (search) {
@@ -47,9 +47,9 @@ const getUsers = async (req, res, next) => {
   }
 };
 
-// @desc    Get user by ID
-// @route   GET /api/users/:id
-// @access  Private/Admin
+
+
+
 const getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false })
@@ -76,14 +76,14 @@ const getUser = async (req, res, next) => {
   }
 };
 
-// @desc    Create new user
-// @route   POST /api/users
-// @access  Private/Admin
+
+
+
 const createUser = async (req, res, next) => {
   try {
     const { username, email, password, fullName, role } = req.body;
 
-    // Check if username or email already exists (not deleted)
+    
     const existingUser = await User.findOne({
       $or: [{ username }, { email }],
       isDeleted: false
@@ -107,7 +107,7 @@ const createUser = async (req, res, next) => {
       createdBy: req.user.id
     });
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'USER',
@@ -137,9 +137,9 @@ const createUser = async (req, res, next) => {
   }
 };
 
-// @desc    Update user
-// @route   PUT /api/users/:id
-// @access  Private/Admin
+
+
+
 const updateUser = async (req, res, next) => {
   try {
     const { email, fullName, role, isActive } = req.body;
@@ -156,7 +156,7 @@ const updateUser = async (req, res, next) => {
       });
     }
 
-    // Update fields
+    
     if (email) user.email = email;
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
@@ -165,7 +165,7 @@ const updateUser = async (req, res, next) => {
 
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'USER',
@@ -196,9 +196,9 @@ const updateUser = async (req, res, next) => {
   }
 };
 
-// @desc    Delete user
-// @route   DELETE /api/users/:id
-// @access  Private/Admin
+
+
+
 const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false });
@@ -213,7 +213,7 @@ const deleteUser = async (req, res, next) => {
       });
     }
 
-    // Prevent deleting yourself
+    
     if (user._id.toString() === req.user.id) {
       return res.status(400).json({
         success: false,
@@ -224,13 +224,13 @@ const deleteUser = async (req, res, next) => {
       });
     }
 
-    // Soft delete by marking as deleted
+    
     user.isDeleted = true;
     user.deletedAt = Date.now();
     user.deletedBy = req.user.id;
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'USER',
@@ -251,9 +251,9 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-// @desc    Reset user password
-// @route   POST /api/users/:id/reset-password
-// @access  Private/Admin
+
+
+
 const resetPassword = async (req, res, next) => {
   try {
     const { newPassword } = req.body;
@@ -273,7 +273,7 @@ const resetPassword = async (req, res, next) => {
     user.password = newPassword;
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'PASSWORD_RESET',
       resource: 'USER',

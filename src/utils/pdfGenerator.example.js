@@ -1,17 +1,14 @@
-/**
- * Example usage of the PDF Generator utility
- * This file demonstrates how to use the generateInvoicePDF function
- */
+
 
 const { generateInvoicePDF } = require('./pdfGenerator');
 const fs = require('fs').promises;
 const path = require('path');
 
-// Sample invoice data
+
 const sampleInvoice = {
   invoiceNumber: 'INV-2026-001',
   invoiceDate: new Date('2026-02-01'),
-  dueDate: new Date('2026-03-03'), // Net 30 days
+  dueDate: new Date('2026-03-03'), 
   status: 'sent',
   currency: 'USD',
 
@@ -27,7 +24,7 @@ const sampleInvoice = {
       zipCode: '10001',
       country: 'USA'
     }
-    // logo: '/path/to/company-logo.png' // Optional: path to logo image
+    
   },
 
   customer: {
@@ -106,25 +103,23 @@ const sampleInvoice = {
   notes: 'Thank you for your business! Please include the invoice number with your payment.\n\nFor any questions regarding this invoice, please contact our billing department at billing@acmecorp.com or call +1 (555) 123-4567.\n\nAll sales are final. Returns accepted within 30 days with original receipt.'
 };
 
-/**
- * Generate and save a sample invoice PDF
- */
+
 async function generateSampleInvoice() {
   try {
     console.log('Generating invoice PDF...');
 
-    // Generate PDF buffer
+    
     const pdfBuffer = await generateInvoicePDF(sampleInvoice, {
-      includeQR: true // Include QR code
+      includeQR: true 
     });
 
-    // Save to file
+    
     const outputPath = path.join(__dirname, '../../temp', `${sampleInvoice.invoiceNumber}.pdf`);
 
-    // Ensure temp directory exists
+    
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
-    // Write PDF to file
+    
     await fs.writeFile(outputPath, pdfBuffer);
 
     console.log(`✓ Invoice PDF generated successfully!`);
@@ -138,19 +133,17 @@ async function generateSampleInvoice() {
   }
 }
 
-/**
- * Example: Using with Mongoose Invoice model
- */
+
 async function generateInvoiceFromDB(invoiceId) {
   try {
-    // This is a placeholder - in real usage, you would:
-    // const Invoice = require('../models/Invoice');
-    // const invoice = await Invoice.findById(invoiceId).populate('createdBy');
+    
+    
+    
 
-    // For now, we'll use the sample data
+    
     const invoice = sampleInvoice;
 
-    // Generate PDF
+    
     const pdfBuffer = await generateInvoicePDF(invoice, {
       includeQR: true
     });
@@ -162,28 +155,26 @@ async function generateInvoiceFromDB(invoiceId) {
   }
 }
 
-/**
- * Example: Sending invoice via email (pseudo-code)
- */
+
 async function generateAndEmailInvoice(invoice, recipientEmail) {
   try {
-    // Generate PDF
+    
     const pdfBuffer = await generateInvoicePDF(invoice);
 
-    // In a real application, you would use a mail service like nodemailer:
-    // const nodemailer = require('nodemailer');
-    // const transporter = nodemailer.createTransport({...});
-    //
-    // await transporter.sendMail({
-    //   from: invoice.company.email,
-    //   to: recipientEmail,
-    //   subject: `Invoice ${invoice.invoiceNumber}`,
-    //   text: `Please find attached invoice ${invoice.invoiceNumber}`,
-    //   attachments: [{
-    //     filename: `${invoice.invoiceNumber}.pdf`,
-    //     content: pdfBuffer
-    //   }]
-    // });
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
     console.log(`Invoice would be emailed to: ${recipientEmail}`);
     return pdfBuffer;
@@ -193,7 +184,7 @@ async function generateAndEmailInvoice(invoice, recipientEmail) {
   }
 }
 
-// Run the example if this file is executed directly
+
 if (require.main === module) {
   generateSampleInvoice()
     .then(() => {

@@ -1,8 +1,8 @@
 const { body, param, query, validationResult } = require('express-validator');
 
-// Middleware to parse JSON fields from FormData
+
 const parseFormDataJSON = (req, res, next) => {
-  // List of fields that should be parsed as JSON
+  
   const jsonFields = ['tags', 'supplier', 'images'];
 
   if (req.body) {
@@ -11,7 +11,7 @@ const parseFormDataJSON = (req, res, next) => {
         try {
           req.body[field] = JSON.parse(req.body[field]);
         } catch (err) {
-          // If parsing fails, leave it as is
+          
           console.log(`Failed to parse ${field} as JSON:`, err.message);
         }
       }
@@ -21,7 +21,7 @@ const parseFormDataJSON = (req, res, next) => {
   next();
 };
 
-// Middleware to handle validation errors
+
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -40,7 +40,7 @@ const validate = (req, res, next) => {
   next();
 };
 
-// User validation rules
+
 const userValidation = {
   create: [
     body('username')
@@ -91,7 +91,7 @@ const userValidation = {
   ]
 };
 
-// Auth validation rules
+
 const authValidation = {
   login: [
     body('username').trim().notEmpty().withMessage('Username is required'),
@@ -106,7 +106,7 @@ const authValidation = {
   ]
 };
 
-// Inventory validation rules
+
 const inventoryValidation = {
   create: [
     body('itemName').trim().notEmpty().withMessage('Item name is required').isLength({ max: 200 }).withMessage('Item name is too long'),
@@ -162,7 +162,7 @@ const inventoryValidation = {
   ]
 };
 
-// Invoice validation rules
+
 const invoiceValidation = {
   create: [
     body('invoiceNumber')

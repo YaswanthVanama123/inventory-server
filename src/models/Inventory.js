@@ -177,7 +177,7 @@ const inventorySchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // Soft delete fields
+  
   isDeleted: {
     type: Boolean,
     default: false,
@@ -194,13 +194,13 @@ const inventorySchema = new mongoose.Schema({
   }
 });
 
-// Indexes for better query performance
+
 inventorySchema.index({ skuCode: 1 }, { unique: true });
 inventorySchema.index({ category: 1, isActive: 1 });
 inventorySchema.index({ 'quantity.current': 1 });
 inventorySchema.index({ createdAt: -1 });
 
-// Calculate profit margin before saving
+
 inventorySchema.pre('save', function(next) {
   if (this.pricing && this.pricing.purchasePrice && this.pricing.sellingPrice) {
     const profit = this.pricing.sellingPrice - this.pricing.purchasePrice;
@@ -209,7 +209,7 @@ inventorySchema.pre('save', function(next) {
       : 0;
   }
 
-  // Validate primaryImage index
+  
   if (this.images && this.images.length > 0) {
     if (this.primaryImage >= this.images.length) {
       this.primaryImage = 0;
@@ -222,17 +222,17 @@ inventorySchema.pre('save', function(next) {
   next();
 });
 
-// Virtual for checking if stock is low
+
 inventorySchema.virtual('isLowStock').get(function() {
   return this.quantity.current <= this.quantity.minimum;
 });
 
-// Virtual for checking if reorder is needed
+
 inventorySchema.virtual('needsReorder').get(function() {
   return this.quantity.current <= this.supplier.reorderPoint;
 });
 
-// Ensure virtuals are included when converting to JSON
+
 inventorySchema.set('toJSON', { virtuals: true });
 inventorySchema.set('toObject', { virtuals: true });
 

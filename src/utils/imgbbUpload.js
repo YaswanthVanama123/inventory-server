@@ -2,12 +2,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 
-/**
- * Upload image to ImgBB
- * @param {string} filePath - Path to the image file
- * @param {string} fileName - Name of the file
- * @returns {Promise<Object>} Upload result with image URLs
- */
+
 const uploadToImgBB = async (filePath, fileName) => {
   try {
     const apiKey = process.env.IMGBB_API_KEY;
@@ -17,17 +12,17 @@ const uploadToImgBB = async (filePath, fileName) => {
       throw new Error('ImgBB API key not configured');
     }
 
-    // Read file and convert to base64
+    
     const imageBuffer = fs.readFileSync(filePath);
     const base64Image = imageBuffer.toString('base64');
 
-    // Create form data
+    
     const formData = new FormData();
     formData.append('key', apiKey);
     formData.append('image', base64Image);
     formData.append('name', fileName);
 
-    // Upload to ImgBB
+    
     const response = await axios.post(apiUrl, formData, {
       headers: {
         ...formData.getHeaders(),
@@ -43,7 +38,7 @@ const uploadToImgBB = async (filePath, fileName) => {
 
     const { data } = response.data;
 
-    // Return structured response
+    
     return {
       success: true,
       data: {
@@ -67,7 +62,7 @@ const uploadToImgBB = async (filePath, fileName) => {
   } catch (error) {
     console.error('ImgBB upload error:', error.response?.data || error.message);
 
-    // Try backup API key if primary fails
+    
     if (process.env.IMGBB_API_KEY_BACKUP && !error.retried) {
       try {
         const backupApiKey = process.env.IMGBB_API_KEY_BACKUP;
@@ -126,11 +121,7 @@ const uploadToImgBB = async (filePath, fileName) => {
   }
 };
 
-/**
- * Upload multiple images to ImgBB
- * @param {Array} files - Array of file objects with path and originalname
- * @returns {Promise<Array>} Array of upload results
- */
+
 const uploadMultipleToImgBB = async (files) => {
   const uploadPromises = files.map(async (file) => {
     try {
@@ -150,10 +141,7 @@ const uploadMultipleToImgBB = async (files) => {
   return Promise.all(uploadPromises);
 };
 
-/**
- * Delete uploaded image file from local storage
- * @param {string} filePath - Path to the file to delete
- */
+
 const deleteLocalFile = async (filePath) => {
   try {
     if (fs.existsSync(filePath)) {

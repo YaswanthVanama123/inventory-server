@@ -233,7 +233,7 @@ const invoiceSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // Soft delete fields
+  
   isDeleted: {
     type: Boolean,
     default: false,
@@ -250,15 +250,15 @@ const invoiceSchema = new mongoose.Schema({
   }
 });
 
-// Compound indexes for better query performance
+
 invoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
 invoiceSchema.index({ 'customer.email': 1, invoiceDate: -1 });
 invoiceSchema.index({ status: 1, paymentStatus: 1 });
 invoiceSchema.index({ invoiceDate: -1, createdAt: -1 });
 invoiceSchema.index({ createdBy: 1, status: 1 });
-invoiceSchema.index({ dueDate: 1, paymentStatus: 1 }); // For overdue invoices
+invoiceSchema.index({ dueDate: 1, paymentStatus: 1 }); 
 
-// Static method to generate invoice number in format INV-YYYYMMDD-XXXX
+
 invoiceSchema.statics.generateInvoiceNumber = async function() {
   const today = new Date();
   const year = today.getFullYear();
@@ -266,7 +266,7 @@ invoiceSchema.statics.generateInvoiceNumber = async function() {
   const day = String(today.getDate()).padStart(2, '0');
   const datePrefix = `INV-${year}${month}${day}`;
 
-  // Find the last invoice created today
+  
   const lastInvoice = await this.findOne({
     invoiceNumber: new RegExp(`^${datePrefix}`)
   })
@@ -276,61 +276,61 @@ invoiceSchema.statics.generateInvoiceNumber = async function() {
 
   let sequence = 1;
   if (lastInvoice) {
-    // Extract sequence number from last invoice
+    
     const lastSequence = parseInt(lastInvoice.invoiceNumber.split('-')[2]);
     sequence = lastSequence + 1;
   }
 
-  // Format sequence with leading zeros (4 digits)
+  
   const sequenceStr = String(sequence).padStart(4, '0');
   return `${datePrefix}-${sequenceStr}`;
 };
 
-// Pre-save middleware to auto-generate invoice number if not provided
+
 invoiceSchema.pre('save', async function(next) {
   try {
-    // Generate invoice number if this is a new invoice
+    
     if (this.isNew && !this.invoiceNumber) {
       this.invoiceNumber = await this.constructor.generateInvoiceNumber();
     }
 
-    // Calculate item subtotals
+    
     if (this.items && this.items.length > 0) {
       this.items.forEach(item => {
         item.subtotal = item.quantity * item.priceAtSale;
       });
     }
 
-    // Calculate subtotal amount (sum of all item subtotals)
+    
     this.subtotalAmount = this.items.reduce((sum, item) => sum + item.subtotal, 0);
 
-    // Calculate discount amount
+    
     if (this.discount.type === 'percentage') {
       this.discount.amount = (this.subtotalAmount * this.discount.value) / 100;
     } else {
       this.discount.amount = this.discount.value;
     }
 
-    // Calculate amount after discount
+    
     const amountAfterDiscount = this.subtotalAmount - this.discount.amount;
 
-    // Calculate tax amount
+    
     this.taxAmount = (amountAfterDiscount * this.taxRate) / 100;
 
-    // Calculate total amount
+    
     this.totalAmount = amountAfterDiscount + this.taxAmount;
 
-    // Set payment date when payment status changes to paid
+    
     if (this.isModified('paymentStatus') && this.paymentStatus === 'paid' && !this.paymentDate) {
       this.paymentDate = Date.now();
     }
 
-    // Update status based on payment status
+    
     if (this.paymentStatus === 'paid' && this.status !== 'paid') {
       this.status = 'paid';
     }
 
-    // Update timestamp
+    
     this.updatedAt = Date.now();
 
     next();
@@ -339,22 +339,22 @@ invoiceSchema.pre('save', async function(next) {
   }
 });
 
-// Pre-update middleware to recalculate totals
+
 invoiceSchema.pre('findOneAndUpdate', async function(next) {
   const update = this.getUpdate();
 
-  // If items are being updated, recalculate totals
+  
   if (update.$set && update.$set.items) {
-    // Calculate item subtotals
+    
     update.$set.items.forEach(item => {
       item.subtotal = item.quantity * item.priceAtSale;
     });
 
-    // Calculate subtotal amount
+    
     const subtotalAmount = update.$set.items.reduce((sum, item) => sum + item.subtotal, 0);
     update.$set.subtotalAmount = subtotalAmount;
 
-    // Calculate discount amount
+    
     const discount = update.$set.discount || {};
     if (discount.type === 'percentage') {
       discount.amount = (subtotalAmount * (discount.value || 0)) / 100;
@@ -363,18 +363,18 @@ invoiceSchema.pre('findOneAndUpdate', async function(next) {
     }
     update.$set.discount = discount;
 
-    // Calculate amount after discount
+    
     const amountAfterDiscount = subtotalAmount - discount.amount;
 
-    // Calculate tax amount
+    
     const taxRate = update.$set.taxRate || 0;
     update.$set.taxAmount = (amountAfterDiscount * taxRate) / 100;
 
-    // Calculate total amount
+    
     update.$set.totalAmount = amountAfterDiscount + update.$set.taxAmount;
   }
 
-  // Update timestamp
+  
   if (update.$set) {
     update.$set.updatedAt = Date.now();
   }
@@ -382,7 +382,7 @@ invoiceSchema.pre('findOneAndUpdate', async function(next) {
   next();
 });
 
-// Virtual for checking if invoice is overdue
+
 invoiceSchema.virtual('isOverdue').get(function() {
   if (this.paymentStatus === 'paid' || this.status === 'cancelled') {
     return false;
@@ -390,7 +390,7 @@ invoiceSchema.virtual('isOverdue').get(function() {
   return new Date() > this.dueDate;
 });
 
-// Virtual for days until due
+
 invoiceSchema.virtual('daysUntilDue').get(function() {
   const today = new Date();
   const diffTime = this.dueDate - today;
@@ -398,7 +398,7 @@ invoiceSchema.virtual('daysUntilDue').get(function() {
   return diffDays;
 });
 
-// Virtual for days overdue
+
 invoiceSchema.virtual('daysOverdue').get(function() {
   if (!this.isOverdue) {
     return 0;
@@ -409,56 +409,56 @@ invoiceSchema.virtual('daysOverdue').get(function() {
   return diffDays;
 });
 
-// Virtual for amount paid (total if paid, 0 otherwise)
+
 invoiceSchema.virtual('amountPaid').get(function() {
   return this.paymentStatus === 'paid' ? this.totalAmount : 0;
 });
 
-// Virtual for amount due
+
 invoiceSchema.virtual('amountDue').get(function() {
   return this.paymentStatus === 'paid' ? 0 : this.totalAmount;
 });
 
-// Virtual for total items count
+
 invoiceSchema.virtual('totalItems').get(function() {
   return this.items.length;
 });
 
-// Virtual for total quantity
+
 invoiceSchema.virtual('totalQuantity').get(function() {
   return this.items.reduce((sum, item) => sum + item.quantity, 0);
 });
 
-// Instance method to calculate totals (can be called manually)
+
 invoiceSchema.methods.calculateTotals = function() {
-  // Calculate item subtotals
+  
   this.items.forEach(item => {
     item.subtotal = item.quantity * item.priceAtSale;
   });
 
-  // Calculate subtotal amount
+  
   this.subtotalAmount = this.items.reduce((sum, item) => sum + item.subtotal, 0);
 
-  // Calculate discount amount
+  
   if (this.discount.type === 'percentage') {
     this.discount.amount = (this.subtotalAmount * this.discount.value) / 100;
   } else {
     this.discount.amount = this.discount.value;
   }
 
-  // Calculate amount after discount
+  
   const amountAfterDiscount = this.subtotalAmount - this.discount.amount;
 
-  // Calculate tax amount
+  
   this.taxAmount = (amountAfterDiscount * this.taxRate) / 100;
 
-  // Calculate total amount
+  
   this.totalAmount = amountAfterDiscount + this.taxAmount;
 
   return this;
 };
 
-// Instance method to mark invoice as paid
+
 invoiceSchema.methods.markAsPaid = function(paymentMethod) {
   this.paymentStatus = 'paid';
   this.status = 'paid';
@@ -469,7 +469,7 @@ invoiceSchema.methods.markAsPaid = function(paymentMethod) {
   return this;
 };
 
-// Instance method to mark invoice as cancelled
+
 invoiceSchema.methods.markAsCancelled = function(reason) {
   this.status = 'cancelled';
   this.paymentStatus = 'cancelled';
@@ -481,7 +481,7 @@ invoiceSchema.methods.markAsCancelled = function(reason) {
   return this;
 };
 
-// Instance method to issue invoice (change from draft to issued)
+
 invoiceSchema.methods.issueInvoice = function() {
   if (this.status === 'draft') {
     this.status = 'issued';
@@ -490,7 +490,7 @@ invoiceSchema.methods.issueInvoice = function() {
   return this;
 };
 
-// Static method to get overdue invoices
+
 invoiceSchema.statics.getOverdueInvoices = function() {
   return this.find({
     dueDate: { $lt: new Date() },
@@ -499,7 +499,7 @@ invoiceSchema.statics.getOverdueInvoices = function() {
   }).sort({ dueDate: 1 });
 };
 
-// Static method to get invoices by date range
+
 invoiceSchema.statics.getInvoicesByDateRange = function(startDate, endDate) {
   return this.find({
     invoiceDate: {
@@ -509,7 +509,7 @@ invoiceSchema.statics.getInvoicesByDateRange = function(startDate, endDate) {
   }).sort({ invoiceDate: -1 });
 };
 
-// Static method to get revenue statistics
+
 invoiceSchema.statics.getRevenueStats = async function(startDate, endDate) {
   const stats = await this.aggregate([
     {
@@ -548,11 +548,11 @@ invoiceSchema.statics.getRevenueStats = async function(startDate, endDate) {
   return stats.length > 0 ? stats[0] : null;
 };
 
-// Ensure virtuals are included when converting to JSON
+
 invoiceSchema.set('toJSON', {
   virtuals: true,
   transform: function(doc, ret) {
-    // Remove __v field
+    
     delete ret.__v;
     return ret;
   }

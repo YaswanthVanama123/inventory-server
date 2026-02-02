@@ -18,7 +18,7 @@ const paymentTypeSchema = new mongoose.Schema({
   },
   icon: {
     type: String,
-    default: 'credit-card', // Icon name for UI
+    default: 'credit-card', 
   },
   isActive: {
     type: Boolean,
@@ -32,7 +32,7 @@ const paymentTypeSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
-  // Soft delete fields
+  
   isDeleted: {
     type: Boolean,
     default: false,
@@ -51,7 +51,7 @@ const paymentTypeSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Index for ordering
+
 paymentTypeSchema.index({ order: 1 });
 
 module.exports = mongoose.model('PaymentType', paymentTypeSchema);

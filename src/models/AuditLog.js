@@ -45,7 +45,7 @@ const auditLogSchema = new mongoose.Schema({
   }
 });
 
-// Index for better query performance
+
 auditLogSchema.index({ performedBy: 1, timestamp: -1 });
 auditLogSchema.index({ resource: 1, action: 1 });
 auditLogSchema.index({ timestamp: -1 });

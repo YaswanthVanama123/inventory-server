@@ -1,9 +1,7 @@
 const Settings = require('../models/Settings');
 const AuditLog = require('../models/AuditLog');
 
-/**
- * Get all settings (categories, units, SKU config)
- */
+
 exports.getSettings = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
@@ -25,9 +23,7 @@ exports.getSettings = async (req, res) => {
   }
 };
 
-/**
- * Get all categories (including inactive for admin)
- */
+
 exports.getAllCategories = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
@@ -51,9 +47,7 @@ exports.getAllCategories = async (req, res) => {
   }
 };
 
-/**
- * Add a new category (Admin only)
- */
+
 exports.addCategory = async (req, res) => {
   try {
     const { value, label } = req.body;
@@ -67,7 +61,7 @@ exports.addCategory = async (req, res) => {
 
     const settings = await Settings.getSettings();
 
-    // Check if category already exists
+    
     const exists = settings.categories.some(
       (c) => c.value.toLowerCase() === value.toLowerCase()
     );
@@ -79,7 +73,7 @@ exports.addCategory = async (req, res) => {
       });
     }
 
-    // Add new category
+    
     settings.categories.push({
       value: value.toLowerCase().trim(),
       label: label.trim(),
@@ -90,7 +84,7 @@ exports.addCategory = async (req, res) => {
 
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'Category',
@@ -112,9 +106,7 @@ exports.addCategory = async (req, res) => {
   }
 };
 
-/**
- * Update a category (Admin only)
- */
+
 exports.updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -130,14 +122,14 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    // Update fields
+    
     if (value !== undefined) category.value = value.toLowerCase().trim();
     if (label !== undefined) category.label = label.trim();
     if (isActive !== undefined) category.isActive = isActive;
 
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'Category',
@@ -160,9 +152,7 @@ exports.updateCategory = async (req, res) => {
   }
 };
 
-/**
- * Delete a category (Admin only)
- */
+
 exports.deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -177,11 +167,11 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    // Soft delete - just mark as inactive
+    
     category.isActive = false;
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'Category',
@@ -203,9 +193,7 @@ exports.deleteCategory = async (req, res) => {
   }
 };
 
-/**
- * Get all units (including inactive for admin)
- */
+
 exports.getAllUnits = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
@@ -229,9 +217,7 @@ exports.getAllUnits = async (req, res) => {
   }
 };
 
-/**
- * Add a new unit (Admin only)
- */
+
 exports.addUnit = async (req, res) => {
   try {
     const { value, label } = req.body;
@@ -245,7 +231,7 @@ exports.addUnit = async (req, res) => {
 
     const settings = await Settings.getSettings();
 
-    // Check if unit already exists
+    
     const exists = settings.units.some(
       (u) => u.value.toLowerCase() === value.toLowerCase()
     );
@@ -257,7 +243,7 @@ exports.addUnit = async (req, res) => {
       });
     }
 
-    // Add new unit
+    
     settings.units.push({
       value: value.toLowerCase().trim(),
       label: label.trim(),
@@ -268,7 +254,7 @@ exports.addUnit = async (req, res) => {
 
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'Unit',
@@ -290,9 +276,7 @@ exports.addUnit = async (req, res) => {
   }
 };
 
-/**
- * Update a unit (Admin only)
- */
+
 exports.updateUnit = async (req, res) => {
   try {
     const { id } = req.params;
@@ -308,14 +292,14 @@ exports.updateUnit = async (req, res) => {
       });
     }
 
-    // Update fields
+    
     if (value !== undefined) unit.value = value.toLowerCase().trim();
     if (label !== undefined) unit.label = label.trim();
     if (isActive !== undefined) unit.isActive = isActive;
 
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'Unit',
@@ -338,9 +322,7 @@ exports.updateUnit = async (req, res) => {
   }
 };
 
-/**
- * Delete a unit (Admin only)
- */
+
 exports.deleteUnit = async (req, res) => {
   try {
     const { id } = req.params;
@@ -355,11 +337,11 @@ exports.deleteUnit = async (req, res) => {
       });
     }
 
-    // Soft delete - just mark as inactive
+    
     unit.isActive = false;
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'Unit',
@@ -381,9 +363,7 @@ exports.deleteUnit = async (req, res) => {
   }
 };
 
-/**
- * Generate next SKU
- */
+
 exports.generateSKU = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
@@ -402,9 +382,7 @@ exports.generateSKU = async (req, res) => {
   }
 };
 
-/**
- * Update SKU configuration (Admin only)
- */
+
 exports.updateSKUConfig = async (req, res) => {
   try {
     const { prefix, format, numberLength } = req.body;
@@ -425,7 +403,7 @@ exports.updateSKUConfig = async (req, res) => {
 
     await settings.save();
 
-    // Log the action
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'SKU Configuration',

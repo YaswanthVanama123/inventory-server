@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Password is required'],
     minlength: [8, 'Password must be at least 8 characters'],
-    select: false  // Don't return password by default in queries
+    select: false  
   },
   fullName: {
     type: String,
@@ -59,7 +59,7 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // Soft delete fields
+  
   isDeleted: {
     type: Boolean,
     default: false,
@@ -76,19 +76,19 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Hash password before saving
+
 userSchema.pre('save', async function(next) {
-  // Only hash if password is modified
+  
   if (!this.isModified('password')) return next();
 
   try {
-    // Generate salt and hash password
+    
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
 
-    // Set passwordChangedAt if password was changed (not on new user)
+    
     if (!this.isNew) {
-      this.passwordChangedAt = Date.now() - 1000; // Subtract 1 second to account for JWT timing
+      this.passwordChangedAt = Date.now() - 1000; 
     }
 
     next();
@@ -97,18 +97,18 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-// Update timestamp before saving
+
 userSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();
 });
 
-// Instance method to compare passwords
+
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Check if password was changed after JWT was issued
+
 userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
   if (this.passwordChangedAt) {
     const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);

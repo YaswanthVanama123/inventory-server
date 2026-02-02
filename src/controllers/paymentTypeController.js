@@ -1,7 +1,7 @@
 const PaymentType = require('../models/PaymentType');
 const AuditLog = require('../models/AuditLog');
 
-// Get all payment types
+
 exports.getAllPaymentTypes = async (req, res) => {
   try {
     const { status = 'all' } = req.query;
@@ -24,7 +24,7 @@ exports.getAllPaymentTypes = async (req, res) => {
   }
 };
 
-// Get single payment type
+
 exports.getPaymentTypeById = async (req, res) => {
   try {
     const paymentType = await PaymentType.findOne({ _id: req.params.id, isDeleted: false }).populate('createdBy', 'username fullName');
@@ -40,7 +40,7 @@ exports.getPaymentTypeById = async (req, res) => {
   }
 };
 
-// Create new payment type
+
 exports.createPaymentType = async (req, res) => {
   try {
     const { name, displayName, description, icon, isActive, order } = req.body;
@@ -49,7 +49,7 @@ exports.createPaymentType = async (req, res) => {
       return res.status(400).json({ message: 'Name and display name are required' });
     }
 
-    // Check if payment type already exists (not deleted)
+    
     const existing = await PaymentType.findOne({ name: name.toLowerCase(), isDeleted: false });
     if (existing) {
       return res.status(400).json({ message: 'Payment type already exists' });
@@ -67,7 +67,7 @@ exports.createPaymentType = async (req, res) => {
 
     await paymentType.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'PAYMENT_TYPE',
@@ -91,7 +91,7 @@ exports.createPaymentType = async (req, res) => {
   }
 };
 
-// Update payment type
+
 exports.updatePaymentType = async (req, res) => {
   try {
     const { name, displayName, description, icon, isActive, order } = req.body;
@@ -102,7 +102,7 @@ exports.updatePaymentType = async (req, res) => {
       return res.status(404).json({ message: 'Payment type not found' });
     }
 
-    // Check if name is being changed and if new name already exists
+    
     if (name && name.toLowerCase() !== paymentType.name) {
       const existing = await PaymentType.findOne({ name: name.toLowerCase() });
       if (existing) {
@@ -119,7 +119,7 @@ exports.updatePaymentType = async (req, res) => {
 
     await paymentType.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'PAYMENT_TYPE',
@@ -144,7 +144,7 @@ exports.updatePaymentType = async (req, res) => {
   }
 };
 
-// Delete payment type
+
 exports.deletePaymentType = async (req, res) => {
   try {
     const paymentType = await PaymentType.findOne({ _id: req.params.id, isDeleted: false });
@@ -153,13 +153,13 @@ exports.deletePaymentType = async (req, res) => {
       return res.status(404).json({ message: 'Payment type not found' });
     }
 
-    // Soft delete by marking as deleted
+    
     paymentType.isDeleted = true;
     paymentType.deletedAt = Date.now();
     paymentType.deletedBy = req.user?.id || null;
     await paymentType.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'PAYMENT_TYPE',

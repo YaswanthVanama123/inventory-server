@@ -3,7 +3,7 @@ const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 const jwtConfig = require('../config/jwt');
 
-// Generate JWT token
+
 const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
@@ -16,12 +16,12 @@ const generateToken = (userId) => {
   );
 };
 
-// @desc    Create initial admin user (one-time setup)
-// @route   POST /api/auth/setup/admin
-// @access  Public (but checks if admin exists)
+
+
+
 const createInitialAdmin = async (req, res, next) => {
   try {
-    // Check if any admin user already exists
+    
     const existingAdmin = await User.findOne({ role: 'admin' });
 
     if (existingAdmin) {
@@ -36,7 +36,7 @@ const createInitialAdmin = async (req, res, next) => {
 
     const { username, email, password, fullName } = req.body;
 
-    // Validate required fields
+    
     if (!username || !email || !password || !fullName) {
       return res.status(400).json({
         success: false,
@@ -47,7 +47,7 @@ const createInitialAdmin = async (req, res, next) => {
       });
     }
 
-    // Create admin user
+    
     const adminUser = await User.create({
       username,
       email,
@@ -57,7 +57,7 @@ const createInitialAdmin = async (req, res, next) => {
       isActive: true
     });
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'USER',
@@ -88,7 +88,7 @@ const createInitialAdmin = async (req, res, next) => {
   } catch (error) {
     console.error('Create admin error:', error);
 
-    // Handle duplicate key errors
+    
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
@@ -104,14 +104,14 @@ const createInitialAdmin = async (req, res, next) => {
   }
 };
 
-// @desc    Admin login
-// @route   POST /api/auth/admin/login
-// @access  Public
+
+
+
 const adminLogin = async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
-    // Check if user exists and get password
+    
     const user = await User.findOne({ username }).select('+password');
 
     if (!user) {
@@ -124,7 +124,7 @@ const adminLogin = async (req, res, next) => {
       });
     }
 
-    // Check if user is admin
+    
     if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -135,7 +135,7 @@ const adminLogin = async (req, res, next) => {
       });
     }
 
-    // Check if user is active
+    
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -146,7 +146,7 @@ const adminLogin = async (req, res, next) => {
       });
     }
 
-    // Check if password matches
+    
     const isPasswordMatch = await user.comparePassword(password);
 
     if (!isPasswordMatch) {
@@ -159,11 +159,11 @@ const adminLogin = async (req, res, next) => {
       });
     }
 
-    // Update last login
+    
     user.lastLogin = new Date();
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'LOGIN',
       resource: 'AUTH',
@@ -177,7 +177,7 @@ const adminLogin = async (req, res, next) => {
       userAgent: req.get('User-Agent')
     });
 
-    // Generate token
+    
     const token = generateToken(user._id);
 
     res.status(200).json({
@@ -200,14 +200,14 @@ const adminLogin = async (req, res, next) => {
   }
 };
 
-// @desc    Employee/User login
-// @route   POST /api/auth/login
-// @access  Public
+
+
+
 const login = async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
-    // Check if user exists and get password
+    
     const user = await User.findOne({ username }).select('+password');
 
     if (!user) {
@@ -220,7 +220,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    // Check if user is employee (not admin)
+    
     if (user.role === 'admin') {
       return res.status(403).json({
         success: false,
@@ -231,7 +231,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    // Check if user is active
+    
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -242,7 +242,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    // Check if password matches
+    
     const isPasswordMatch = await user.comparePassword(password);
 
     if (!isPasswordMatch) {
@@ -255,11 +255,11 @@ const login = async (req, res, next) => {
       });
     }
 
-    // Update last login
+    
     user.lastLogin = new Date();
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'LOGIN',
       resource: 'AUTH',
@@ -273,7 +273,7 @@ const login = async (req, res, next) => {
       userAgent: req.get('User-Agent')
     });
 
-    // Generate token
+    
     const token = generateToken(user._id);
 
     res.status(200).json({
@@ -296,9 +296,9 @@ const login = async (req, res, next) => {
   }
 };
 
-// @desc    Get current logged in user
-// @route   GET /api/auth/me
-// @access  Private
+
+
+
 const getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
@@ -333,14 +333,14 @@ const getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Change password
-// @route   PUT /api/auth/change-password
-// @access  Private
+
+
+
 const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    // Get user with password
+    
     const user = await User.findById(req.user.id).select('+password');
 
     if (!user) {
@@ -353,7 +353,7 @@ const changePassword = async (req, res, next) => {
       });
     }
 
-    // Check current password
+    
     const isPasswordMatch = await user.comparePassword(currentPassword);
 
     if (!isPasswordMatch) {
@@ -366,11 +366,11 @@ const changePassword = async (req, res, next) => {
       });
     }
 
-    // Update password
+    
     user.password = newPassword;
     await user.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'PASSWORD_CHANGE',
       resource: 'AUTH',
@@ -390,12 +390,12 @@ const changePassword = async (req, res, next) => {
   }
 };
 
-// @desc    Logout user (optional - mainly handled on client)
-// @route   POST /api/auth/logout
-// @access  Private
+
+
+
 const logout = async (req, res, next) => {
   try {
-    // Create audit log
+    
     await AuditLog.create({
       action: 'LOGOUT',
       resource: 'AUTH',

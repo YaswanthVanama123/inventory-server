@@ -11,7 +11,7 @@ const {
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { userValidation, validate } = require('../middleware/validation');
 
-// All routes require authentication and admin role
+
 router.use(authenticate);
 router.use(requireAdmin());
 
