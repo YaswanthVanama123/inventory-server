@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome Email</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f5; color: #1f2937;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">Welcome to {{companyName}}!</h1>
+                            <p style="margin: 10px 0 0 0; color: #d1fae5; font-size: 16px;">Your account has been created successfully</p>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
+                                Hello <strong>{{fullName}}</strong>,
+                            </p>
+
+                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6;">
+                                Welcome aboard! Your account has been successfully created and you're now part of our team. We're excited to have you with us!
+                            </p>
+
+                            <!-- Account Details Box -->
+                            <div style="background-color: #f9fafb; border-radius: 8px; padding: 25px; margin-bottom: 30px;">
+                                <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 18px;">Your Account Details</h2>
+
+                                <table role="presentation" style="width: 100%;">
+                                    <tr>
+                                        <td style="padding: 8px 0;">
+                                            <strong style="color: #4b5563;">Username:</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; text-align: right;">
+                                            {{username}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0;">
+                                            <strong style="color: #4b5563;">Email:</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; text-align: right;">
+                                            {{email}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0;">
+                                            <strong style="color: #4b5563;">Role:</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; text-align: right;">
+                                            <span style="background-color: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 12px; font-size: 14px; text-transform: capitalize;">{{role}}</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; border-top: 2px solid #e5e7eb;">
+                                            <strong style="color: #4b5563;">Temporary Password:</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; text-align: right; border-top: 2px solid #e5e7eb;">
+                                            <code style="background-color: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 14px;">{{temporaryPassword}}</code>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <!-- Security Notice -->
+                            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin-bottom: 30px; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 14px;">
+                                    <strong>🔒 Important Security Notice:</strong> Please change your password immediately after your first login for security purposes.
+                                </p>
+                            </div>
+
+                            <!-- Getting Started -->
+                            <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 18px;">Getting Started</h3>
+                            <ol style="margin: 0 0 30px 0; padding-left: 20px; color: #4b5563; line-height: 1.8;">
+                                <li>Click the button below to access the login page</li>
+                                <li>Enter your username and temporary password</li>
+                                <li>You'll be prompted to change your password</li>
+                                <li>Start managing your inventory!</li>
+                            </ol>
+
+                            <!-- CTA Button -->
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{{loginUrl}}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                                    Login to Your Account
+                                </a>
+                            </div>
+
+                            <!-- Support Info -->
+                            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin-bottom: 30px; border-radius: 4px;">
+                                <p style="margin: 0; color: #1e40af; font-size: 14px;">
+                                    <strong>Need Help?</strong> If you have any questions or need assistance, please contact our support team at <a href="mailto:{{supportEmail}}" style="color: #3b82f6; text-decoration: none;">{{supportEmail}}</a>
+                                </p>
+                            </div>
+
+                            <p style="margin: 0; font-size: 16px; line-height: 1.6;">
+                                Best regards,<br>
+                                <strong>The {{companyName}} Team</strong>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0 0 10px 0; font-size: 14px; color: #6b7280;">
+                                {{companyName}}
+                            </p>
+                            <p style="margin: 0 0 15px 0; font-size: 14px; color: #6b7280;">
+                                Email: {{supportEmail}}
+                            </p>
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                &copy; {{year}} {{companyName}}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
