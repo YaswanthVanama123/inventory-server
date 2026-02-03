@@ -80,6 +80,7 @@ const couponRoutes = require('./routes/couponRoutes');
 const paymentTypeRoutes = require('./routes/paymentTypeRoutes');
 const trashRoutes = require('./routes/trashRoutes');
 const activityRoutes = require('./routes/activityRoutes');
+const purchaseRoutes = require('./routes/purchaseRoutes');
 
 
 app.get('/health', (req, res) => {
@@ -101,6 +102,7 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/payment-types', paymentTypeRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api', purchaseRoutes);
 
 
 app.use(notFound);

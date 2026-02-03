@@ -62,15 +62,13 @@ const inventorySchema = new mongoose.Schema({
   quantity: {
     current: {
       type: Number,
-      required: [true, 'Current quantity is required'],
       min: [0, 'Quantity cannot be negative'],
       default: 0
     },
     minimum: {
       type: Number,
-      required: [true, 'Minimum quantity is required'],
       min: [0, 'Minimum quantity cannot be negative'],
-      default: 10
+      default: 0
     },
     unit: {
       type: String,
@@ -81,13 +79,13 @@ const inventorySchema = new mongoose.Schema({
   pricing: {
     purchasePrice: {
       type: Number,
-      required: [true, 'Purchase price is required'],
-      min: [0, 'Purchase price cannot be negative']
+      min: [0, 'Purchase price cannot be negative'],
+      default: 0
     },
     sellingPrice: {
       type: Number,
-      required: [true, 'Selling price is required'],
-      min: [0, 'Selling price cannot be negative']
+      min: [0, 'Selling price cannot be negative'],
+      default: 0
     },
     currency: {
       type: String,
@@ -101,7 +99,6 @@ const inventorySchema = new mongoose.Schema({
   supplier: {
     name: {
       type: String,
-      required: [true, 'Supplier name is required'],
       trim: true
     },
     contactPerson: {
@@ -128,13 +125,11 @@ const inventorySchema = new mongoose.Schema({
     },
     reorderPoint: {
       type: Number,
-      min: [0, 'Reorder point cannot be negative'],
-      default: 20
+      min: [0, 'Reorder point cannot be negative']
     },
     minimumOrderQuantity: {
       type: Number,
-      min: [1, 'Minimum order quantity must be at least 1'],
-      default: 1
+      min: [1, 'Minimum order quantity must be at least 1']
     }
   },
   stockHistory: [{

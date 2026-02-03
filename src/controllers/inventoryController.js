@@ -6,23 +6,23 @@ const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../ut
 const transformToBackendFormat = (data) => {
   const transformed = { ...data };
 
-  
+
   if (data.currentQuantity !== undefined || data.minimumQuantity !== undefined || data.unit !== undefined) {
     transformed.quantity = {
-      current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : undefined,
-      minimum: data.minimumQuantity !== undefined ? Number(data.minimumQuantity) : undefined,
-      unit: data.unit || undefined
+      current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : 0,
+      minimum: data.minimumQuantity !== undefined ? Number(data.minimumQuantity) : 0,
+      unit: data.unit || 'pieces'
     };
     delete transformed.currentQuantity;
     delete transformed.minimumQuantity;
     delete transformed.unit;
   }
 
-  
+
   if (data.purchasePrice !== undefined || data.sellingPrice !== undefined) {
     transformed.pricing = {
-      purchasePrice: data.purchasePrice !== undefined ? Number(data.purchasePrice) : undefined,
-      sellingPrice: data.sellingPrice !== undefined ? Number(data.sellingPrice) : undefined,
+      purchasePrice: data.purchasePrice !== undefined ? Number(data.purchasePrice) : 0,
+      sellingPrice: data.sellingPrice !== undefined ? Number(data.sellingPrice) : 0,
       currency: data.currency || 'USD'
     };
     delete transformed.purchasePrice;

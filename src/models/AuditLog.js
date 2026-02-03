@@ -18,7 +18,7 @@ const auditLogSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Resource is required'],
     enum: {
-      values: ['USER', 'INVENTORY', 'INVOICE', 'SETTINGS', 'AUTH', 'COUPON', 'PAYMENT_TYPE', 'TRASH'],
+      values: ['USER', 'INVENTORY', 'INVOICE', 'SETTINGS', 'AUTH', 'COUPON', 'PAYMENT_TYPE', 'TRASH', 'PURCHASE'],
       message: '{VALUE} is not a valid resource'
     }
   },

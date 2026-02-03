@@ -157,29 +157,36 @@ const getAllInvoices = async (req, res, next) => {
       startDate,
       endDate,
       search,
+      itemId,
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
 
-    
+
     const query = { isDeleted: false };
 
-    
-    if (status) {
+
+    if (itemId) {
+      query['items.inventory'] = itemId;
+      query.status = { $in: ['issued', 'paid'] };
+    }
+
+
+    if (status && !itemId) {
       query.status = status;
     }
 
-    
+
     if (paymentStatus) {
       query.paymentStatus = paymentStatus;
     }
 
-    
+
     if (customer) {
       query['customer.name'] = { $regex: customer, $options: 'i' };
     }
 
-    
+
     if (startDate || endDate) {
       query.invoiceDate = {};
       if (startDate) {
@@ -190,7 +197,7 @@ const getAllInvoices = async (req, res, next) => {
       }
     }
 
-    
+
     if (search) {
       query.$or = [
         { invoiceNumber: { $regex: search, $options: 'i' } },
@@ -203,14 +210,14 @@ const getAllInvoices = async (req, res, next) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Invoice.countDocuments(query);
 
-    
+
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
     const invoices = await Invoice.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
-      .populate('items.inventory', 'itemName skuCode category')
+      .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
