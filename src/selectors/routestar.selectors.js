@@ -48,6 +48,31 @@ module.exports = {
     noResults: '.no-results, .empty-state'
   },
 
+  // Closed invoices list page selectors (different structure!)
+  closedInvoicesList: {
+    invoicesTable: 'div.ht_master table.htCore',
+    invoiceRows: 'div.ht_master table.htCore tbody tr',
+    invoiceNumber: 'td:nth-child(2) a',
+    invoiceDate: 'td:nth-child(3)',
+    enteredBy: 'td:nth-child(4)',
+    assignedTo: 'td:nth-child(5)',
+    customerName: 'td:nth-child(6) a',      // Column 5
+    invoiceType: 'td:nth-child(7)',         // Column 6
+    serviceNotes: 'td:nth-child(8)',        // Column 7
+    invoiceStatus: 'td:nth-child(9) span',  // Column 8 - shows "Closed"
+    complete: 'td:nth-child(10) input[type="checkbox"]', // Column 9
+    // Note: Posted column (10) is hidden with width 0.1px
+    subtotal: 'td:nth-child(12)',           // Column 11 (afterHiddenColumn)
+    invoiceTotal: 'td:nth-child(13)',       // Column 12
+    dateCompleted: 'td:nth-child(14)',      // Column 13
+    lastModified: 'td:nth-child(15)',       // Column 14
+    arrivalTime: 'td:nth-child(16)',        // Column 15
+    departureTime: 'td:nth-child(17)',      // Column 16
+    elapsedTime: 'td:nth-child(18)',        // Column 17
+    invoiceLink: 'td:nth-child(2) a',
+    noResults: '.no-results, .empty-state'
+  },
+
   // Invoice detail page selectors
   invoiceDetail: {
     // Line items table (Handsontable)

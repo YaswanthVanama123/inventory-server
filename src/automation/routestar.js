@@ -171,6 +171,44 @@ class RouteStarAutomation {
   }
 
   /**
+   * Navigate to closed invoices page
+   */
+  async navigateToClosedInvoices() {
+    if (!this.isLoggedIn) {
+      await this.login();
+    }
+
+    try {
+      console.log('Navigating to closed invoices page...');
+
+      // Navigate directly to closed invoices URL
+      await this.page.goto(this.baseUrl + '/web/closedinvoices/', {
+        waitUntil: 'commit',
+        timeout: 60000
+      });
+
+      // Wait for the page to have some content
+      await this.page.waitForTimeout(5000);
+
+      // Verify we're on the closed invoices page
+      console.log('Verifying closed invoices page loaded...');
+      await this.page.waitForSelector(selectors.invoicesList.invoicesTable, {
+        timeout: 30000,
+        state: 'visible'
+      });
+
+      console.log('✓ Successfully navigated to closed invoices page');
+      await this.takeScreenshot('closed-invoices-page');
+
+      return true;
+    } catch (error) {
+      console.error('Navigation error:', error.message);
+      await this.takeScreenshot('navigate-closed-invoices-error');
+      throw new Error(`Failed to navigate to closed invoices: ${error.message}`);
+    }
+  }
+
+  /**
    * Fetch list of invoices
    */
   async fetchInvoicesList(limit = 50) {
@@ -395,6 +433,35 @@ class RouteStarAutomation {
 
           if (nextButton) {
             console.log('Going to next page...');
+
+            // Check for and dismiss any jconfirm dialogs that might be blocking
+            try {
+              const confirmDialog = await this.page.$('.jconfirm');
+              if (confirmDialog) {
+                console.log('  Dismissing confirmation dialog...');
+
+                // Try multiple methods to dismiss the dialog
+                // Method 1: Look for CANCEL button
+                let dismissed = false;
+                const cancelButton = await this.page.$('.jconfirm button:has-text("CANCEL"), .jconfirm .btn-default');
+                if (cancelButton) {
+                  await cancelButton.click();
+                  await this.page.waitForTimeout(500);
+                  dismissed = true;
+                  console.log('  ✓ Dialog dismissed via CANCEL button');
+                }
+
+                // Method 2: Press Escape key to close dialog
+                if (!dismissed) {
+                  await this.page.keyboard.press('Escape');
+                  await this.page.waitForTimeout(500);
+                  console.log('  ✓ Dialog dismissed via Escape key');
+                }
+              }
+            } catch (err) {
+              console.log('  ⚠ Could not dismiss dialog, continuing anyway...');
+            }
+
             await nextButton.click();
             await this.page.waitForTimeout(3000);
             pageCount++;
@@ -413,6 +480,288 @@ class RouteStarAutomation {
       console.error('Fetch invoices list error:', error.message);
       await this.takeScreenshot('fetch-invoices-list-error');
       throw new Error(`Failed to fetch invoices list: ${error.message}`);
+    }
+  }
+
+  /**
+   * Fetch list of closed invoices
+   */
+  async fetchClosedInvoicesList(limit = 50) {
+    await this.navigateToClosedInvoices();
+
+    try {
+      console.log(`Fetching up to ${limit} closed invoices...`);
+
+      // Wait for invoices table
+      await this.page.waitForSelector(selectors.closedInvoicesList.invoicesTable, { timeout: 10000 });
+      await this.page.waitForTimeout(2000);
+
+      const invoices = [];
+      let hasNextPage = true;
+      let pageCount = 0;
+      const maxPages = Math.ceil(limit / 10); // RouteStar shows 10 invoices per page by default
+
+      while (hasNextPage && pageCount < maxPages) {
+        console.log(`Processing page ${pageCount + 1}...`);
+
+        // Wait for rows to load
+        await this.page.waitForSelector(selectors.closedInvoicesList.invoiceRows, {
+          timeout: 10000,
+          state: 'visible'
+        });
+        await this.page.waitForTimeout(3000); // Increased wait for JS to finish updating
+
+        // Get ONLY the main table container to avoid cloned tables
+        const masterTable = await this.page.$('div.ht_master');
+        if (!masterTable) {
+          throw new Error('Could not find main table (div.ht_master)');
+        }
+
+        // Get invoice rows from ONLY the master table
+        const invoiceRows = await masterTable.$$('table.htCore tbody tr');
+        console.log(`Found ${invoiceRows.length} invoice rows on this page`);
+
+        for (let i = 0; i < invoiceRows.length; i++) {
+          const row = invoiceRows[i];
+          if (invoices.length >= limit) break;
+
+          try {
+            console.log(`  Processing row ${i + 1}/${invoiceRows.length}...`);
+
+            // Extract invoice number and link
+            let invoiceNumber = null;
+            try {
+              invoiceNumber = await row.$eval(
+                selectors.closedInvoicesList.invoiceNumber,
+                el => el.textContent.trim()
+              );
+            } catch (err) {
+              // If <a> tag doesn't exist, try just the td cell
+              try {
+                invoiceNumber = await row.$eval(
+                  'td:nth-child(2)',
+                  el => el.textContent.trim()
+                );
+              } catch (err2) {
+                console.log(`    ⚠ Row ${i + 1}: Failed to extract invoice number: ${err2.message}`);
+              }
+            }
+
+            if (!invoiceNumber) {
+              const rowText = await row.textContent().catch(() => 'Could not get row text');
+              console.log(`    ⚠ Row ${i + 1}: Skipping - no invoice number found`);
+              console.log(`    Row content preview: ${rowText.substring(0, 100)}...`);
+              continue;
+            }
+
+            const invoiceLink = await row.$eval(
+              selectors.closedInvoicesList.invoiceLink,
+              el => el.getAttribute('href')
+            ).catch(() => null);
+
+            // Extract date
+            const invoiceDate = await row.$eval(
+              selectors.closedInvoicesList.invoiceDate,
+              el => el.textContent.replace('▼', '').trim()
+            ).catch(() => null);
+
+            // Extract entered by
+            const enteredBy = await row.$eval(
+              selectors.closedInvoicesList.enteredBy,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract assigned to
+            const assignedTo = await row.$eval(
+              selectors.closedInvoicesList.assignedTo,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract customer name
+            const customerName = await row.$eval(
+              selectors.closedInvoicesList.customerName,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract customer link
+            const customerLink = await row.$eval(
+              selectors.closedInvoicesList.customerName,
+              el => el.getAttribute('href')
+            ).catch(() => null);
+
+            // Extract type
+            const invoiceType = await row.$eval(
+              selectors.closedInvoicesList.invoiceType,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract service notes
+            const serviceNotes = await row.$eval(
+              selectors.closedInvoicesList.serviceNotes,
+              el => el.textContent.trim()
+            ).catch(() => '');
+
+            // Extract status
+            const status = await row.$eval(
+              selectors.closedInvoicesList.invoiceStatus,
+              el => {
+                const className = el.className || '';
+                const textContent = el.textContent.trim();
+                const result = {
+                  className: className,
+                  textContent: textContent,
+                  status: ''
+                };
+
+                if (className.includes('label-info')) {
+                  result.status = 'Closed';
+                } else if (className.includes('label-warning')) {
+                  result.status = 'Pending';
+                } else if (className.includes('label-success')) {
+                  result.status = 'Completed';
+                } else if (className.includes('label-danger')) {
+                  result.status = 'Cancelled';
+                } else {
+                  result.status = textContent;
+                }
+
+                return result;
+              }
+            ).catch((err) => {
+              console.log(`    ⚠ Failed to extract status: ${err.message}`);
+              return { status: null, className: '', textContent: '' };
+            });
+
+            console.log(`    DEBUG ${invoiceNumber}: class="${status.className}" text="${status.textContent}" => status="${status.status}"`);
+            const finalStatus = status.status;
+
+            // Check if complete (checkbox checked)
+            const isComplete = await row.$eval(
+              selectors.closedInvoicesList.complete,
+              el => el.checked
+            ).catch(() => false);
+
+            // Extract subtotal
+            const subtotal = await row.$eval(
+              selectors.closedInvoicesList.subtotal,
+              el => el.textContent.replace(/[$,]/g, '').trim()
+            ).catch(() => '0.00');
+
+            // Extract total
+            const total = await row.$eval(
+              selectors.closedInvoicesList.invoiceTotal,
+              el => el.textContent.replace(/[$,]/g, '').trim()
+            ).catch(() => '0.00');
+
+            // Extract date completed
+            const dateCompleted = await row.$eval(
+              selectors.closedInvoicesList.dateCompleted,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract last modified
+            const lastModified = await row.$eval(
+              selectors.closedInvoicesList.lastModified,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract arrival time
+            const arrivalTime = await row.$eval(
+              selectors.closedInvoicesList.arrivalTime,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract departure time
+            const departureTime = await row.$eval(
+              selectors.closedInvoicesList.departureTime,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract elapsed time
+            const elapsedTime = await row.$eval(
+              selectors.closedInvoicesList.elapsedTime,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            invoices.push({
+              invoiceNumber,
+              invoiceDate,
+              enteredBy,
+              assignedTo,
+              customerName,
+              customerLink: customerLink ? new URL(customerLink, this.baseUrl).href : null,
+              invoiceType,
+              serviceNotes,
+              status: finalStatus,
+              isComplete,
+              subtotal,
+              total,
+              dateCompleted,
+              lastModified,
+              arrivalTime,
+              departureTime,
+              elapsedTime,
+              detailUrl: invoiceLink ? new URL(invoiceLink, this.baseUrl).href : null
+            });
+            console.log(`  ✓ Extracted invoice: ${invoiceNumber} - ${customerName} - $${total} - ${finalStatus}`);
+          } catch (error) {
+            console.warn('  ⚠ Error extracting invoice row:', error.message);
+          }
+        }
+
+        // Check for next page
+        if (invoices.length < limit) {
+          const nextButton = await this.page.$(selectors.pagination.nextButton);
+
+          if (nextButton) {
+            console.log('Going to next page...');
+
+            // Check for and dismiss any jconfirm dialogs that might be blocking
+            try {
+              const confirmDialog = await this.page.$('.jconfirm');
+              if (confirmDialog) {
+                console.log('  Dismissing confirmation dialog...');
+
+                // Try multiple methods to dismiss the dialog
+                // Method 1: Look for CANCEL button
+                let dismissed = false;
+                const cancelButton = await this.page.$('.jconfirm button:has-text("CANCEL"), .jconfirm .btn-default');
+                if (cancelButton) {
+                  await cancelButton.click();
+                  await this.page.waitForTimeout(500);
+                  dismissed = true;
+                  console.log('  ✓ Dialog dismissed via CANCEL button');
+                }
+
+                // Method 2: Press Escape key to close dialog
+                if (!dismissed) {
+                  await this.page.keyboard.press('Escape');
+                  await this.page.waitForTimeout(500);
+                  console.log('  ✓ Dialog dismissed via Escape key');
+                }
+              }
+            } catch (err) {
+              console.log('  ⚠ Could not dismiss dialog, continuing anyway...');
+            }
+
+            await nextButton.click();
+            await this.page.waitForTimeout(3000);
+            pageCount++;
+          } else {
+            console.log('No more pages available');
+            hasNextPage = false;
+          }
+        } else {
+          hasNextPage = false;
+        }
+      }
+
+      console.log(`✓ Fetched ${invoices.length} closed invoices from RouteStar`);
+      return invoices;
+    } catch (error) {
+      console.error('Fetch closed invoices list error:', error.message);
+      await this.takeScreenshot('fetch-closed-invoices-list-error');
+      throw new Error(`Failed to fetch closed invoices list: ${error.message}`);
     }
   }
 
