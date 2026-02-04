@@ -81,6 +81,10 @@ const paymentTypeRoutes = require('./routes/paymentTypeRoutes');
 const trashRoutes = require('./routes/trashRoutes');
 const activityRoutes = require('./routes/activityRoutes');
 const purchaseRoutes = require('./routes/purchaseRoutes');
+const approvalRoutes = require('./routes/approvalRoutes');
+const syncRoutes = require('./routes/syncRoutes');
+const warehouseRoutes = require('./routes/warehouseRoutes');
+const schedulerRoutes = require('./routes/schedulerRoutes');
 
 
 app.get('/health', (req, res) => {
@@ -103,6 +107,10 @@ app.use('/api/payment-types', paymentTypeRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api', purchaseRoutes);
+app.use('/api', approvalRoutes);
+app.use('/api', syncRoutes);
+app.use('/api', warehouseRoutes);
+app.use('/api', schedulerRoutes);
 
 
 app.use(notFound);
@@ -114,18 +122,61 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+
+  // Initialize scheduler if AUTO_START_SCHEDULER is enabled
+  if (process.env.AUTO_START_SCHEDULER === 'true') {
+    const { getScheduler } = require('./services/scheduler');
+    const scheduler = getScheduler();
+
+    try {
+      scheduler.start({
+        intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
+        limit: 50,
+        processStock: true,
+        systemUserId: 'system'
+      });
+      console.log('Automated sync scheduler started');
+    } catch (error) {
+      console.error('Failed to start scheduler:', error.message);
+    }
+  }
 });
 
 
 process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection: ${err.message}`);
+  const { getScheduler } = require('./services/scheduler');
+  getScheduler().stop();
   server.close(() => process.exit(1));
 });
 
 
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
+  const { getScheduler } = require('./services/scheduler');
+  getScheduler().stop();
   server.close(() => process.exit(1));
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  const { getScheduler } = require('./services/scheduler');
+  getScheduler().stop();
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  const { getScheduler } = require('./services/scheduler');
+  getScheduler().stop();
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });
 
 module.exports = app;

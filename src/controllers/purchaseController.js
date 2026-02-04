@@ -9,6 +9,7 @@ const createPurchase = async (req, res, next) => {
       purchaseDate,
       quantity,
       purchasePrice,
+      sellingPrice: providedSellingPrice,
       supplier,
       batchNumber,
       expiryDate,
@@ -30,12 +31,24 @@ const createPurchase = async (req, res, next) => {
 
     const totalCost = quantity * purchasePrice;
 
+    // Use provided selling price if available, otherwise calculate from profit settings
+    let sellingPrice = providedSellingPrice || purchasePrice;
+    if (!providedSellingPrice && inventoryItem.profitSettings) {
+      const { profitType, profitValue } = inventoryItem.profitSettings;
+      if (profitType === 'percentage') {
+        sellingPrice = purchasePrice + (purchasePrice * profitValue / 100);
+      } else if (profitType === 'fixed') {
+        sellingPrice = purchasePrice + profitValue;
+      }
+    }
+
     const purchase = await Purchase.create({
       inventoryItem: inventoryId,
       purchaseDate: purchaseDate || Date.now(),
       quantity,
       unit: inventoryItem.quantity.unit,
       purchasePrice,
+      sellingPrice,
       totalCost,
       supplier,
       batchNumber,

@@ -96,6 +96,18 @@ const inventorySchema = new mongoose.Schema({
       type: Number
     }
   },
+  profitSettings: {
+    profitType: {
+      type: String,
+      enum: ['percentage', 'fixed'],
+      default: 'percentage'
+    },
+    profitValue: {
+      type: Number,
+      min: [0, 'Profit value cannot be negative'],
+      default: 0
+    }
+  },
   supplier: {
     name: {
       type: String,
@@ -227,7 +239,36 @@ inventorySchema.virtual('needsReorder').get(function() {
   return this.quantity.current <= this.supplier.reorderPoint;
 });
 
+// Static method to calculate weighted average selling price from purchases
+inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) {
+  const Purchase = require('./Purchase');
 
+  // Get all available purchases (with remaining quantity > 0)
+  const purchases = await Purchase.find({
+    inventoryItem: inventoryId,
+    isDeleted: false,
+    remainingQuantity: { $gt: 0 }
+  });
+
+  if (!purchases || purchases.length === 0) {
+    return 0;
+  }
+
+  // Calculate weighted average
+  let totalValue = 0;
+  let totalQuantity = 0;
+
+  purchases.forEach(purchase => {
+    const qty = purchase.remainingQuantity || 0;
+    const price = purchase.sellingPrice || purchase.purchasePrice || 0;
+    totalValue += qty * price;
+    totalQuantity += qty;
+  });
+
+  return totalQuantity > 0 ? totalValue / totalQuantity : 0;
+};
+
+// Set options
 inventorySchema.set('toJSON', { virtuals: true });
 inventorySchema.set('toObject', { virtuals: true });
 

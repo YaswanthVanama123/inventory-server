@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const invoiceSchema = new mongoose.Schema({
   invoiceNumber: {
     type: String,
-    required: [true, 'Invoice number is required'],
+    required: false,
     unique: true,
     uppercase: true,
     trim: true,
@@ -42,32 +42,11 @@ const invoiceSchema = new mongoose.Schema({
     },
     phone: {
       type: String,
-      required: [true, 'Customer phone is required'],
-      trim: true,
-      match: [/^[\d\s\-\+\(\)]+$/, 'Please provide a valid phone number']
+      trim: true
     },
     address: {
-      street: {
-        type: String,
-        trim: true
-      },
-      city: {
-        type: String,
-        trim: true
-      },
-      state: {
-        type: String,
-        trim: true
-      },
-      zipCode: {
-        type: String,
-        trim: true
-      },
-      country: {
-        type: String,
-        trim: true,
-        default: 'USA'
-      }
+      type: mongoose.Schema.Types.Mixed,
+      default: ''
     }
   },
   items: [{
@@ -110,7 +89,19 @@ const invoiceSchema = new mongoose.Schema({
       type: Number,
       required: [true, 'Subtotal is required'],
       min: [0, 'Subtotal cannot be negative']
-    }
+    },
+    purchaseAllocations: [{
+      purchaseId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Purchase'
+      },
+      quantity: {
+        type: Number,
+        min: [1, 'Allocation quantity must be at least 1']
+      },
+      purchaseDate: Date,
+      supplier: String
+    }]
   }],
   subtotalAmount: {
     type: Number,
@@ -178,7 +169,7 @@ const invoiceSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Status is required'],
     enum: {
-      values: ['draft', 'issued', 'paid', 'cancelled'],
+      values: ['draft', 'issued', 'paid', 'cancelled', 'pending'],
       message: '{VALUE} is not a valid status'
     },
     default: 'draft',

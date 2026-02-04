@@ -27,6 +27,11 @@ const purchaseSchema = new mongoose.Schema({
     required: [true, 'Purchase price is required'],
     min: [0, 'Purchase price cannot be negative']
   },
+  sellingPrice: {
+    type: Number,
+    min: [0, 'Selling price cannot be negative'],
+    default: 0
+  },
   totalCost: {
     type: Number,
     required: true

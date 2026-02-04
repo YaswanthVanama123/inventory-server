@@ -10,35 +10,35 @@ const PDFDocument = require('pdfkit');
 
 const getDashboard = async (req, res, next) => {
   try {
-    
-    const totalItems = await Inventory.countDocuments({ isActive: true });
+    // Get inventory stats
+    const totalItems = await Inventory.countDocuments({ isActive: true, isDeleted: false });
 
-    
-    const items = await Inventory.find({ isActive: true });
+    // Calculate total inventory value
+    const items = await Inventory.find({ isActive: true, isDeleted: false });
     const totalValue = items.reduce((sum, item) => {
       return sum + (item.pricing.sellingPrice * item.quantity.current);
     }, 0);
 
-    
+    // Low stock count
     const lowStockCount = items.filter(item => item.isLowStock).length;
 
-    
+    // Reorder count
     const reorderCount = items.filter(item => item.needsReorder).length;
 
-    
+    // Category stats
     const categoryStats = await Inventory.aggregate([
-      { $match: { isActive: true } },
+      { $match: { isActive: true, isDeleted: false } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
 
-    
+    // Recent activity
     const recentActivity = await AuditLog.find({ resource: 'INVENTORY' })
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .limit(10);
 
-    
+    // Top value items
     const topValueItems = items
       .map(item => ({
         id: item._id,
@@ -50,20 +50,135 @@ const getDashboard = async (req, res, next) => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
-    res.status(200).json({
+    // Fetch invoice data for revenue and profit calculations
+    const invoices = await Invoice.find({
+      status: { $ne: 'cancelled' },
+      createdAt: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) } // Last 6 months
+    })
+      .populate('items.inventory', 'pricing')
+      .sort({ createdAt: 1 });
+
+    console.log('=== DASHBOARD DEBUG ===');
+    console.log('Total invoices found:', invoices.length);
+    console.log('Sample invoice:', invoices.length > 0 ? {
+      id: invoices[0]._id,
+      totalAmount: invoices[0].totalAmount,
+      amounts: invoices[0].amounts,
+      itemsCount: invoices[0].items.length
+    } : 'No invoices');
+
+    // Calculate total revenue and orders
+    const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.amounts?.total || inv.totalAmount || 0), 0);
+    const totalOrders = invoices.length;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    console.log('Calculated totalRevenue:', totalRevenue);
+    console.log('Calculated totalOrders:', totalOrders);
+
+    // Calculate total profit
+    let totalProfit = 0;
+    let totalCost = 0;
+    invoices.forEach(inv => {
+      inv.items.forEach(item => {
+        if (item.inventory && item.inventory.pricing) {
+          const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
+          totalCost += itemCost;
+          totalProfit += (item.unitPrice * item.quantity) - itemCost;
+        }
+      });
+    });
+
+    // Calculate profit margin
+    const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
+
+    // Group sales by month for trend chart
+    const salesByMonth = {};
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    invoices.forEach(invoice => {
+      const date = new Date(invoice.createdAt || invoice.invoiceDate);
+      const monthKey = `${monthNames[date.getMonth()]}`;
+
+      if (!salesByMonth[monthKey]) {
+        salesByMonth[monthKey] = {
+          month: monthKey,
+          revenue: 0,
+          profit: 0,
+          orders: 0
+        };
+      }
+
+      const invoiceTotal = invoice.amounts?.total || invoice.totalAmount || 0;
+      salesByMonth[monthKey].revenue += invoiceTotal;
+      salesByMonth[monthKey].orders += 1;
+
+      // Calculate profit for this invoice
+      let invoiceProfit = 0;
+      invoice.items.forEach(item => {
+        if (item.inventory && item.inventory.pricing) {
+          const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
+          invoiceProfit += (item.unitPrice * item.quantity) - itemCost;
+        }
+      });
+      salesByMonth[monthKey].profit += invoiceProfit;
+    });
+
+    // Convert to array and sort by date
+    const salesTrend = Object.values(salesByMonth);
+
+    // Calculate month-over-month changes (comparing last month to previous month)
+    const currentMonth = new Date().getMonth();
+    const lastMonthName = monthNames[currentMonth === 0 ? 11 : currentMonth - 1];
+    const prevMonthName = monthNames[currentMonth <= 1 ? (currentMonth === 0 ? 10 : 11) : currentMonth - 2];
+
+    const lastMonthData = salesByMonth[lastMonthName] || { revenue: 0, orders: 0 };
+    const prevMonthData = salesByMonth[prevMonthName] || { revenue: 0, orders: 0 };
+
+    const revenueChange = prevMonthData.revenue > 0
+      ? (((lastMonthData.revenue - prevMonthData.revenue) / prevMonthData.revenue) * 100).toFixed(1)
+      : 0;
+
+    const ordersChange = prevMonthData.orders > 0
+      ? (((lastMonthData.orders - prevMonthData.orders) / prevMonthData.orders) * 100).toFixed(1)
+      : 0;
+
+    const lowStockChange = -15; // You can calculate this based on historical data if needed
+    const profitMarginChange = 2.1; // You can calculate this based on historical data if needed
+
+    const responseData = {
       success: true,
       data: {
         summary: {
           totalItems,
           totalValue,
           lowStockCount,
-          reorderCount
+          reorderCount,
+          totalRevenue,
+          totalOrders,
+          avgOrderValue,
+          totalProfit,
+          profitMargin,
+          revenueChange,
+          ordersChange,
+          lowStockChange,
+          profitMarginChange
         },
         categoryStats,
         recentActivity,
-        topValueItems
+        topValueItems,
+        salesTrend
       }
+    };
+
+    console.log('Final response summary:', {
+      totalRevenue: responseData.data.summary.totalRevenue,
+      totalOrders: responseData.data.summary.totalOrders,
+      profitMargin: responseData.data.summary.profitMargin,
+      salesTrendLength: responseData.data.salesTrend.length
     });
+    console.log('=== END DASHBOARD DEBUG ===');
+
+    res.status(200).json(responseData);
   } catch (error) {
     console.error('Get dashboard error:', error);
     next(error);

@@ -6,17 +6,15 @@ const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../ut
 const transformToBackendFormat = (data) => {
   const transformed = { ...data };
 
-
-  if (data.currentQuantity !== undefined || data.minimumQuantity !== undefined || data.unit !== undefined) {
-    transformed.quantity = {
-      current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : 0,
-      minimum: data.minimumQuantity !== undefined ? Number(data.minimumQuantity) : 0,
-      unit: data.unit || 'pieces'
-    };
-    delete transformed.currentQuantity;
-    delete transformed.minimumQuantity;
-    delete transformed.unit;
-  }
+  // Always ensure quantity object exists with proper structure
+  transformed.quantity = {
+    current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : 0,
+    minimum: data.minimumQuantity !== undefined ? Number(data.minimumQuantity) : 0,
+    unit: data.unit || 'pieces'
+  };
+  delete transformed.currentQuantity;
+  delete transformed.minimumQuantity;
+  delete transformed.unit;
 
 
   if (data.purchasePrice !== undefined || data.sellingPrice !== undefined) {
@@ -61,21 +59,21 @@ const transformToBackendFormat = (data) => {
 };
 
 
-const transformItem = (item) => {
+const transformItem = (item, weightedAvgPrice = null) => {
   if (!item) return null;
 
   const itemObj = item.toObject ? item.toObject({ virtuals: true }) : item;
 
-  
+  // Transform images
   const transformedImages = (itemObj.images || []).map(img => {
     if (typeof img === 'string') {
-      return { path: img }; 
+      return { path: img };
     }
 
-    
+    // Extract image path
     const imagePath = img.path || img.url || img.display_url || img;
 
-    
+    // Return transformed image object
     return {
       _id: img._id,
       path: imagePath,
@@ -93,6 +91,9 @@ const transformItem = (item) => {
     };
   });
 
+  // Always use the original pricing.sellingPrice from the inventory model
+  const finalSellingPrice = itemObj.pricing?.sellingPrice ?? 0;
+
   return {
     _id: itemObj._id,
     name: itemObj.itemName,
@@ -101,24 +102,25 @@ const transformItem = (item) => {
     description: itemObj.description,
     category: itemObj.category,
     tags: itemObj.tags || [],
-    
+
     quantity: itemObj.quantity?.current ?? 0,
     currentStock: itemObj.quantity?.current ?? 0,
     currentQuantity: itemObj.quantity?.current ?? 0,
     lowStockThreshold: itemObj.quantity?.minimum ?? 10,
     minimumQuantity: itemObj.quantity?.minimum ?? 10,
     unit: itemObj.quantity?.unit ?? 'pieces',
-    price: itemObj.pricing?.sellingPrice ?? 0,
+    price: finalSellingPrice,
     purchasePrice: itemObj.pricing?.purchasePrice ?? 0,
-    sellingPrice: itemObj.pricing?.sellingPrice ?? 0,
+    sellingPrice: finalSellingPrice,
     currency: itemObj.pricing?.currency ?? 'USD',
     profitMargin: itemObj.pricing?.profitMargin,
-    
+    profitSettings: itemObj.profitSettings,
+
     image: transformedImages.length > 0 ? (transformedImages[itemObj.primaryImage || 0].path || transformedImages[itemObj.primaryImage || 0]) : null,
     images: transformedImages,
     primaryImageIndex: itemObj.primaryImage || 0,
     primaryImage: itemObj.primaryImage,
-    
+
     supplier: itemObj.supplier,
     supplierName: itemObj.supplier?.name || '',
     contactPerson: itemObj.supplier?.contactPerson || '',
@@ -128,7 +130,7 @@ const transformItem = (item) => {
     leadTime: itemObj.supplier?.leadTime || '',
     reorderPoint: itemObj.supplier?.reorderPoint || '',
     minOrderQuantity: itemObj.supplier?.minimumOrderQuantity || '',
-    
+
     stockHistory: itemObj.stockHistory,
     isActive: itemObj.isActive,
     isLowStock: itemObj.isLowStock,
@@ -147,7 +149,7 @@ const getInventoryItems = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, category, search, lowStock } = req.query;
 
-    
+    // Build query
     const query = { isActive: true, isDeleted: false };
     if (category) query.category = category;
     if (search) {
@@ -169,14 +171,14 @@ const getInventoryItems = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit));
 
-      
+      // Filter for low stock items
       items = items.filter(item => item.isLowStock);
       const total = items.length;
 
       return res.status(200).json({
         success: true,
         data: {
-          items: items.map(transformItem),
+          items: items.map(item => transformItem(item)),
           pagination: {
             total,
             page: parseInt(page),
@@ -199,7 +201,7 @@ const getInventoryItems = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        items: items.map(transformItem),
+        items: items.map(item => transformItem(item)),
         pagination: {
           total,
           page: parseInt(page),
@@ -669,6 +671,172 @@ const getLowStockItems = async (req, res, next) => {
 };
 
 
+// Get inventory items with weighted average prices (for POS)
+const getInventoryItemsForPOS = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 1000, category, search, lowStock } = req.query;
+
+    // Build query
+    const query = { isActive: true, isDeleted: false };
+    if (category) query.category = category;
+    if (search) {
+      query.$or = [
+        { itemName: { $regex: search, $options: 'i' } },
+        { skuCode: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let items;
+
+    if (lowStock === 'true') {
+      items = await Inventory.find(query)
+        .populate('createdBy', 'username fullName')
+        .populate('lastUpdatedBy', 'username fullName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      // Filter for low stock items
+      items = items.filter(item => item.isLowStock);
+      const total = items.length;
+
+      // Calculate weighted average prices for all items
+      const itemsWithPrices = await Promise.all(items.map(async (item) => {
+        const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
+        return transformItemWithWeightedPrice(item, avgPrice);
+      }));
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: itemsWithPrices,
+          pagination: {
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / parseInt(limit)),
+            limit: parseInt(limit)
+          }
+        }
+      });
+    }
+
+    const total = await Inventory.countDocuments(query);
+
+    items = await Inventory.find(query)
+      .populate('createdBy', 'username fullName')
+      .populate('lastUpdatedBy', 'username fullName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Calculate weighted average prices for all items
+    const itemsWithPrices = await Promise.all(items.map(async (item) => {
+      const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
+      return transformItemWithWeightedPrice(item, avgPrice);
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: itemsWithPrices,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get inventory items for POS error:', error);
+    next(error);
+  }
+};
+
+
+// Helper function to transform item with weighted average price
+const transformItemWithWeightedPrice = (item, weightedAvgPrice = null) => {
+  if (!item) return null;
+
+  const itemObj = item.toObject ? item.toObject({ virtuals: true }) : item;
+
+  // Transform images
+  const transformedImages = (itemObj.images || []).map(img => {
+    if (typeof img === 'string') {
+      return { path: img };
+    }
+
+    const imagePath = img.path || img.url || img.display_url || img;
+
+    return {
+      _id: img._id,
+      path: imagePath,
+      url: img.url,
+      display_url: img.display_url,
+      deleteUrl: img.deleteUrl,
+      filename: img.filename,
+      mimetype: img.mimetype,
+      size: img.size,
+      width: img.width,
+      height: img.height,
+      imgbbId: img.imgbbId,
+      uploadedAt: img.uploadedAt,
+      uploadedBy: img.uploadedBy
+    };
+  });
+
+  // Use weighted average price if provided, otherwise fall back to pricing.sellingPrice
+  const finalSellingPrice = weightedAvgPrice !== null ? weightedAvgPrice : (itemObj.pricing?.sellingPrice ?? 0);
+
+  return {
+    _id: itemObj._id,
+    name: itemObj.itemName,
+    itemName: itemObj.itemName,
+    skuCode: itemObj.skuCode,
+    description: itemObj.description,
+    category: itemObj.category,
+    tags: itemObj.tags || [],
+
+    quantity: itemObj.quantity?.current ?? 0,
+    currentStock: itemObj.quantity?.current ?? 0,
+    currentQuantity: itemObj.quantity?.current ?? 0,
+    lowStockThreshold: itemObj.quantity?.minimum ?? 10,
+    minimumQuantity: itemObj.quantity?.minimum ?? 10,
+    unit: itemObj.quantity?.unit ?? 'pieces',
+    price: finalSellingPrice,
+    purchasePrice: itemObj.pricing?.purchasePrice ?? 0,
+    sellingPrice: finalSellingPrice,
+    currency: itemObj.pricing?.currency ?? 'USD',
+    profitMargin: itemObj.pricing?.profitMargin,
+    profitSettings: itemObj.profitSettings,
+
+    image: transformedImages.length > 0 ? (transformedImages[itemObj.primaryImage || 0].path || transformedImages[itemObj.primaryImage || 0]) : null,
+    images: transformedImages,
+    primaryImageIndex: itemObj.primaryImage || 0,
+    primaryImage: itemObj.primaryImage,
+
+    supplier: itemObj.supplier,
+    supplierName: itemObj.supplier?.name || '',
+    contactPerson: itemObj.supplier?.contactPerson || '',
+    supplierEmail: itemObj.supplier?.email || '',
+    supplierPhone: itemObj.supplier?.phone || '',
+    supplierAddress: itemObj.supplier?.address || '',
+    leadTime: itemObj.supplier?.leadTime || '',
+    reorderPoint: itemObj.supplier?.reorderPoint || '',
+    minOrderQuantity: itemObj.supplier?.minimumOrderQuantity || '',
+
+    stockHistory: itemObj.stockHistory,
+    isActive: itemObj.isActive,
+    isLowStock: itemObj.isLowStock,
+    needsReorder: itemObj.needsReorder,
+    createdBy: itemObj.createdBy,
+    lastUpdatedBy: itemObj.lastUpdatedBy,
+    createdAt: itemObj.createdAt,
+    updatedAt: itemObj.updatedAt
+  };
+};
 
 
 const getCategories = async (req, res, next) => {
@@ -960,6 +1128,7 @@ module.exports = {
   updateStock,
   getStockHistory,
   getLowStockItems,
+  getInventoryItemsForPOS,
   getCategories,
   uploadImages,
   deleteImage,

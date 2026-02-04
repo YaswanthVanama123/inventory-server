@@ -1,5 +1,6 @@
 const Invoice = require('../models/Invoice');
 const Inventory = require('../models/Inventory');
+const Purchase = require('../models/Purchase');
 const AuditLog = require('../models/AuditLog');
 const PDFDocument = require('pdfkit');
 
@@ -8,7 +9,7 @@ const PDFDocument = require('pdfkit');
 
 const createInvoice = async (req, res, next) => {
   try {
-    const { items, customer, taxRate, discount, notes, remarks, dueDate, paymentMethod } = req.body;
+    const { items, customer, taxRate, discount, notes, remarks, dueDate, paymentMethod, paymentStatus, status, coupon } = req.body;
 
     
     if (!items || items.length === 0) {
@@ -63,8 +64,9 @@ const createInvoice = async (req, res, next) => {
         skuCode: inventoryItem.skuCode,
         quantity: item.quantity,
         unit: inventoryItem.quantity.unit || 'pieces',
-        priceAtSale: item.priceAtSale || inventoryItem.pricing.sellingPrice,
-        subtotal: 0 
+        priceAtSale: item.unitPrice || item.priceAtSale || inventoryItem.pricing.sellingPrice,
+        subtotal: 0,
+        purchaseAllocations: item.purchaseAllocations || [] // Store which purchases to deduct from
       });
     }
 
@@ -74,23 +76,25 @@ const createInvoice = async (req, res, next) => {
     
     const invoiceNumber = await Invoice.generateInvoiceNumber();
 
-    
+
     const invoice = await Invoice.create({
       invoiceNumber,
       customer,
       items: processedItems,
-      amounts: amounts || {}, 
       taxRate: taxRate || 0,
       discount: discount || { type: 'percentage', value: 0, amount: 0 },
       notes,
       remarks,
       dueDate: calculatedDueDate,
       paymentMethod,
+      paymentStatus: paymentStatus || 'pending',
+      status: status || 'draft',
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
 
-    
+
+    // Deduct stock from inventory and update purchase batches
     for (const item of processedItems) {
       const inventoryItem = await Inventory.findById(item.inventory);
       const previousQuantity = inventoryItem.quantity.current;
@@ -108,6 +112,18 @@ const createInvoice = async (req, res, next) => {
       inventoryItem.lastUpdatedBy = req.user.id;
 
       await inventoryItem.save();
+
+      // If purchaseAllocations are specified, deduct from specific purchase batches
+      if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
+        for (const allocation of item.purchaseAllocations) {
+          const purchase = await Purchase.findById(allocation.purchaseId);
+          if (purchase) {
+            purchase.remainingQuantity -= allocation.quantity;
+            purchase.lastUpdatedBy = req.user.id;
+            await purchase.save();
+          }
+        }
+      }
     }
 
     
@@ -482,7 +498,7 @@ const deleteInvoice = async (req, res, next) => {
       });
     }
 
-    
+    // Restore stock to inventory and purchase batches
     for (const item of invoice.items) {
       const inventoryItem = await Inventory.findById(item.inventory);
       if (inventoryItem) {
@@ -501,6 +517,18 @@ const deleteInvoice = async (req, res, next) => {
         inventoryItem.lastUpdatedBy = req.user.id;
 
         await inventoryItem.save();
+
+        // Restore remainingQuantity to purchase batches if allocations exist
+        if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
+          for (const allocation of item.purchaseAllocations) {
+            const purchase = await Purchase.findById(allocation.purchaseId);
+            if (purchase) {
+              purchase.remainingQuantity += allocation.quantity;
+              purchase.lastUpdatedBy = req.user.id;
+              await purchase.save();
+            }
+          }
+        }
       }
     }
 
@@ -590,9 +618,14 @@ const generateInvoicePDF = async (req, res, next) => {
       .text(invoice.customer.email || '', 50, 205)
       .text(invoice.customer.phone || '', 50, 220);
 
-    if (invoice.customer.address?.street) {
-      doc.text(invoice.customer.address.street, 50, 235)
-        .text(`${invoice.customer.address.city || ''}, ${invoice.customer.address.state || ''} ${invoice.customer.address.zipCode || ''}`, 50, 250);
+    // Handle address as string or object
+    if (invoice.customer.address) {
+      if (typeof invoice.customer.address === 'string') {
+        doc.text(invoice.customer.address, 50, 235);
+      } else if (invoice.customer.address.street) {
+        doc.text(invoice.customer.address.street, 50, 235)
+          .text(`${invoice.customer.address.city || ''}, ${invoice.customer.address.state || ''} ${invoice.customer.address.zipCode || ''}`, 50, 250);
+      }
     }
 
     

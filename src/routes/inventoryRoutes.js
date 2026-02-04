@@ -9,6 +9,7 @@ const {
   updateStock,
   getStockHistory,
   getLowStockItems,
+  getInventoryItemsForPOS,
   getCategories,
   uploadImages,
   deleteImage,
@@ -21,7 +22,10 @@ const { uploadMultipleImagesOptional, uploadMultipleImages } = require('../middl
 
 router.use(authenticate);
 
+// POS-specific route (with weighted average prices)
+router.get('/pos', requireEmployee(), getInventoryItemsForPOS);
 
+// Regular inventory routes (with original prices)
 router.get('/', requireEmployee(), getInventoryItems);
 router.get('/low-stock', requireEmployee(), getLowStockItems);
 router.get('/categories', requireEmployee(), getCategories);

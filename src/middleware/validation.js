@@ -165,9 +165,10 @@ const inventoryValidation = {
 
 const invoiceValidation = {
   create: [
+    // Invoice number is auto-generated, so it's optional
     body('invoiceNumber')
+      .optional()
       .trim()
-      .notEmpty().withMessage('Invoice number is required')
       .isLength({ max: 50 }).withMessage('Invoice number is too long'),
     body('customer.name')
       .trim()
@@ -180,32 +181,41 @@ const invoiceValidation = {
       .normalizeEmail(),
     body('customer.phone')
       .optional()
-      .trim()
-      .matches(/^[\d\s\-\+\(\)]+$/).withMessage('Invalid phone number format'),
+      .trim(),
     body('customer.address')
       .optional()
       .trim()
       .isLength({ max: 500 }).withMessage('Address is too long'),
     body('items')
       .isArray({ min: 1 }).withMessage('At least one item is required'),
+    body('items.*.inventory')
+      .optional()
+      .isMongoId().withMessage('Invalid inventory ID'),
+    body('items.*.itemName')
+      .optional()
+      .trim(),
     body('items.*.description')
+      .optional()
       .trim()
-      .notEmpty().withMessage('Item description is required')
       .isLength({ max: 500 }).withMessage('Item description is too long'),
     body('items.*.quantity')
       .notEmpty().withMessage('Item quantity is required')
       .isFloat({ min: 0.01 }).withMessage('Item quantity must be greater than 0'),
     body('items.*.unitPrice')
-      .notEmpty().withMessage('Item unit price is required')
+      .optional()
       .isFloat({ min: 0 }).withMessage('Item unit price must be non-negative'),
+    body('items.*.priceAtSale')
+      .optional()
+      .isFloat({ min: 0 }).withMessage('Price at sale must be non-negative'),
     body('items.*.taxRate')
       .optional()
       .isFloat({ min: 0, max: 100 }).withMessage('Tax rate must be between 0 and 100'),
     body('items.*.discount')
       .optional()
       .isFloat({ min: 0 }).withMessage('Item discount must be non-negative'),
+    // Amounts are calculated by the backend, so they're all optional
     body('amounts.subtotal')
-      .notEmpty().withMessage('Subtotal is required')
+      .optional()
       .isFloat({ min: 0 }).withMessage('Subtotal must be non-negative'),
     body('amounts.tax')
       .optional()
@@ -214,7 +224,7 @@ const invoiceValidation = {
       .optional()
       .isFloat({ min: 0 }).withMessage('Discount must be non-negative'),
     body('amounts.total')
-      .notEmpty().withMessage('Total amount is required')
+      .optional()
       .isFloat({ min: 0 }).withMessage('Total amount must be non-negative'),
     body('amounts.currency')
       .optional()
@@ -223,21 +233,16 @@ const invoiceValidation = {
       .toUpperCase(),
     body('status')
       .optional()
-      .isIn(['draft', 'pending', 'paid', 'overdue', 'cancelled']).withMessage('Invalid status'),
+      .isIn(['draft', 'issued', 'paid', 'cancelled', 'pending']).withMessage('Invalid status'),
+    body('paymentStatus')
+      .optional()
+      .isIn(['pending', 'paid', 'cancelled']).withMessage('Invalid payment status'),
     body('issueDate')
-      .notEmpty().withMessage('Issue date is required')
+      .optional()
       .isISO8601().withMessage('Invalid issue date format'),
     body('dueDate')
-      .notEmpty().withMessage('Due date is required')
-      .isISO8601().withMessage('Invalid due date format')
-      .custom((value, { req }) => {
-        const issueDate = new Date(req.body.issueDate);
-        const dueDate = new Date(value);
-        if (dueDate < issueDate) {
-          throw new Error('Due date must be after issue date');
-        }
-        return true;
-      }),
+      .optional()
+      .isISO8601().withMessage('Invalid due date format'),
     body('notes')
       .optional()
       .trim()
@@ -245,7 +250,11 @@ const invoiceValidation = {
     body('terms')
       .optional()
       .trim()
-      .isLength({ max: 2000 }).withMessage('Terms are too long')
+      .isLength({ max: 2000 }).withMessage('Terms are too long'),
+    body('remarks')
+      .optional()
+      .trim()
+      .isLength({ max: 2000 }).withMessage('Remarks are too long')
   ],
   update: [
     param('id').isMongoId().withMessage('Invalid invoice ID'),
