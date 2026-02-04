@@ -48,7 +48,7 @@ class RouteStarAutomation {
 
     try {
       console.log('Navigating to RouteStar login page...');
-      await this.page.goto(this.baseUrl, { waitUntil: 'domcontentloaded' });
+      await this.page.goto(this.baseUrl + '/web/login/', { waitUntil: 'domcontentloaded' });
 
       console.log('Waiting for page to load...');
       await this.page.waitForTimeout(2000); // Wait for any dynamic content
@@ -89,10 +89,20 @@ class RouteStarAutomation {
       console.log('Clicking login button...');
       await this.page.click(selectors.login.submitButton);
 
-      // Wait for navigation after login
+      // Wait for navigation after login - use URL change or element disappearance
       console.log('Waiting for login to complete...');
-      await this.page.waitForLoadState('networkidle', { timeout: 30000 });
-      await this.page.waitForTimeout(2000);
+      try {
+        // Wait for login form to disappear (indicates navigation happened)
+        await this.page.waitForSelector(selectors.login.usernameInput, {
+          state: 'hidden',
+          timeout: 15000
+        });
+      } catch (error) {
+        console.log('Login form still visible, checking for errors...');
+      }
+
+      // Wait for page to settle a bit
+      await this.page.waitForTimeout(3000);
 
       // Take screenshot after login
       await this.takeScreenshot('after-login');
@@ -104,19 +114,11 @@ class RouteStarAutomation {
         throw new Error(`Login failed: ${errorText}`);
       }
 
-      // Verify login success by checking for logged-in indicator
+      // Verify login success by checking that login form is gone
       console.log('Verifying login success...');
-      try {
-        await this.page.waitForSelector(selectors.login.loggedInIndicator, {
-          timeout: 10000,
-          state: 'visible'
-        });
-      } catch (error) {
-        // If no specific logged-in indicator, check that login form is gone
-        const stillOnLoginPage = await this.page.$(selectors.login.usernameInput);
-        if (stillOnLoginPage) {
-          throw new Error('Login appears to have failed - still on login page');
-        }
+      const stillOnLoginPage = await this.page.$(selectors.login.usernameInput);
+      if (stillOnLoginPage && await this.page.isVisible(selectors.login.usernameInput)) {
+        throw new Error('Login appears to have failed - still on login page');
       }
 
       this.isLoggedIn = true;
@@ -141,21 +143,19 @@ class RouteStarAutomation {
     try {
       console.log('Navigating to invoices page...');
 
-      // Try to find and click the invoices link
-      const invoicesLink = await this.page.$(selectors.navigation.invoicesLink);
-      if (invoicesLink) {
-        console.log('Clicking invoices link...');
-        await invoicesLink.click();
-        await this.page.waitForLoadState('networkidle', { timeout: 20000 });
-        await this.page.waitForTimeout(2000);
-      } else {
-        console.log('Invoices link not found, checking if already on invoices page...');
-      }
+      // Navigate directly to invoices URL with more lenient wait strategy
+      await this.page.goto(this.baseUrl + '/web/invoices/', {
+        waitUntil: 'commit',
+        timeout: 60000
+      });
+
+      // Wait for the page to have some content
+      await this.page.waitForTimeout(5000);
 
       // Verify we're on the invoices page
       console.log('Verifying invoices page loaded...');
       await this.page.waitForSelector(selectors.invoicesList.invoicesTable, {
-        timeout: 15000,
+        timeout: 30000,
         state: 'visible'
       });
 
@@ -181,11 +181,12 @@ class RouteStarAutomation {
 
       // Wait for invoices table
       await this.page.waitForSelector(selectors.invoicesList.invoicesTable, { timeout: 10000 });
+      await this.page.waitForTimeout(2000);
 
       const invoices = [];
       let hasNextPage = true;
       let pageCount = 0;
-      const maxPages = Math.ceil(limit / 20); // Assuming ~20 invoices per page
+      const maxPages = Math.ceil(limit / 10); // RouteStar shows 10 invoices per page by default
 
       while (hasNextPage && pageCount < maxPages) {
         console.log(`Processing page ${pageCount + 1}...`);
@@ -195,57 +196,194 @@ class RouteStarAutomation {
           timeout: 10000,
           state: 'visible'
         });
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(3000); // Increased wait for JS to finish updating
 
-        // Get invoice rows
-        const invoiceRows = await this.page.$$(selectors.invoicesList.invoiceRows);
+        // Get ONLY the main table container to avoid cloned tables
+        const masterTable = await this.page.$('div.ht_master');
+        if (!masterTable) {
+          throw new Error('Could not find main table (div.ht_master)');
+        }
+
+        // Get invoice rows from ONLY the master table
+        const invoiceRows = await masterTable.$$('table.htCore tbody tr');
         console.log(`Found ${invoiceRows.length} invoice rows on this page`);
 
-        for (const row of invoiceRows) {
+        for (let i = 0; i < invoiceRows.length; i++) {
+          const row = invoiceRows[i];
           if (invoices.length >= limit) break;
 
           try {
-            const invoiceNumber = await row.$eval(
-              selectors.invoicesList.invoiceNumber,
-              el => el.textContent.trim()
-            ).catch(() => null);
+            console.log(`  Processing row ${i + 1}/${invoiceRows.length}...`);
 
-            const invoiceDate = await row.$eval(
-              selectors.invoicesList.invoiceDate,
-              el => el.textContent.trim()
-            ).catch(() => null);
+            // Extract invoice number and link
+            // Try with <a> tag first, then try without if it fails
+            let invoiceNumber = null;
+            try {
+              invoiceNumber = await row.$eval(
+                selectors.invoicesList.invoiceNumber,
+                el => el.textContent.trim()
+              );
+            } catch (err) {
+              // If <a> tag doesn't exist, try just the td cell
+              try {
+                invoiceNumber = await row.$eval(
+                  'td:nth-child(2)',
+                  el => el.textContent.trim()
+                );
+              } catch (err2) {
+                console.log(`    ⚠ Row ${i + 1}: Failed to extract invoice number: ${err2.message}`);
+              }
+            }
 
-            const invoiceStatus = await row.$eval(
-              selectors.invoicesList.invoiceStatus,
-              el => el.textContent.trim()
-            ).catch(() => null);
-
-            const invoiceTotal = await row.$eval(
-              selectors.invoicesList.invoiceTotal,
-              el => el.textContent.trim()
-            ).catch(() => null);
-
-            const customerName = await row.$eval(
-              selectors.invoicesList.customerName,
-              el => el.textContent.trim()
-            ).catch(() => null);
+            if (!invoiceNumber) {
+              // Debug: try to get any text from the row to see what we're dealing with
+              const rowText = await row.textContent().catch(() => 'Could not get row text');
+              console.log(`    ⚠ Row ${i + 1}: Skipping - no invoice number found`);
+              console.log(`    Row content preview: ${rowText.substring(0, 100)}...`);
+              continue;
+            }
 
             const invoiceLink = await row.$eval(
               selectors.invoicesList.invoiceLink,
               el => el.getAttribute('href')
             ).catch(() => null);
 
-            if (invoiceNumber) {
-              invoices.push({
-                invoiceNumber,
-                invoiceDate,
-                status: invoiceStatus,
-                total: invoiceTotal,
-                customerName,
-                detailUrl: invoiceLink ? new URL(invoiceLink, this.baseUrl).href : null
-              });
-              console.log(`  ✓ Extracted invoice: ${invoiceNumber}`);
-            }
+            // Extract date (removing dropdown arrow)
+            const invoiceDate = await row.$eval(
+              selectors.invoicesList.invoiceDate,
+              el => el.textContent.replace('▼', '').trim()
+            ).catch(() => null);
+
+            // Extract entered by (removing dropdown arrow)
+            const enteredBy = await row.$eval(
+              selectors.invoicesList.enteredBy,
+              el => el.textContent.replace('▼', '').trim()
+            ).catch(() => null);
+
+            // Extract assigned to (removing dropdown arrow)
+            const assignedTo = await row.$eval(
+              selectors.invoicesList.assignedTo,
+              el => el.textContent.replace('▼', '').trim()
+            ).catch(() => null);
+
+            // Extract stop number
+            const stop = await row.$eval(
+              selectors.invoicesList.stop,
+              el => el.textContent.trim()
+            ).catch(() => '0');
+
+            // Extract customer name
+            const customerName = await row.$eval(
+              selectors.invoicesList.customerName,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract customer link
+            const customerLink = await row.$eval(
+              selectors.invoicesList.customerName,
+              el => el.getAttribute('href')
+            ).catch(() => null);
+
+            // Extract type
+            const invoiceType = await row.$eval(
+              selectors.invoicesList.invoiceType,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract service notes
+            const serviceNotes = await row.$eval(
+              selectors.invoicesList.serviceNotes,
+              el => el.textContent.trim()
+            ).catch(() => '');
+
+            // Extract status - use the class name to determine status reliably
+            const status = await row.$eval(
+              selectors.invoicesList.invoiceStatus,
+              el => {
+                const className = el.className || '';
+                const textContent = el.textContent.trim();
+                const result = {
+                  className: className,
+                  textContent: textContent,
+                  status: ''
+                };
+
+                if (className.includes('label-warning')) {
+                  result.status = 'Pending';
+                } else if (className.includes('label-success')) {
+                  result.status = 'Completed';
+                } else if (className.includes('label-danger')) {
+                  result.status = 'Cancelled';
+                } else {
+                  result.status = textContent;
+                }
+
+                return result;
+              }
+            ).catch((err) => {
+              console.log(`    ⚠ Failed to extract status: ${err.message}`);
+              return { status: null, className: '', textContent: '' };
+            });
+
+            console.log(`    DEBUG ${invoiceNumber}: class="${status.className}" text="${status.textContent}" => status="${status.status}"`);
+            const finalStatus = status.status;
+
+            // Extract total (removing $ and formatting)
+            const total = await row.$eval(
+              selectors.invoicesList.invoiceTotal,
+              el => el.textContent.replace(/[$,]/g, '').trim()
+            ).catch(() => '0.00');
+
+            // Extract last modified
+            const lastModified = await row.$eval(
+              selectors.invoicesList.lastModified,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract payment status
+            const payment = await row.$eval(
+              selectors.invoicesList.payment,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Extract arrival time
+            const arrivalTime = await row.$eval(
+              selectors.invoicesList.arrivalTime,
+              el => el.textContent.trim()
+            ).catch(() => null);
+
+            // Check if complete (checkbox checked)
+            const isComplete = await row.$eval(
+              selectors.invoicesList.complete,
+              el => el.checked
+            ).catch(() => false);
+
+            // Check if posted (checkbox checked)
+            const isPosted = await row.$eval(
+              selectors.invoicesList.posted,
+              el => el.checked
+            ).catch(() => false);
+
+            invoices.push({
+              invoiceNumber,
+              invoiceDate,
+              enteredBy,
+              assignedTo,
+              stop,
+              customerName,
+              customerLink: customerLink ? new URL(customerLink, this.baseUrl).href : null,
+              invoiceType,
+              serviceNotes,
+              status: finalStatus,
+              isComplete,
+              isPosted,
+              total,
+              lastModified,
+              payment,
+              arrivalTime,
+              detailUrl: invoiceLink ? new URL(invoiceLink, this.baseUrl).href : null
+            });
+            console.log(`  ✓ Extracted invoice: ${invoiceNumber} - ${customerName} - $${total} - ${finalStatus}`);
           } catch (error) {
             console.warn('  ⚠ Error extracting invoice row:', error.message);
           }
@@ -254,15 +392,11 @@ class RouteStarAutomation {
         // Check for next page
         if (invoices.length < limit) {
           const nextButton = await this.page.$(selectors.pagination.nextButton);
-          const isDisabled = nextButton
-            ? await nextButton.evaluate(el => el.disabled || el.classList.contains('disabled'))
-            : true;
 
-          if (nextButton && !isDisabled) {
+          if (nextButton) {
             console.log('Going to next page...');
             await nextButton.click();
-            await this.page.waitForLoadState('networkidle', { timeout: 20000 });
-            await this.page.waitForTimeout(2000);
+            await this.page.waitForTimeout(3000);
             pageCount++;
           } else {
             console.log('No more pages available');
@@ -287,99 +421,161 @@ class RouteStarAutomation {
    */
   async fetchInvoiceDetails(invoiceUrl) {
     try {
-      await this.page.goto(invoiceUrl);
-      await this.page.waitForLoadState('networkidle');
+      console.log(`Navigating to invoice details: ${invoiceUrl}`);
+      await this.page.goto(invoiceUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
 
-      // Extract invoice details
-      const invoiceNumber = await this.page.textContent(selectors.invoiceDetail.invoiceNumber).catch(() => null);
-      const invoiceDate = await this.page.textContent(selectors.invoiceDetail.invoiceDate).catch(() => null);
-      const invoiceStatus = await this.page.textContent(selectors.invoiceDetail.invoiceStatus).catch(() => null);
+      // Wait for the line items table to load
+      await this.page.waitForSelector(selectors.invoiceDetail.itemsTable, {
+        timeout: 30000,
+        state: 'visible'
+      });
 
-      // Extract customer information
-      const customerName = await this.page.textContent(selectors.invoiceDetail.customerName).catch(() => null);
-      const customerEmail = await this.page.textContent(selectors.invoiceDetail.customerEmail).catch(() => null);
-      const customerPhone = await this.page.textContent(selectors.invoiceDetail.customerPhone).catch(() => null);
-      const customerAddress = await this.page.textContent(selectors.invoiceDetail.customerAddress).catch(() => null);
+      // Wait a bit for dynamic content to load
+      await this.page.waitForTimeout(3000);
+
+      console.log('Extracting invoice details...');
 
       // Extract line items
       const items = [];
-      const itemRows = await this.page.$$(selectors.invoiceDetail.itemRows);
+      const masterTable = await this.page.$('div.ht_master');
+      if (!masterTable) {
+        throw new Error('Could not find invoice items table');
+      }
 
-      for (const row of itemRows) {
+      const itemRows = await masterTable.$$('table.htCore tbody tr');
+      console.log(`Found ${itemRows.length} line item rows`);
+
+      for (let i = 0; i < itemRows.length; i++) {
+        const row = itemRows[i];
+
         try {
+          // Extract item name - skip if it's "Choose.." (empty row)
           const itemName = await row.$eval(
             selectors.invoiceDetail.itemName,
-            el => el.textContent.trim()
+            el => el.textContent.replace('▼', '').trim()
           ).catch(() => null);
 
-          const itemSKU = await row.$eval(
-            selectors.invoiceDetail.itemSKU,
+          // Skip empty rows or "Choose.." placeholder rows
+          if (!itemName || itemName === 'Choose..') {
+            continue;
+          }
+
+          const itemDescription = await row.$eval(
+            selectors.invoiceDetail.itemDescription,
             el => el.textContent.trim()
-          ).catch(() => null);
+          ).catch(() => '');
 
           const itemQuantity = await row.$eval(
             selectors.invoiceDetail.itemQuantity,
-            el => parseFloat(el.textContent.trim().replace(/[^\d.]/g, ''))
+            el => parseFloat(el.textContent.trim().replace(/[^0-9.-]/g, '')) || 0
           ).catch(() => 0);
 
-          const itemPrice = await row.$eval(
-            selectors.invoiceDetail.itemPrice,
-            el => parseFloat(el.textContent.trim().replace(/[^\d.]/g, ''))
-          ).catch(() => 0);
+          const itemRate = await row.$eval(
+            selectors.invoiceDetail.itemRate,
+            el => el.textContent.replace(/[$,]/g, '').trim()
+          ).catch(() => '0.00');
 
-          const itemTotal = await row.$eval(
-            selectors.invoiceDetail.itemTotal,
-            el => parseFloat(el.textContent.trim().replace(/[^\d.]/g, ''))
-          ).catch(() => 0);
+          const itemAmount = await row.$eval(
+            selectors.invoiceDetail.itemAmount,
+            el => el.textContent.replace(/[$,]/g, '').trim()
+          ).catch(() => '0.00');
 
-          if (itemName) {
-            items.push({
-              name: itemName,
-              sku: itemSKU || '',
-              qty: itemQuantity,
-              unitPrice: itemPrice,
-              lineTotal: itemTotal
-            });
-          }
+          const itemClass = await row.$eval(
+            selectors.invoiceDetail.itemClass,
+            el => el.textContent.replace('▼', '').trim()
+          ).catch(() => '');
+
+          const itemWarehouse = await row.$eval(
+            selectors.invoiceDetail.itemWarehouse,
+            el => el.textContent.replace('▼', '').trim()
+          ).catch(() => '');
+
+          const itemTaxCode = await row.$eval(
+            selectors.invoiceDetail.itemTaxCode,
+            el => el.textContent.replace('▼', '').trim()
+          ).catch(() => '');
+
+          const itemLocation = await row.$eval(
+            selectors.invoiceDetail.itemLocation,
+            el => el.textContent.trim()
+          ).catch(() => '');
+
+          items.push({
+            name: itemName,
+            description: itemDescription,
+            quantity: itemQuantity,
+            rate: itemRate,
+            amount: itemAmount,
+            class: itemClass,
+            warehouse: itemWarehouse,
+            taxCode: itemTaxCode,
+            location: itemLocation
+          });
+
+          console.log(`  ✓ Extracted item: ${itemName} - Qty: ${itemQuantity} - Amount: $${itemAmount}`);
         } catch (error) {
-          console.warn('Error extracting item row:', error.message);
+          console.warn(`  ⚠ Error extracting line item row ${i + 1}:`, error.message);
         }
       }
 
       // Extract totals
-      const subtotal = await this.page.textContent(selectors.invoiceDetail.subtotal)
-        .then(text => parseFloat(text.replace(/[^\d.]/g, '')))
-        .catch(() => 0);
+      const subtotal = await this.page.$eval(
+        selectors.invoiceDetail.subtotal,
+        el => el.value.replace(/[$,]/g, '').trim()
+      ).catch(() => '0.00');
 
-      const tax = await this.page.textContent(selectors.invoiceDetail.tax)
-        .then(text => parseFloat(text.replace(/[^\d.]/g, '')))
-        .catch(() => 0);
+      const tax = await this.page.$eval(
+        selectors.invoiceDetail.tax,
+        el => el.value.replace(/[$,]/g, '').trim()
+      ).catch(() => '0.00');
 
-      const discount = await this.page.textContent(selectors.invoiceDetail.discount)
-        .then(text => parseFloat(text.replace(/[^\d.]/g, '')))
-        .catch(() => 0);
+      const total = await this.page.$eval(
+        selectors.invoiceDetail.total,
+        el => el.value.replace(/[$,]/g, '').trim()
+      ).catch(() => '0.00');
 
-      const total = await this.page.textContent(selectors.invoiceDetail.total)
-        .then(text => parseFloat(text.replace(/[^\d.]/g, '')))
-        .catch(() => 0);
+      // Extract other fields
+      const signedBy = await this.page.$eval(
+        selectors.invoiceDetail.signedBy,
+        el => el.value.trim()
+      ).catch(() => '');
+
+      const invoiceMemo = await this.page.$eval(
+        selectors.invoiceDetail.invoiceMemo,
+        el => el.value.trim()
+      ).catch(() => '');
+
+      const serviceNotes = await this.page.$eval(
+        selectors.invoiceDetail.serviceNotes,
+        el => el.value.trim()
+      ).catch(() => '');
+
+      const salesTaxRate = await this.page.$eval(
+        selectors.invoiceDetail.salesTaxRate,
+        el => {
+          const selectedOption = el.options[el.selectedIndex];
+          return selectedOption ? selectedOption.textContent.trim() : '';
+        }
+      ).catch(() => '');
+
+      console.log(`✓ Extracted ${items.length} line items`);
+      console.log(`  Subtotal: $${subtotal}, Tax: $${tax}, Total: $${total}`);
 
       return {
-        invoiceNumber: invoiceNumber?.trim() || '',
-        invoiceDate: invoiceDate?.trim() || '',
-        status: invoiceStatus?.trim() || '',
-        customer: {
-          name: customerName?.trim() || '',
-          email: customerEmail?.trim() || '',
-          phone: customerPhone?.trim() || '',
-          address: customerAddress?.trim() || ''
-        },
         items,
         subtotal,
         tax,
-        discount,
-        total
+        total,
+        signedBy,
+        invoiceMemo,
+        serviceNotes,
+        salesTaxRate
       };
     } catch (error) {
+      console.error('Fetch invoice details error:', error.message);
       await this.takeScreenshot('fetch-invoice-details-error');
       throw new Error(`Failed to fetch invoice details: ${error.message}`);
     }

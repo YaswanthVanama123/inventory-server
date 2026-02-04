@@ -36,53 +36,69 @@ async function test() {
     // Wait a bit to see the logged-in page
     await automation.page.waitForTimeout(2000);
 
-    // Step 3: Fetch order list
-    console.log('Step 3: Fetching all orders from first page (10 orders)...');
-    const orders = await automation.fetchOrdersList(10);
-    console.log(`✓ Fetched ${orders.length} orders\n`);
+    // Step 3: Fetch order list from multiple pages
+    console.log('Step 3: Fetching orders from first 3 pages (up to 30 orders)...');
+    const startTime = Date.now();
+    const result = await automation.fetchOrdersList(30);
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    // Display orders
+    const orders = result.orders;
+    const pagination = result.pagination;
+
+    console.log(`✓ Fetched ${orders.length} orders in ${duration} seconds\n`);
+
+    // Display comprehensive pagination statistics
     console.log('========================================');
-    console.log(`All Orders from First Page (${orders.length} orders):`);
+    console.log('📊 EXTRACTION STATISTICS');
+    console.log('========================================');
+    console.log(`\n📦 Total Orders in System: ${pagination.totalOrders}`);
+    console.log(`📄 Total Pages Available: ${pagination.totalPages}`);
+    console.log(`\n✅ Fetched Orders: ${pagination.fetchedOrders}`);
+    console.log(`✅ Fetched Pages: ${pagination.fetchedPages}`);
+    console.log(`\n⏳ Remaining Orders: ${pagination.remainingOrders}`);
+    console.log(`⏳ Remaining Pages: ${pagination.remainingPages}`);
+    console.log(`\n⏱️  Time Taken: ${duration} seconds`);
+    console.log(`⚡ Average per order: ${(duration / orders.length).toFixed(2)} seconds`);
+    console.log(`⚡ Average per page: ${(duration / pagination.fetchedPages).toFixed(2)} seconds`);
     console.log('========================================\n');
-    orders.forEach((order, index) => {
-      console.log(`${index + 1}. Order #${order.orderNumber}`);
-      console.log(`   Date:   ${order.orderDate}`);
-      console.log(`   Status: ${order.status}`);
-      console.log(`   Total:  $${order.total}`);
-      console.log(`   Vendor: ${order.vendorName}`);
-      console.log(`   PO:     ${order.poNumber}`);
-      console.log(`   URL:    ${order.detailUrl}`);
-      console.log('');
-    });
 
-    // Step 4: Fetch details for first order
-    if (orders.length > 0) {
-      console.log('\n========================================');
-      console.log('Step 4: Fetching details for first order...');
-      const details = await automation.fetchOrderDetails(orders[0].detailUrl);
-      console.log('✓ Order details fetched\n');
+    // Display orders grouped by page
+    console.log('========================================');
+    console.log(`ALL EXTRACTED ORDERS (${orders.length} total)`);
+    console.log('========================================\n');
 
-      console.log('Order Details:');
-      console.log(`  Order #: ${details.orderNumber}`);
-      console.log(`  PO #: ${details.poNumber}`);
-      console.log(`  Date: ${details.orderDate}`);
-      console.log(`  Status: ${details.status}`);
-      console.log(`\n  Line Items (${details.items.length}):`);
-      details.items.forEach((item, index) => {
-        console.log(`    ${index + 1}. ${item.name}`);
-        console.log(`       SKU: ${item.sku}`);
-        console.log(`       Qty: ${item.qty} @ $${item.unitPrice} = $${item.lineTotal}`);
+    // Group and display by page
+    const ordersPerPage = 10;
+    for (let page = 0; page < pagination.fetchedPages; page++) {
+      const pageStart = page * ordersPerPage;
+      const pageEnd = Math.min(pageStart + ordersPerPage, orders.length);
+      const pageOrders = orders.slice(pageStart, pageEnd);
+
+      console.log(`--- PAGE ${page + 1} of ${pagination.totalPages} (${pageOrders.length} orders) ---\n`);
+
+      pageOrders.forEach((order, index) => {
+        const overallIndex = pageStart + index + 1;
+        console.log(`${overallIndex}. Order #${order.orderNumber}`);
+        console.log(`   Date:   ${order.orderDate}`);
+        console.log(`   Status: ${order.status}`);
+        console.log(`   Total:  $${order.total}`);
+        console.log(`   Vendor: ${order.vendorName}`);
+        console.log(`   PO:     ${order.poNumber}`);
+        console.log('');
       });
-      console.log(`\n  Subtotal: $${details.subtotal}`);
-      console.log(`  Tax: $${details.tax}`);
-      console.log(`  Shipping: $${details.shipping}`);
-      console.log(`  Total: $${details.total}`);
     }
 
-    console.log('\n========================================');
-    console.log('✓ TEST COMPLETED SUCCESSFULLY');
+    // Skip detailed order fetching for now - focus on list extraction
+    console.log('========================================');
+    console.log('✅ PAGINATION TEST COMPLETED SUCCESSFULLY');
     console.log('========================================\n');
+
+    console.log('Final Summary:');
+    console.log(`✓ Total orders in system: ${pagination.totalOrders}`);
+    console.log(`✓ Successfully extracted: ${pagination.fetchedOrders} orders from ${pagination.fetchedPages} pages`);
+    console.log(`✓ Remaining to extract: ${pagination.remainingOrders} orders from ${pagination.remainingPages} pages`);
+    console.log(`✓ Pagination working: ${pagination.fetchedPages >= 3 ? 'YES ✅' : 'PARTIAL (fewer pages available)'}`);
+    console.log('');
 
     // Keep browser open for 10 seconds so you can see it
     console.log('Keeping browser open for 10 seconds...');

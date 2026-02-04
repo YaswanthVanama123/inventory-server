@@ -167,6 +167,31 @@ class CustomerConnectAutomation {
   }
 
   /**
+   * Get pagination information
+   */
+  async getPaginationInfo() {
+    try {
+      // Extract from "Showing 1 to 10 of 172 (18 Pages)" text
+      const paginationText = await this.page.locator('.pagination .results').textContent().catch(() => '');
+
+      // Parse total orders and pages
+      const match = paginationText.match(/of\s+(\d+)\s+\((\d+)\s+Pages?\)/i);
+
+      if (match) {
+        return {
+          totalOrders: parseInt(match[1]),
+          totalPages: parseInt(match[2])
+        };
+      }
+
+      return { totalOrders: 0, totalPages: 0 };
+    } catch (error) {
+      console.warn('Could not extract pagination info:', error.message);
+      return { totalOrders: 0, totalPages: 0 };
+    }
+  }
+
+  /**
    * Fetch list of orders
    */
   async fetchOrdersList(limit = 50) {
@@ -177,6 +202,10 @@ class CustomerConnectAutomation {
 
       // Wait for orders container
       await this.page.waitForSelector(selectors.ordersList.ordersTable, { timeout: 10000 });
+
+      // Get pagination info first
+      const paginationInfo = await this.getPaginationInfo();
+      console.log(`\n📊 Pagination Info: ${paginationInfo.totalOrders} total orders across ${paginationInfo.totalPages} pages\n`);
 
       const orders = [];
       let hasNextPage = true;
@@ -280,7 +309,18 @@ class CustomerConnectAutomation {
       }
 
       console.log(`✓ Fetched ${orders.length} orders from CustomerConnect`);
-      return orders;
+
+      return {
+        orders,
+        pagination: {
+          totalOrders: paginationInfo.totalOrders,
+          totalPages: paginationInfo.totalPages,
+          fetchedOrders: orders.length,
+          fetchedPages: pageCount,
+          remainingOrders: paginationInfo.totalOrders - orders.length,
+          remainingPages: paginationInfo.totalPages - pageCount
+        }
+      };
     } catch (error) {
       console.error('Fetch orders list error:', error.message);
       await this.takeScreenshot('fetch-orders-list-error');

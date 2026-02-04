@@ -6,17 +6,17 @@
 module.exports = {
   // Login page selectors
   login: {
-    usernameInput: 'input[name="username"], input[type="email"], #username, #email',
-    passwordInput: 'input[name="password"], input[type="password"], #password',
-    submitButton: 'button[type="submit"], input[type="submit"], button:has-text("Login"), button:has-text("Sign In")',
-    errorMessage: '.error, .alert-danger, [class*="error"]',
+    usernameInput: '#username',
+    passwordInput: '#password',
+    submitButton: 'button[type="submit"].btn-primary',
+    errorMessage: '.alert-danger, .alert-error',
 
     // Cookie consent (if present on site)
     cookieAcceptButton: 'button:has-text("Accept"), button:has-text("I Agree"), button[id*="cookie"], .cookie-accept',
 
     // Logged-in indicator - element that ONLY appears when logged in
     // Examples: user menu, logout button, dashboard header, user profile
-    loggedInIndicator: '.user-menu, .logout-button, [class*="dashboard"], nav.main-nav, .user-profile, a:has-text("Logout")'
+    loggedInIndicator: '#main:not(:has(#login)), .user-menu, .logout-button, [class*="dashboard"], nav.main-nav, .user-profile, a:has-text("Logout")'
   },
 
   // Navigation selectors
@@ -27,44 +27,62 @@ module.exports = {
 
   // Invoices list page selectors
   invoicesList: {
-    invoicesTable: 'table, .invoices-table, [class*="invoices"]',
-    invoiceRows: 'tr[data-invoice-id], tbody tr, .invoice-row',
-    invoiceNumber: 'td:nth-child(1), .invoice-number, [class*="invoice-number"]',
-    invoiceDate: 'td:nth-child(2), .invoice-date, [class*="date"]',
-    invoiceStatus: 'td:nth-child(3), .invoice-status, [class*="status"]',
-    invoiceTotal: 'td:nth-child(4), .invoice-total, [class*="total"]',
-    customerName: 'td:nth-child(5), .customer-name, [class*="customer"]',
-    invoiceLink: 'a, button.view-details',
-    noResults: '.no-results, .empty-state, :has-text("No invoices")'
+    invoicesTable: 'div.ht_master table.htCore',
+    invoiceRows: 'div.ht_master table.htCore tbody tr',
+    invoiceNumber: 'td:nth-child(2) a',  // First td is actually 2nd child (th is first)
+    invoiceDate: 'td:nth-child(3)',
+    enteredBy: 'td:nth-child(4)',
+    assignedTo: 'td:nth-child(5)',
+    stop: 'td:nth-child(6)',
+    customerName: 'td:nth-child(7) a',
+    invoiceType: 'td:nth-child(8)',
+    serviceNotes: 'td:nth-child(9)',
+    invoiceStatus: 'td:nth-child(10) span',
+    complete: 'td:nth-child(11) input[type="checkbox"]',
+    posted: 'td:nth-child(12) input[type="checkbox"]',
+    invoiceTotal: 'td:nth-child(13)',
+    lastModified: 'td:nth-child(14)',
+    payment: 'td:nth-child(15)',
+    arrivalTime: 'td:nth-child(16)',
+    invoiceLink: 'td:nth-child(2) a',
+    noResults: '.no-results, .empty-state'
   },
 
   // Invoice detail page selectors
   invoiceDetail: {
-    invoiceNumber: 'h1, .invoice-number, [class*="invoice-id"]',
-    invoiceDate: '.invoice-date, [class*="invoice-date"]',
-    invoiceStatus: '.invoice-status, [class*="status"]',
-    customerName: '.customer-name, [class*="customer-name"]',
-    customerEmail: '.customer-email, [class*="customer-email"]',
-    customerPhone: '.customer-phone, [class*="customer-phone"]',
-    customerAddress: '.customer-address, [class*="address"]',
-    itemsTable: 'table.items, .items-table, [class*="line-items"]',
-    itemRows: 'tr.item-row, tbody tr',
-    itemName: 'td:nth-child(1), .item-name, [class*="product-name"]',
-    itemSKU: 'td:nth-child(2), .item-sku, [class*="sku"]',
-    itemQuantity: 'td:nth-child(3), .item-qty, [class*="quantity"]',
-    itemPrice: 'td:nth-child(4), .item-price, [class*="unit-price"]',
-    itemTotal: 'td:nth-child(5), .item-total, [class*="line-total"]',
-    subtotal: '.subtotal, [class*="subtotal"]',
-    tax: '.tax, [class*="tax"]',
-    discount: '.discount, [class*="discount"]',
-    total: '.total, [class*="grand-total"]'
+    // Line items table (Handsontable)
+    itemsTableContainer: 'div#example',
+    itemsTable: 'div.ht_master table.htCore',
+    itemRows: 'div.ht_master table.htCore tbody tr',
+
+    // Line item columns (note: th is first child, so data starts at td:nth-child(2))
+    itemName: 'td:nth-child(2)',           // Column 1: Item
+    itemDescription: 'td:nth-child(3)',     // Column 2: Description
+    itemQuantity: 'td:nth-child(4)',        // Column 3: Qty
+    itemRate: 'td:nth-child(5)',            // Column 4: Rate
+    itemAmount: 'td:nth-child(6)',          // Column 5: Amount
+    itemClass: 'td:nth-child(7)',           // Column 6: Class
+    itemWarehouse: 'td:nth-child(8)',       // Column 7: Warehouse
+    itemTaxCode: 'td:nth-child(9)',         // Column 8: Tax Code
+    itemLocation: 'td:nth-child(10)',       // Column 9: Item Location
+
+    // Totals
+    subtotal: 'input#inv_subtotal',
+    tax: 'input#inv_taxtotal',
+    total: 'input#inv_total',
+
+    // Other fields
+    signedBy: 'input#txt_signedby',
+    invoiceMemo: 'textarea#txt_memo',
+    serviceNotes: 'textarea#txt_service_notes',
+    salesTaxRate: 'select#txt_inv_taxrate'
   },
 
   // Pagination selectors
   pagination: {
-    nextButton: 'a.next, button.next, [class*="next-page"]',
-    previousButton: 'a.prev, button.prev, [class*="prev-page"]',
-    pageNumbers: '.pagination a, .page-link',
-    currentPage: '.pagination .active, .page-link.active'
+    nextButton: 'ul.pagination.bootpag li.next:not(.disabled) a',
+    previousButton: 'ul.pagination.bootpag li.prev:not(.disabled) a',
+    pageNumbers: 'ul.pagination.bootpag li[data-lp] a',
+    currentPage: 'ul.pagination.bootpag li.active a'
   }
 };
