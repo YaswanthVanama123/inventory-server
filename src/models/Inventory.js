@@ -239,11 +239,11 @@ inventorySchema.virtual('needsReorder').get(function() {
   return this.quantity.current <= this.supplier.reorderPoint;
 });
 
-// Static method to calculate weighted average selling price from purchases
+
 inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) {
   const Purchase = require('./Purchase');
 
-  // Get all available purchases (with remaining quantity > 0)
+  
   const purchases = await Purchase.find({
     inventoryItem: inventoryId,
     isDeleted: false,
@@ -254,7 +254,7 @@ inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) 
     return 0;
   }
 
-  // Calculate weighted average
+  
   let totalValue = 0;
   let totalQuantity = 0;
 
@@ -268,7 +268,7 @@ inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) 
   return totalQuantity > 0 ? totalValue / totalQuantity : 0;
 };
 
-// Set options
+
 inventorySchema.set('toJSON', { virtuals: true });
 inventorySchema.set('toObject', { virtuals: true });
 

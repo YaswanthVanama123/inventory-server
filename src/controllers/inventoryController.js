@@ -1,12 +1,16 @@
 const Inventory = require('../models/Inventory');
+const StockMovement = require('../models/StockMovement');
 const AuditLog = require('../models/AuditLog');
+const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const RouteStarInvoice = require('../models/RouteStarInvoice');
+const StockSummary = require('../models/StockSummary');
 const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../utils/imgbbUpload');
 
 
 const transformToBackendFormat = (data) => {
   const transformed = { ...data };
 
-  // Always ensure quantity object exists with proper structure
+  
   transformed.quantity = {
     current: data.currentQuantity !== undefined ? Number(data.currentQuantity) : 0,
     minimum: data.minimumQuantity !== undefined ? Number(data.minimumQuantity) : 0,
@@ -27,7 +31,7 @@ const transformToBackendFormat = (data) => {
     delete transformed.sellingPrice;
   }
 
-  
+
   if (data.supplierName || data.contactPerson || data.supplierEmail || data.supplierPhone || data.supplierAddress || data.leadTime || data.reorderPoint || data.minOrderQuantity) {
     transformed.supplier = {
       name: data.supplierName || data.supplier?.name,
@@ -49,7 +53,7 @@ const transformToBackendFormat = (data) => {
     delete transformed.minOrderQuantity;
   }
 
-  
+
   if (data.primaryImageIndex !== undefined) {
     transformed.primaryImage = Number(data.primaryImageIndex);
     delete transformed.primaryImageIndex;
@@ -59,21 +63,21 @@ const transformToBackendFormat = (data) => {
 };
 
 
-const transformItem = (item, weightedAvgPrice = null) => {
+const transformItem = (item, weightedAvgPrice = null, syncMetadata = null) => {
   if (!item) return null;
 
   const itemObj = item.toObject ? item.toObject({ virtuals: true }) : item;
 
-  // Transform images
+  
   const transformedImages = (itemObj.images || []).map(img => {
     if (typeof img === 'string') {
       return { path: img };
     }
 
-    // Extract image path
+    
     const imagePath = img.path || img.url || img.display_url || img;
 
-    // Return transformed image object
+    
     return {
       _id: img._id,
       path: imagePath,
@@ -91,7 +95,7 @@ const transformItem = (item, weightedAvgPrice = null) => {
     };
   });
 
-  // Always use the original pricing.sellingPrice from the inventory model
+  
   const finalSellingPrice = itemObj.pricing?.sellingPrice ?? 0;
 
   return {
@@ -138,8 +142,140 @@ const transformItem = (item, weightedAvgPrice = null) => {
     createdBy: itemObj.createdBy,
     lastUpdatedBy: itemObj.lastUpdatedBy,
     createdAt: itemObj.createdAt,
-    updatedAt: itemObj.updatedAt
+    updatedAt: itemObj.updatedAt,
+
+    vendorName: itemObj.vendorName || '',
+    orderNumber: itemObj.orderNumber || '',
+    poNumber: itemObj.poNumber || '',
+    orderCount: itemObj.orderCount || 0,
+    totalPurchased: itemObj.totalPurchased || 0,
+
+    customerName: itemObj.customerName || '',
+    invoiceNumber: itemObj.invoiceNumber || '',
+    invoiceType: itemObj.invoiceType || '',
+    invoiceCount: itemObj.invoiceCount || 0,
+    totalSold: itemObj.totalSold || 0,
+
+    class: itemObj.class || '',
+    warehouse: itemObj.warehouse || '',
+    location: itemObj.location || '',
+
+    sync: syncMetadata || itemObj.sync || {
+      lastSyncedAt: null,
+      syncSource: null,
+      hasSyncedData: false,
+      stockProcessed: false,
+      availableQty: itemObj.quantity?.current || 0,
+      reservedQty: 0,
+      totalInQty: 0,
+      totalOutQty: 0
+    }
   };
+};
+
+
+
+const getSyncMetadata = async (skuCode) => {
+  try {
+    const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+    const RouteStarInvoice = require('../models/RouteStarInvoice');
+
+
+    const ccOrders = await CustomerConnectOrder.find({
+      'items.sku': skuCode.toUpperCase(),
+      isDeleted: false
+    })
+    .sort({ lastSyncedAt: -1 })
+    .limit(1)
+    .select('lastSyncedAt');
+
+
+    const rsInvoices = await RouteStarInvoice.find({
+      'lineItems.sku': skuCode.toUpperCase(),
+      isDeleted: false
+    })
+    .sort({ lastSyncedAt: -1 })
+    .limit(1)
+    .select('lastSyncedAt syncSource');
+
+    const sources = [];
+    let lastSyncedAt = null;
+
+    if (ccOrders.length > 0) {
+      sources.push('CustomerConnect');
+      if (!lastSyncedAt || ccOrders[0].lastSyncedAt > lastSyncedAt) {
+        lastSyncedAt = ccOrders[0].lastSyncedAt;
+      }
+    }
+
+    if (rsInvoices.length > 0) {
+      sources.push('RouteStar');
+      if (!lastSyncedAt || rsInvoices[0].lastSyncedAt > lastSyncedAt) {
+        lastSyncedAt = rsInvoices[0].lastSyncedAt;
+      }
+    }
+
+    return {
+      lastSyncedAt,
+      syncSource: sources.length > 0 ? sources.join(', ') : null,
+      hasSyncedData: sources.length > 0
+    };
+  } catch (error) {
+    console.error('Error getting sync metadata:', error);
+    return {
+      lastSyncedAt: null,
+      syncSource: null,
+      hasSyncedData: false
+    };
+  }
+};
+
+
+
+const getEnrichedStockHistory = async (skuCode, stockHistory = []) => {
+  try {
+    
+    const movements = await StockMovement.find({
+      sku: skuCode.toUpperCase()
+    })
+    .populate('createdBy', 'username fullName')
+    .sort({ timestamp: -1 });
+
+    
+    const enrichedHistory = stockHistory.map(entry => ({
+      ...entry.toObject ? entry.toObject() : entry,
+      source: 'MANUAL',
+      movementType: entry.action === 'added' ? 'IN' : entry.action === 'removed' ? 'OUT' : 'ADJUST'
+    }));
+
+    
+    movements.forEach(movement => {
+      enrichedHistory.push({
+        action: movement.type === 'IN' ? 'added' : movement.type === 'OUT' ? 'removed' : 'adjusted',
+        quantity: movement.qty,
+        reason: movement.notes || `${movement.refType}: ${movement.sourceRef || movement.refId}`,
+        timestamp: movement.timestamp,
+        updatedBy: movement.createdBy,
+        source: 'STOCK_MOVEMENT',
+        movementType: movement.type,
+        refType: movement.refType,
+        refId: movement.refId,
+        sourceRef: movement.sourceRef
+      });
+    });
+
+    
+    enrichedHistory.sort((a, b) => {
+      const timeA = a.timestamp || new Date(0);
+      const timeB = b.timestamp || new Date(0);
+      return timeB - timeA;
+    });
+
+    return enrichedHistory;
+  } catch (error) {
+    console.error('Error enriching stock history:', error);
+    return stockHistory;
+  }
 };
 
 
@@ -147,66 +283,316 @@ const transformItem = (item, weightedAvgPrice = null) => {
 
 const getInventoryItems = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, category, search, lowStock } = req.query;
+    const { page = 1, limit = 10, category, search, lowStock, includeSyncStatus } = req.query;
 
-    // Build query
-    const query = { isActive: true, isDeleted: false };
-    if (category) query.category = category;
-    if (search) {
-      query.$or = [
-        { itemName: { $regex: search, $options: 'i' } },
-        { skuCode: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
+    // Step 1: Fetch automated items from CustomerConnect
+    const ccOrders = await CustomerConnectOrder.find({}).lean();
+    const ccItemsMap = new Map();
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    let items;
+    ccOrders.forEach(order => {
+      if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+          const sku = item.sku.toUpperCase();
 
-    if (lowStock === 'true') {
-      items = await Inventory.find(query)
-        .populate('createdBy', 'username fullName')
-        .populate('lastUpdatedBy', 'username fullName')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit));
-
-      // Filter for low stock items
-      items = items.filter(item => item.isLowStock);
-      const total = items.length;
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          items: items.map(item => transformItem(item)),
-          pagination: {
-            total,
-            page: parseInt(page),
-            pages: Math.ceil(total / parseInt(limit)),
-            limit: parseInt(limit)
+          if (search) {
+            const searchRegex = new RegExp(search, 'i');
+            if (!searchRegex.test(item.name) && !searchRegex.test(sku)) {
+              return;
+            }
           }
+
+          if (ccItemsMap.has(sku)) {
+            const existing = ccItemsMap.get(sku);
+            existing.totalQuantity += item.qty || 0;
+            existing.totalValue += item.lineTotal || 0;
+            existing.orderCount += 1;
+            if (order.lastSyncedAt > existing.lastSyncedAt) {
+              existing.lastSyncedAt = order.lastSyncedAt;
+              existing.latestUnitPrice = item.unitPrice || 0;
+            }
+          } else {
+            ccItemsMap.set(sku, {
+              skuCode: sku,
+              itemName: item.name,
+              name: item.name,
+              description: `Purchased from ${order.vendor?.name || 'CustomerConnect'}`,
+              totalQuantity: item.qty || 0,
+              totalValue: item.lineTotal || 0,
+              latestUnitPrice: item.unitPrice || 0,
+              orderCount: 1,
+              category: category || 'CustomerConnect',
+              lastSyncedAt: order.lastSyncedAt || new Date(),
+              source: 'customerconnect',
+              isAutomated: true,
+              vendorName: order.vendor?.name || '',
+              orderNumber: order.orderNumber,
+              poNumber: order.poNumber
+            });
+          }
+        });
+      }
+    });
+
+    // Step 2: Fetch automated items from RouteStar
+    const rsInvoices = await RouteStarInvoice.find({}).lean();
+    const rsItemsMap = new Map();
+
+    rsInvoices.forEach(invoice => {
+      if (invoice.lineItems && invoice.lineItems.length > 0) {
+        invoice.lineItems.forEach(item => {
+          if (!item.sku) return;
+
+          const sku = item.sku.toUpperCase();
+
+          if (search) {
+            const searchRegex = new RegExp(search, 'i');
+            if (!searchRegex.test(item.name) && !searchRegex.test(sku) && !searchRegex.test(item.description || '')) {
+              return;
+            }
+          }
+
+          if (rsItemsMap.has(sku)) {
+            const existing = rsItemsMap.get(sku);
+            existing.totalQuantity += item.quantity || 0;
+            existing.totalValue += item.amount || 0;
+            existing.invoiceCount += 1;
+            if (invoice.lastSyncedAt > existing.lastSyncedAt) {
+              existing.lastSyncedAt = invoice.lastSyncedAt;
+              existing.latestRate = item.rate || 0;
+            }
+          } else {
+            rsItemsMap.set(sku, {
+              skuCode: sku,
+              itemName: item.name,
+              name: item.name,
+              description: item.description || `Sold to ${invoice.customer?.name || 'RouteStar Customer'}`,
+              totalQuantity: item.quantity || 0,
+              totalValue: item.amount || 0,
+              latestRate: item.rate || 0,
+              invoiceCount: 1,
+              category: category || 'RouteStar',
+              lastSyncedAt: invoice.lastSyncedAt || new Date(),
+              source: 'routestar',
+              isAutomated: true,
+              customerName: invoice.customer?.name || '',
+              invoiceNumber: invoice.invoiceNumber,
+              invoiceType: invoice.invoiceType,
+              class: item.class,
+              warehouse: item.warehouse,
+              location: item.location
+            });
+          }
+        });
+      }
+    });
+
+    // Step 3: Enrich automated items with StockSummary data
+    const allAutomatedSkus = [...ccItemsMap.keys(), ...rsItemsMap.keys()];
+    const stockSummaries = await StockSummary.find({
+      sku: { $in: allAutomatedSkus }
+    }).lean();
+
+    const stockSummaryMap = new Map();
+    stockSummaries.forEach(summary => {
+      stockSummaryMap.set(summary.sku, summary);
+    });
+
+    // Step 4: Merge CustomerConnect and RouteStar items (NO manual items)
+    const mergedItemsMap = new Map();
+
+    // Add CustomerConnect items
+    ccItemsMap.forEach((ccItem, sku) => {
+      const stockSummary = stockSummaryMap.get(sku);
+
+      mergedItemsMap.set(sku, {
+        _id: `cc_${sku}`,
+        skuCode: ccItem.skuCode,
+        itemName: ccItem.itemName,
+        name: ccItem.name,
+        description: ccItem.description,
+        category: ccItem.category,
+        tags: [],
+
+        quantity: {
+          current: stockSummary ? stockSummary.availableQty : ccItem.totalQuantity,
+          minimum: stockSummary?.lowStockThreshold || 10,
+          unit: 'pieces'
+        },
+
+        pricing: {
+          purchasePrice: ccItem.latestUnitPrice,
+          sellingPrice: ccItem.latestUnitPrice * 1.2,
+          currency: 'USD'
+        },
+
+        images: [],
+        primaryImage: 0,
+        isActive: true,
+        isLowStock: stockSummary ? stockSummary.availableQty <= (stockSummary.lowStockThreshold || 10) : false,
+
+        vendorName: ccItem.vendorName,
+        orderNumber: ccItem.orderNumber,
+        poNumber: ccItem.poNumber,
+        orderCount: ccItem.orderCount,
+        totalPurchased: ccItem.totalQuantity,
+
+        sync: {
+          syncSource: 'customerconnect',
+          hasSyncedData: true,
+          lastSyncedAt: ccItem.lastSyncedAt,
+          stockProcessed: stockSummary ? true : false,
+          availableQty: stockSummary?.availableQty || 0,
+          reservedQty: stockSummary?.reservedQty || 0,
+          totalInQty: stockSummary?.totalInQty || 0,
+          totalOutQty: stockSummary?.totalOutQty || 0
         }
+      });
+    });
+
+    // Merge RouteStar items
+    rsItemsMap.forEach((rsItem, sku) => {
+      const stockSummary = stockSummaryMap.get(sku);
+
+      if (mergedItemsMap.has(sku)) {
+        const existing = mergedItemsMap.get(sku);
+        const sources = [existing.sync?.syncSource, 'routestar'].filter(Boolean);
+
+        mergedItemsMap.set(sku, {
+          ...existing,
+          description: existing.description || rsItem.description,
+          quantity: {
+            ...existing.quantity,
+            current: stockSummary ? stockSummary.availableQty : existing.quantity.current
+          },
+          pricing: {
+            ...existing.pricing,
+            sellingPrice: rsItem.latestRate || existing.pricing.sellingPrice
+          },
+          customerName: rsItem.customerName,
+          invoiceNumber: rsItem.invoiceNumber,
+          invoiceType: rsItem.invoiceType,
+          invoiceCount: rsItem.invoiceCount,
+          totalSold: rsItem.totalQuantity,
+          class: rsItem.class,
+          warehouse: rsItem.warehouse,
+          location: rsItem.location,
+          sync: {
+            syncSource: [...new Set(sources)].join(', '),
+            hasSyncedData: true,
+            lastSyncedAt: rsItem.lastSyncedAt > (existing.sync?.lastSyncedAt || 0)
+              ? rsItem.lastSyncedAt
+              : existing.sync?.lastSyncedAt,
+            stockProcessed: stockSummary ? true : false,
+            availableQty: stockSummary?.availableQty || existing.sync?.availableQty || 0,
+            reservedQty: stockSummary?.reservedQty || existing.sync?.reservedQty || 0,
+            totalInQty: stockSummary?.totalInQty || existing.sync?.totalInQty || 0,
+            totalOutQty: stockSummary?.totalOutQty || existing.sync?.totalOutQty || 0
+          }
+        });
+      } else {
+        mergedItemsMap.set(sku, {
+          _id: `rs_${sku}`,
+          skuCode: rsItem.skuCode,
+          itemName: rsItem.itemName,
+          name: rsItem.name,
+          description: rsItem.description,
+          category: rsItem.category,
+          tags: [],
+
+          quantity: {
+            current: stockSummary ? stockSummary.availableQty : 0,
+            minimum: stockSummary?.lowStockThreshold || 10,
+            unit: 'pieces'
+          },
+
+          pricing: {
+            purchasePrice: rsItem.latestRate,
+            sellingPrice: rsItem.latestRate,
+            currency: 'USD'
+          },
+
+          images: [],
+          primaryImage: 0,
+          isActive: true,
+          isLowStock: stockSummary ? stockSummary.availableQty <= (stockSummary.lowStockThreshold || 10) : false,
+
+          customerName: rsItem.customerName,
+          invoiceNumber: rsItem.invoiceNumber,
+          invoiceType: rsItem.invoiceType,
+          invoiceCount: rsItem.invoiceCount,
+          totalSold: rsItem.totalQuantity,
+          class: rsItem.class,
+          warehouse: rsItem.warehouse,
+          location: rsItem.location,
+
+          sync: {
+            syncSource: 'routestar',
+            hasSyncedData: true,
+            lastSyncedAt: rsItem.lastSyncedAt,
+            stockProcessed: stockSummary ? true : false,
+            availableQty: stockSummary?.availableQty || 0,
+            reservedQty: stockSummary?.reservedQty || 0,
+            totalInQty: stockSummary?.totalInQty || 0,
+            totalOutQty: stockSummary?.totalOutQty || 0
+          }
+        });
+      }
+    });
+
+    // Step 5: Convert to array and apply filters
+    let mergedItems = Array.from(mergedItemsMap.values());
+
+    // Apply category filter if not already applied
+    if (category) {
+      mergedItems = mergedItems.filter(item => {
+        const itemCategory = item.category || '';
+        return itemCategory.toLowerCase() === category.toLowerCase();
       });
     }
 
-    const total = await Inventory.countDocuments(query);
+    // Apply low stock filter
+    if (lowStock === 'true') {
+      mergedItems = mergedItems.filter(item => {
+        const currentQty = item.quantity?.current || 0;
+        const minQty = item.quantity?.minimum || 10;
+        return currentQty <= minQty;
+      });
+    }
 
-    items = await Inventory.find(query)
-      .populate('createdBy', 'username fullName')
-      .populate('lastUpdatedBy', 'username fullName')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // Step 6: Sort items by sync date
+    mergedItems.sort((a, b) => {
+      const dateA = a.sync?.lastSyncedAt || new Date(0);
+      const dateB = b.sync?.lastSyncedAt || new Date(0);
+      return new Date(dateB) - new Date(dateA);
+    });
+
+    // Step 7: Apply pagination
+    const total = mergedItems.length;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedItems = mergedItems.slice(skip, skip + parseInt(limit));
+
+    // Step 8: Transform items for response
+    const transformedItems = paginatedItems.map(item => {
+      // Transform automated items
+      return transformItem({
+        toObject: () => item
+      }, null, item.sync);
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        items: items.map(item => transformItem(item)),
+        items: transformedItems,
         pagination: {
           total,
           page: parseInt(page),
           pages: Math.ceil(total / parseInt(limit)),
           limit: parseInt(limit)
+        },
+        summary: {
+          customerConnectItems: ccItemsMap.size,
+          routeStarItems: rsItemsMap.size,
+          totalMerged: total
         }
       }
     });
@@ -236,9 +622,18 @@ const getInventoryItem = async (req, res, next) => {
       });
     }
 
+    
+    const syncMetadata = await getSyncMetadata(item.skuCode);
+
+    
+    const enrichedHistory = await getEnrichedStockHistory(item.skuCode, item.stockHistory);
+
+    const transformedItem = transformItem(item, null, syncMetadata);
+    transformedItem.stockHistory = enrichedHistory;
+
     res.status(200).json({
       success: true,
-      data: { item: transformItem(item) }
+      data: { item: transformedItem }
     });
   } catch (error) {
     console.error('Get inventory item error:', error);
@@ -251,10 +646,10 @@ const getInventoryItem = async (req, res, next) => {
 
 const createInventoryItem = async (req, res, next) => {
   try {
-    
+
     const existing = await Inventory.findOne({ skuCode: req.body.skuCode.toUpperCase(), isDeleted: false });
     if (existing) {
-      
+
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -270,23 +665,23 @@ const createInventoryItem = async (req, res, next) => {
       });
     }
 
-    
+
     const itemData = transformToBackendFormat({
       ...req.body,
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
 
-    
+
     if (req.files && req.files.length > 0) {
       try {
         const uploadResults = await uploadMultipleToImgBB(req.files);
 
-        
+
         const successfulUploads = uploadResults.filter(result => result.success);
 
         if (successfulUploads.length === 0) {
-          
+
           for (const file of req.files) {
             await deleteLocalFile(file.path);
           }
@@ -300,7 +695,7 @@ const createInventoryItem = async (req, res, next) => {
           });
         }
 
-        
+
         itemData.images = successfulUploads.map((result, index) => ({
           filename: result.data.filename,
           path: result.data.display_url,
@@ -314,14 +709,14 @@ const createInventoryItem = async (req, res, next) => {
           uploadedBy: req.user.id
         }));
 
-        
+
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
       } catch (uploadError) {
         console.error('ImgBB upload error:', uploadError);
 
-        
+
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -339,7 +734,7 @@ const createInventoryItem = async (req, res, next) => {
 
     const item = await Inventory.create(itemData);
 
-    
+
     await AuditLog.create({
       action: 'CREATE',
       resource: 'INVENTORY',
@@ -356,7 +751,7 @@ const createInventoryItem = async (req, res, next) => {
       message: 'Inventory item created successfully'
     });
   } catch (error) {
-    
+
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -376,7 +771,7 @@ const updateInventoryItem = async (req, res, next) => {
     let item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
 
     if (!item) {
-      
+
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -392,7 +787,7 @@ const updateInventoryItem = async (req, res, next) => {
       });
     }
 
-    
+
     const updateData = transformToBackendFormat(req.body);
     Object.keys(updateData).forEach(key => {
       if (key !== 'createdBy' && key !== 'stockHistory' && key !== 'images') {
@@ -400,12 +795,12 @@ const updateInventoryItem = async (req, res, next) => {
       }
     });
 
-    
+
     if (req.files && req.files.length > 0) {
       try {
         const uploadResults = await uploadMultipleToImgBB(req.files);
 
-        
+
         const successfulUploads = uploadResults.filter(result => result.success);
 
         if (successfulUploads.length > 0) {
@@ -424,14 +819,14 @@ const updateInventoryItem = async (req, res, next) => {
           item.images.push(...newImages);
         }
 
-        
+
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
       } catch (uploadError) {
         console.error('ImgBB upload error:', uploadError);
 
-        
+
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -450,7 +845,7 @@ const updateInventoryItem = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -467,7 +862,7 @@ const updateInventoryItem = async (req, res, next) => {
       message: 'Inventory item updated successfully'
     });
   } catch (error) {
-    
+
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -496,14 +891,14 @@ const deleteInventoryItem = async (req, res, next) => {
       });
     }
 
-    
+
     item.isDeleted = true;
     item.deletedAt = Date.now();
     item.deletedBy = req.user.id;
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    
+
     await AuditLog.create({
       action: 'DELETE',
       resource: 'INVENTORY',
@@ -529,7 +924,7 @@ const deleteInventoryItem = async (req, res, next) => {
 
 const updateStock = async (req, res, next) => {
   try {
-    const { quantity, action, reason } = req.body;
+    const { quantity, action, reason, refType, refId, sourceRef } = req.body;
 
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
 
@@ -546,7 +941,7 @@ const updateStock = async (req, res, next) => {
     const previousQuantity = item.quantity.current;
     let newQuantity = previousQuantity;
 
-    
+
     switch (action) {
       case 'add':
         newQuantity = previousQuantity + quantity;
@@ -576,7 +971,7 @@ const updateStock = async (req, res, next) => {
         });
     }
 
-    
+
     item.quantity.current = newQuantity;
     item.stockHistory.push({
       action: action === 'add' ? 'added' : action === 'remove' ? 'removed' : 'adjusted',
@@ -591,6 +986,27 @@ const updateStock = async (req, res, next) => {
     await item.save();
 
     
+    const movementType = action === 'add' ? 'IN' : action === 'remove' ? 'OUT' : 'ADJUST';
+    const movementRefType = refType || 'MANUAL';
+    const movementRefId = refId || item._id;
+
+    try {
+      await StockMovement.create({
+        sku: item.skuCode,
+        type: movementType,
+        qty: Math.abs(quantity),
+        refType: movementRefType,
+        refId: movementRefId,
+        sourceRef: sourceRef || null,
+        notes: reason,
+        createdBy: req.user.id
+      });
+    } catch (movementError) {
+      console.error('Error creating stock movement:', movementError);
+      
+    }
+
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -620,7 +1036,7 @@ const getStockHistory = async (req, res, next) => {
     const { limit = 50 } = req.query;
 
     const item = await Inventory.findById(req.params.id)
-      .select('stockHistory')
+      .select('skuCode stockHistory')
       .populate('stockHistory.updatedBy', 'username fullName');
 
     if (!item) {
@@ -633,9 +1049,11 @@ const getStockHistory = async (req, res, next) => {
       });
     }
 
-    const history = item.stockHistory
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, parseInt(limit));
+    
+    const enrichedHistory = await getEnrichedStockHistory(item.skuCode, item.stockHistory);
+
+    
+    const history = enrichedHistory.slice(0, parseInt(limit));
 
     res.status(200).json({
       success: true,
@@ -671,12 +1089,12 @@ const getLowStockItems = async (req, res, next) => {
 };
 
 
-// Get inventory items with weighted average prices (for POS)
+
 const getInventoryItemsForPOS = async (req, res, next) => {
   try {
     const { page = 1, limit = 1000, category, search, lowStock } = req.query;
 
-    // Build query
+    
     const query = { isActive: true, isDeleted: false };
     if (category) query.category = category;
     if (search) {
@@ -698,11 +1116,11 @@ const getInventoryItemsForPOS = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit));
 
-      // Filter for low stock items
+      
       items = items.filter(item => item.isLowStock);
       const total = items.length;
 
-      // Calculate weighted average prices for all items
+      
       const itemsWithPrices = await Promise.all(items.map(async (item) => {
         const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
         return transformItemWithWeightedPrice(item, avgPrice);
@@ -731,7 +1149,7 @@ const getInventoryItemsForPOS = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Calculate weighted average prices for all items
+    
     const itemsWithPrices = await Promise.all(items.map(async (item) => {
       const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
       return transformItemWithWeightedPrice(item, avgPrice);
@@ -756,13 +1174,13 @@ const getInventoryItemsForPOS = async (req, res, next) => {
 };
 
 
-// Helper function to transform item with weighted average price
+
 const transformItemWithWeightedPrice = (item, weightedAvgPrice = null) => {
   if (!item) return null;
 
   const itemObj = item.toObject ? item.toObject({ virtuals: true }) : item;
 
-  // Transform images
+  
   const transformedImages = (itemObj.images || []).map(img => {
     if (typeof img === 'string') {
       return { path: img };
@@ -787,7 +1205,7 @@ const transformItemWithWeightedPrice = (item, weightedAvgPrice = null) => {
     };
   });
 
-  // Use weighted average price if provided, otherwise fall back to pricing.sellingPrice
+  
   const finalSellingPrice = weightedAvgPrice !== null ? weightedAvgPrice : (itemObj.pricing?.sellingPrice ?? 0);
 
   return {
@@ -861,7 +1279,7 @@ const uploadImages = async (req, res, next) => {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
 
     if (!item) {
-      
+
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           await deleteLocalFile(file.path);
@@ -888,14 +1306,14 @@ const uploadImages = async (req, res, next) => {
     }
 
     try {
-      
+
       const uploadResults = await uploadMultipleToImgBB(req.files);
 
-      
+
       const successfulUploads = uploadResults.filter(result => result.success);
 
       if (successfulUploads.length === 0) {
-        
+
         for (const file of req.files) {
           await deleteLocalFile(file.path);
         }
@@ -909,7 +1327,7 @@ const uploadImages = async (req, res, next) => {
         });
       }
 
-      
+
       const newImages = successfulUploads.map(result => ({
         filename: result.data.filename,
         path: result.data.display_url,
@@ -927,12 +1345,12 @@ const uploadImages = async (req, res, next) => {
       item.lastUpdatedBy = req.user.id;
       await item.save();
 
-      
+
       for (const file of req.files) {
         await deleteLocalFile(file.path);
       }
 
-      
+
       await AuditLog.create({
         action: 'UPDATE',
         resource: 'INVENTORY',
@@ -951,7 +1369,7 @@ const uploadImages = async (req, res, next) => {
     } catch (uploadError) {
       console.error('ImgBB upload error:', uploadError);
 
-      
+
       for (const file of req.files) {
         await deleteLocalFile(file.path);
       }
@@ -966,7 +1384,7 @@ const uploadImages = async (req, res, next) => {
       });
     }
   } catch (error) {
-    
+
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await deleteLocalFile(file.path);
@@ -1008,10 +1426,10 @@ const deleteImage = async (req, res, next) => {
       });
     }
 
-    
+
     const imageToDelete = item.images[imageIndex];
 
-    
+
     const fs = require('fs').promises;
     try {
       await fs.unlink(imageToDelete.path);
@@ -1019,10 +1437,10 @@ const deleteImage = async (req, res, next) => {
       console.error('Error deleting file from filesystem:', err);
     }
 
-    
+
     item.images.splice(imageIndex, 1);
 
-    
+
     if (item.primaryImage === imageIndex) {
       item.primaryImage = 0;
     } else if (item.primaryImage > imageIndex) {
@@ -1032,7 +1450,7 @@ const deleteImage = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -1097,7 +1515,7 @@ const setPrimaryImage = async (req, res, next) => {
     item.lastUpdatedBy = req.user.id;
     await item.save();
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVENTORY',
@@ -1119,6 +1537,270 @@ const setPrimaryImage = async (req, res, next) => {
   }
 };
 
+
+
+const getItemsBySyncSource = async (req, res, next) => {
+  try {
+    const { source, page = 1, limit = 10 } = req.query;
+
+    if (!source || !['CustomerConnect', 'RouteStar'].includes(source)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Valid sync source is required (CustomerConnect or RouteStar)',
+          code: 'INVALID_SOURCE'
+        }
+      });
+    }
+
+    let skus = [];
+
+    if (source === 'CustomerConnect') {
+      const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+      const orders = await CustomerConnectOrder.find({ isDeleted: false })
+        .distinct('items.sku');
+      skus = orders;
+    } else if (source === 'RouteStar') {
+      const RouteStarInvoice = require('../models/RouteStarInvoice');
+      const invoices = await RouteStarInvoice.find({ isDeleted: false })
+        .distinct('items.sku');
+      skus = invoices;
+    }
+
+    
+    const query = {
+      skuCode: { $in: skus },
+      isActive: true,
+      isDeleted: false
+    };
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Inventory.countDocuments(query);
+
+    const items = await Inventory.find(query)
+      .populate('createdBy', 'username fullName')
+      .populate('lastUpdatedBy', 'username fullName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    
+    const itemsWithSync = await Promise.all(items.map(async (item) => {
+      const syncMetadata = await getSyncMetadata(item.skuCode);
+      return transformItem(item, null, syncMetadata);
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: itemsWithSync,
+        source,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get items by sync source error:', error);
+    next(error);
+  }
+};
+
+
+
+const getInventorySyncStatus = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Inventory.countDocuments({ isActive: true, isDeleted: false });
+
+    const items = await Inventory.find({ isActive: true, isDeleted: false })
+      .select('itemName skuCode quantity')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    
+    const syncStatusList = await Promise.all(items.map(async (item) => {
+      const syncMetadata = await getSyncMetadata(item.skuCode);
+      return {
+        _id: item._id,
+        itemName: item.itemName,
+        skuCode: item.skuCode,
+        currentQuantity: item.quantity.current,
+        sync: syncMetadata
+      };
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: syncStatusList,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get inventory sync status error:', error);
+    next(error);
+  }
+};
+
+
+const getStockMovements = async (req, res, next) => {
+  try {
+    const { sku, type, page = 1, limit = 50, startDate, endDate } = req.query;
+
+    const query = {};
+    if (sku) query.sku = sku;
+    if (type) query.type = type;
+    if (startDate || endDate) {
+      query.timestamp = {};
+      if (startDate) query.timestamp.$gte = new Date(startDate);
+      if (endDate) query.timestamp.$lte = new Date(endDate);
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await StockMovement.countDocuments(query);
+
+    const movements = await StockMovement.find(query)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('createdBy', 'name email')
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        movements,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get stock movements error:', error);
+    next(error);
+  }
+};
+
+
+const getSyncHealth = async (req, res, next) => {
+  try {
+    
+    const [totalItems, syncedItems, customerConnectOrders, routeStarInvoices] = await Promise.all([
+      Inventory.countDocuments({ isActive: true, isDeleted: false }),
+      Inventory.countDocuments({ isActive: true, isDeleted: false, 'quantity.current': { $gt: 0 } }),
+      CustomerConnectOrder.countDocuments(),
+      RouteStarInvoice.countDocuments()
+    ]);
+
+    
+    const [lastCustomerConnectSync, lastRouteStarSync] = await Promise.all([
+      CustomerConnectOrder.findOne().sort({ lastSyncedAt: -1 }).select('lastSyncedAt').lean(),
+      RouteStarInvoice.findOne().sort({ lastSyncedAt: -1 }).select('lastSyncedAt').lean()
+    ]);
+
+    
+    const unprocessedMovements = await StockMovement.countDocuments({ processed: false });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalItems,
+        syncedItems,
+        syncSources: {
+          customerConnect: {
+            totalOrders: customerConnectOrders,
+            lastSync: lastCustomerConnectSync?.lastSyncedAt || null
+          },
+          routeStar: {
+            totalInvoices: routeStarInvoices,
+            lastSync: lastRouteStarSync?.lastSyncedAt || null
+          }
+        },
+        unprocessedMovements,
+        healthStatus: unprocessedMovements === 0 ? 'healthy' : unprocessedMovements < 10 ? 'warning' : 'critical'
+      }
+    });
+  } catch (error) {
+    console.error('Get sync health error:', error);
+    next(error);
+  }
+};
+
+
+const getSyncInfo = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const item = await Inventory.findById(id).select('itemName skuCode quantity').lean();
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Inventory item not found'
+      });
+    }
+
+    
+    const syncMetadata = await getSyncMetadata(item.skuCode);
+
+    
+    const recentMovements = await StockMovement.find({ sku: item.skuCode })
+      .sort({ timestamp: -1 })
+      .limit(10)
+      .populate('createdBy', 'name email')
+      .lean();
+
+    
+    const [customerConnectOrders, routeStarInvoices] = await Promise.all([
+      CustomerConnectOrder.find({ 'items.sku': item.skuCode })
+        .sort({ lastSyncedAt: -1 })
+        .limit(5)
+        .select('orderNumber lastSyncedAt items.$')
+        .lean(),
+      RouteStarInvoice.find({ 'lineItems.sku': item.skuCode })
+        .sort({ lastSyncedAt: -1 })
+        .limit(5)
+        .select('invoiceNumber lastSyncedAt lineItems.$')
+        .lean()
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        item: {
+          _id: item._id,
+          itemName: item.itemName,
+          skuCode: item.skuCode,
+          currentQuantity: item.quantity.current
+        },
+        sync: syncMetadata,
+        recentMovements,
+        syncHistory: {
+          customerConnectOrders,
+          routeStarInvoices
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get sync info error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getInventoryItems,
   getInventoryItem,
@@ -1132,5 +1814,10 @@ module.exports = {
   getCategories,
   uploadImages,
   deleteImage,
-  setPrimaryImage
+  setPrimaryImage,
+  getItemsBySyncSource,
+  getInventorySyncStatus,
+  getStockMovements,
+  getSyncHealth,
+  getSyncInfo
 };

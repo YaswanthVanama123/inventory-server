@@ -24,7 +24,7 @@ class StockProcessor {
 
     for (const item of purchaseOrder.items) {
       try {
-        // Create stock movement IN
+        
         const movement = await StockMovement.create({
           sku: item.sku,
           type: 'IN',
@@ -38,7 +38,7 @@ class StockProcessor {
 
         movements.push(movement);
 
-        // Update stock summary
+        
         await this.updateStockSummary(item.sku, item.qty, 'IN', userId);
 
         console.log(`Stock IN: ${item.sku} +${item.qty} from PO ${purchaseOrder.orderNumber}`);
@@ -48,7 +48,7 @@ class StockProcessor {
       }
     }
 
-    // Mark purchase order as processed
+    
     purchaseOrder.stockProcessed = true;
     purchaseOrder.stockProcessedAt = new Date();
     await purchaseOrder.save();
@@ -71,17 +71,17 @@ class StockProcessor {
 
     for (const item of invoice.items) {
       try {
-        // Check if sufficient stock available
+        
         const stockSummary = await StockSummary.findOne({ sku: item.sku });
 
         if (!stockSummary || stockSummary.availableQty < item.qty) {
           console.warn(
             `Insufficient stock for ${item.sku}: available ${stockSummary?.availableQty || 0}, needed ${item.qty}`
           );
-          // Continue anyway but log the warning
+          
         }
 
-        // Create stock movement OUT
+        
         const movement = await StockMovement.create({
           sku: item.sku,
           type: 'OUT',
@@ -95,7 +95,7 @@ class StockProcessor {
 
         movements.push(movement);
 
-        // Update stock summary
+        
         await this.updateStockSummary(item.sku, item.qty, 'OUT', userId);
 
         console.log(`Stock OUT: ${item.sku} -${item.qty} from Invoice ${invoice.invoiceNumber}`);
@@ -105,7 +105,7 @@ class StockProcessor {
       }
     }
 
-    // Mark invoice as processed
+    
     invoice.stockProcessed = true;
     invoice.stockProcessedAt = new Date();
     await invoice.save();
@@ -124,7 +124,7 @@ class StockProcessor {
     let stockSummary = await StockSummary.findOne({ sku });
 
     if (!stockSummary) {
-      // Create new stock summary
+      
       const product = await Product.findOne({ sku });
 
       stockSummary = await StockSummary.create({
@@ -140,13 +140,13 @@ class StockProcessor {
       });
     }
 
-    // Update quantities based on movement type
+    
     if (type === 'IN') {
       stockSummary.addStock(qty);
     } else if (type === 'OUT') {
       stockSummary.removeStock(qty);
     } else if (type === 'ADJUST') {
-      stockSummary.availableQty += qty; // qty can be positive or negative
+      stockSummary.availableQty += qty; 
       stockSummary.lastMovement = new Date();
     }
 
@@ -211,18 +211,18 @@ class StockProcessor {
    * @returns {Promise<StockMovement>}
    */
   static async createAdjustment(sku, qty, reason, userId = null) {
-    // Create adjustment movement
+    
     const movement = await StockMovement.create({
       sku,
       type: 'ADJUST',
       qty,
       refType: 'ADJUSTMENT',
-      refId: userId, // Use userId as refId for manual adjustments
+      refId: userId, 
       notes: reason,
       createdBy: userId
     });
 
-    // Update stock summary
+    
     await this.updateStockSummary(sku, qty, 'ADJUST', userId);
 
     console.log(`Stock ADJUST: ${sku} ${qty > 0 ? '+' : ''}${qty} - ${reason}`);

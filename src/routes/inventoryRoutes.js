@@ -13,7 +13,12 @@ const {
   getCategories,
   uploadImages,
   deleteImage,
-  setPrimaryImage
+  setPrimaryImage,
+  getItemsBySyncSource,
+  getStockMovements,
+  getSyncHealth,
+  getSyncInfo,
+  getInventorySyncStatus
 } = require('../controllers/inventoryController');
 const { authenticate, requireAdmin, requireEmployee } = require('../middleware/auth');
 const { inventoryValidation, validate, parseFormDataJSON } = require('../middleware/validation');
@@ -22,15 +27,20 @@ const { uploadMultipleImagesOptional, uploadMultipleImages } = require('../middl
 
 router.use(authenticate);
 
-// POS-specific route (with weighted average prices)
+
 router.get('/pos', requireEmployee(), getInventoryItemsForPOS);
 
-// Regular inventory routes (with original prices)
+
 router.get('/', requireEmployee(), getInventoryItems);
 router.get('/low-stock', requireEmployee(), getLowStockItems);
 router.get('/categories', requireEmployee(), getCategories);
+router.get('/sync-source', requireEmployee(), getItemsBySyncSource);
+router.get('/stock-movements', requireEmployee(), getStockMovements);
+router.get('/sync-health', requireEmployee(), getSyncHealth);
+router.get('/sync-status', requireEmployee(), getInventorySyncStatus);
 router.get('/:id', requireEmployee(), getInventoryItem);
 router.get('/:id/history', requireEmployee(), getStockHistory);
+router.get('/:id/sync-info', requireEmployee(), getSyncInfo);
 router.patch('/:id/stock', requireEmployee(), inventoryValidation.updateStock, validate, updateStock);
 
 

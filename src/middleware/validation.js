@@ -165,7 +165,7 @@ const inventoryValidation = {
 
 const invoiceValidation = {
   create: [
-    // Invoice number is auto-generated, so it's optional
+    
     body('invoiceNumber')
       .optional()
       .trim()
@@ -213,7 +213,7 @@ const invoiceValidation = {
     body('items.*.discount')
       .optional()
       .isFloat({ min: 0 }).withMessage('Item discount must be non-negative'),
-    // Amounts are calculated by the backend, so they're all optional
+    
     body('amounts.subtotal')
       .optional()
       .isFloat({ min: 0 }).withMessage('Subtotal must be non-negative'),

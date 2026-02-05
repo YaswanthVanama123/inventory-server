@@ -34,7 +34,7 @@ class SyncScheduler {
       return;
     }
 
-    // Validate cron expression
+    
     const cronExpression = `*/${intervalMinutes} * * * *`;
     if (!cron.validate(cronExpression)) {
       throw new Error(`Invalid cron expression: ${cronExpression}`);
@@ -42,7 +42,7 @@ class SyncScheduler {
 
     console.log(`Starting sync scheduler with ${intervalMinutes} minute interval`);
 
-    // Schedule CustomerConnect sync
+    
     this.customerConnectTask = cron.schedule(
       cronExpression,
       async () => {
@@ -62,7 +62,7 @@ class SyncScheduler {
       }
     );
 
-    // Schedule RouteStar sync with offset to avoid overlap
+    
     const offsetMinutes = Math.floor(intervalMinutes / 2);
     const offsetCronExpression = `${offsetMinutes},${offsetMinutes + intervalMinutes} * * * *`;
 
@@ -166,7 +166,7 @@ class SyncScheduler {
   }
 }
 
-// Singleton instance
+
 let schedulerInstance = null;
 
 /**

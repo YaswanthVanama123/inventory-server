@@ -85,6 +85,9 @@ const approvalRoutes = require('./routes/approvalRoutes');
 const syncRoutes = require('./routes/syncRoutes');
 const warehouseRoutes = require('./routes/warehouseRoutes');
 const schedulerRoutes = require('./routes/schedulerRoutes');
+const inventorySchedulerRoutes = require('./routes/inventoryScheduler.routes');
+const customerconnectRoutes = require('./routes/customerconnect.routes');
+const routestarRoutes = require('./routes/routestar.routes');
 
 
 app.get('/health', (req, res) => {
@@ -111,6 +114,9 @@ app.use('/api', approvalRoutes);
 app.use('/api', syncRoutes);
 app.use('/api', warehouseRoutes);
 app.use('/api', schedulerRoutes);
+app.use('/api/inventory-scheduler', inventorySchedulerRoutes);
+app.use('/api/customerconnect', customerconnectRoutes);
+app.use('/api/routestar', routestarRoutes);
 
 
 app.use(notFound);
@@ -123,21 +129,31 @@ const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 
-  // Initialize scheduler if AUTO_START_SCHEDULER is enabled
+  
   if (process.env.AUTO_START_SCHEDULER === 'true') {
-    const { getScheduler } = require('./services/scheduler');
-    const scheduler = getScheduler();
+    const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+    const scheduler = getInventoryScheduler();
 
     try {
+      
+      const ordersLimit = !process.env.ORDERS_SYNC_LIMIT || process.env.ORDERS_SYNC_LIMIT === '0'
+        ? Infinity
+        : parseInt(process.env.ORDERS_SYNC_LIMIT);
+
+      const invoicesLimit = !process.env.INVOICES_SYNC_LIMIT || process.env.INVOICES_SYNC_LIMIT === '0'
+        ? Infinity
+        : parseInt(process.env.INVOICES_SYNC_LIMIT);
+
       scheduler.start({
-        intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
-        limit: 50,
+        cronExpression: process.env.SYNC_CRON_EXPRESSION || '0 3 * * *', 
+        ordersLimit,
+        invoicesLimit,
         processStock: true,
-        systemUserId: 'system'
+        timezone: process.env.TZ || 'America/New_York'
       });
-      console.log('Automated sync scheduler started');
+      console.log('✅ Inventory scheduler started - Daily sync at 3:00 AM (fetching ALL data)');
     } catch (error) {
-      console.error('Failed to start scheduler:', error.message);
+      console.error('Failed to start inventory scheduler:', error.message);
     }
   }
 });
@@ -145,24 +161,24 @@ const server = app.listen(PORT, () => {
 
 process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection: ${err.message}`);
-  const { getScheduler } = require('./services/scheduler');
-  getScheduler().stop();
+  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+  getInventoryScheduler().stop();
   server.close(() => process.exit(1));
 });
 
 
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
-  const { getScheduler } = require('./services/scheduler');
-  getScheduler().stop();
+  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+  getInventoryScheduler().stop();
   server.close(() => process.exit(1));
 });
 
-// Graceful shutdown
+
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
-  const { getScheduler } = require('./services/scheduler');
-  getScheduler().stop();
+  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+  getInventoryScheduler().stop();
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);
@@ -171,8 +187,8 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('SIGINT signal received: closing HTTP server');
-  const { getScheduler } = require('./services/scheduler');
-  getScheduler().stop();
+  const{ getInventoryScheduler } = require('./services/inventoryScheduler.service');
+  getInventoryScheduler().stop();
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);

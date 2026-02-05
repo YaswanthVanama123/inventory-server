@@ -25,7 +25,7 @@ class SyncRouteStar {
   async run(options = {}) {
     const { limit = 50, processStock = true } = options;
 
-    // Create sync log
+    
     this.syncLog = await SyncLog.create({
       source: 'routestar',
       startedAt: new Date(),
@@ -36,13 +36,13 @@ class SyncRouteStar {
     try {
       console.log('Starting RouteStar sync...');
 
-      // Initialize automation
+      
       this.automation = await new RouteStarAutomation().init();
 
-      // Login
+      
       await this.automation.login();
 
-      // Fetch invoices list
+      
       const invoicesList = await this.automation.fetchInvoicesList(limit);
       this.syncLog.recordsFound = invoicesList.length;
       await this.syncLog.save();
@@ -51,10 +51,10 @@ class SyncRouteStar {
       let updated = 0;
       let failed = 0;
 
-      // Process each invoice
+      
       for (const invoiceSummary of invoicesList) {
         try {
-          // Fetch invoice details
+          
           if (!invoiceSummary.detailUrl) {
             console.warn(`No detail URL for invoice ${invoiceSummary.invoiceNumber}, skipping`);
             failed++;
@@ -63,7 +63,7 @@ class SyncRouteStar {
 
           const invoiceDetails = await this.automation.fetchInvoiceDetails(invoiceSummary.detailUrl);
 
-          // Save or update invoice
+          
           const result = await this.saveInvoice(invoiceDetails);
 
           if (result.isNew) {
@@ -77,7 +77,7 @@ class SyncRouteStar {
         }
       }
 
-      // Process stock movements if requested
+      
       if (processStock) {
         console.log('Processing stock movements...');
         const processedCount = await StockProcessor.processUnprocessedInvoices(this.userId);
@@ -87,7 +87,7 @@ class SyncRouteStar {
         };
       }
 
-      // Update sync log
+      
       this.syncLog.recordsInserted = inserted;
       this.syncLog.recordsUpdated = updated;
       this.syncLog.recordsFailed = failed;
@@ -107,20 +107,20 @@ class SyncRouteStar {
     } catch (error) {
       console.error('RouteStar sync failed:', error);
 
-      // Take screenshot on error
+      
       if (this.automation && this.automation.page) {
         const screenshotPath = await this.automation.takeScreenshot('sync-error');
         this.syncLog.screenshotPath = screenshotPath;
       }
 
-      // Update sync log with error
+      
       this.syncLog.complete(false, error.message);
       this.syncLog.errorStack = error.stack;
       await this.syncLog.save();
 
       throw error;
     } finally {
-      // Close browser
+      
       if (this.automation) {
         await this.automation.close();
       }
@@ -133,15 +133,15 @@ class SyncRouteStar {
    * @returns {Promise<Object>} - { invoice, isNew }
    */
   async saveInvoice(invoiceDetails) {
-    // Check if invoice already exists
+    
     let invoice = await ExternalInvoice.findBySourceInvoiceId('routestar', invoiceDetails.invoiceNumber);
 
     const isNew = !invoice;
 
-    // Map items to internal SKUs
+    
     const mappedItems = await SKUMapper.mapItems(invoiceDetails.items, 'routestar');
 
-    // Prepare items array
+    
     const items = mappedItems.map(mapped => ({
       sku: mapped.sku,
       name: mapped.externalName || mapped.product?.name || 'Unknown',
@@ -151,11 +151,11 @@ class SyncRouteStar {
       rawText: mapped.externalName
     }));
 
-    // Parse date
+    
     const invoiceDate = this.parseDate(invoiceDetails.invoiceDate);
 
     if (isNew) {
-      // Create new invoice
+      
       invoice = await ExternalInvoice.create({
         source: 'routestar',
         sourceInvoiceId: invoiceDetails.invoiceNumber,
@@ -176,7 +176,7 @@ class SyncRouteStar {
 
       console.log(`Created new invoice: ${invoiceDetails.invoiceNumber}`);
     } else {
-      // Update existing invoice
+      
       invoice.status = this.normalizeStatus(invoiceDetails.status);
       invoice.invoiceDate = invoiceDate;
       invoice.customer = invoiceDetails.customer;

@@ -215,6 +215,16 @@ const invoiceSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  syncMetadata: {
+    isSynced: { type: Boolean, default: false },
+    source: {
+      type: String,
+      enum: ['manual', 'routestar'],
+      default: 'manual'
+    },
+    sourceInvoiceId: String,
+    lastSyncedAt: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now,

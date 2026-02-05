@@ -15,7 +15,7 @@ class SKUMapper {
 
     const normalizedSearch = searchTerm.toLowerCase().trim();
 
-    // Try exact SKU match first
+    
     let product = await Product.findOne({
       sku: normalizedSearch.toUpperCase(),
       isActive: true
@@ -23,7 +23,7 @@ class SKUMapper {
 
     if (product) return product;
 
-    // Try alias match
+    
     product = await Product.findOne({
       aliases: normalizedSearch,
       isActive: true
@@ -31,7 +31,7 @@ class SKUMapper {
 
     if (product) return product;
 
-    // Try fuzzy name match
+    
     product = await Product.findOne({
       name: { $regex: normalizedSearch, $options: 'i' },
       isActive: true
@@ -51,16 +51,16 @@ class SKUMapper {
   static async mapItem(externalItem, source) {
     const { name, sku } = externalItem;
 
-    // Try to find by external SKU first
+    
     let product = await this.findProduct(sku);
 
-    // If not found, try by name
+    
     if (!product && name) {
       product = await this.findProduct(name);
     }
 
     if (product) {
-      // Add the external name as alias if not already present
+      
       if (name && !product.aliases.includes(name.toLowerCase())) {
         product.addAlias(name);
         await product.save();
@@ -73,7 +73,7 @@ class SKUMapper {
       };
     }
 
-    // Product not found - return unmapped item
+    
     return {
       sku: sku || this.generateTempSKU(name),
       product: null,
@@ -122,11 +122,11 @@ class SKUMapper {
   static async createOrUpdateProduct(externalItem, source, userId = null) {
     const { name, sku, unitPrice } = externalItem;
 
-    // Try to find existing product
+    
     let product = await this.findProduct(sku || name);
 
     if (product) {
-      // Update existing product
+      
       if (source === 'customerconnect' && unitPrice) {
         product.lastPurchasePrice = unitPrice;
       } else if (source === 'routestar' && unitPrice) {
@@ -143,7 +143,7 @@ class SKUMapper {
       return product;
     }
 
-    // Create new product
+    
     const newSKU = sku || this.generateTempSKU(name);
 
     product = await Product.create({
@@ -203,11 +203,11 @@ class SKUMapper {
       throw new Error(`Temporary product ${tempSKU} not found`);
     }
 
-    // Check if real SKU already exists
+    
     const existingProduct = await Product.findOne({ sku: realSKU });
 
     if (existingProduct) {
-      // Merge temp product aliases into existing product
+      
       tempProduct.aliases.forEach(alias => {
         if (!existingProduct.aliases.includes(alias)) {
           existingProduct.addAlias(alias);
@@ -217,7 +217,7 @@ class SKUMapper {
       existingProduct.lastUpdatedBy = userId;
       await existingProduct.save();
 
-      // Delete temp product
+      
       tempProduct.isActive = false;
       tempProduct.lastUpdatedBy = userId;
       await tempProduct.save();
@@ -225,7 +225,7 @@ class SKUMapper {
       return existingProduct;
     }
 
-    // Update temp product with real SKU
+    
     tempProduct.sku = realSKU;
     tempProduct.lastUpdatedBy = userId;
     await tempProduct.save();

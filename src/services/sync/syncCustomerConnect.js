@@ -25,7 +25,7 @@ class SyncCustomerConnect {
   async run(options = {}) {
     const { limit = 50, processStock = true } = options;
 
-    // Create sync log
+    
     this.syncLog = await SyncLog.create({
       source: 'customerconnect',
       startedAt: new Date(),
@@ -36,13 +36,13 @@ class SyncCustomerConnect {
     try {
       console.log('Starting CustomerConnect sync...');
 
-      // Initialize automation
+      
       this.automation = await new CustomerConnectAutomation().init();
 
-      // Login
+      
       await this.automation.login();
 
-      // Fetch orders list
+      
       const ordersList = await this.automation.fetchOrdersList(limit);
       this.syncLog.recordsFound = ordersList.length;
       await this.syncLog.save();
@@ -51,10 +51,10 @@ class SyncCustomerConnect {
       let updated = 0;
       let failed = 0;
 
-      // Process each order
+      
       for (const orderSummary of ordersList) {
         try {
-          // Fetch order details
+          
           if (!orderSummary.detailUrl) {
             console.warn(`No detail URL for order ${orderSummary.orderNumber}, skipping`);
             failed++;
@@ -63,7 +63,7 @@ class SyncCustomerConnect {
 
           const orderDetails = await this.automation.fetchOrderDetails(orderSummary.detailUrl);
 
-          // Save or update purchase order
+          
           const result = await this.savePurchaseOrder(orderDetails);
 
           if (result.isNew) {
@@ -77,7 +77,7 @@ class SyncCustomerConnect {
         }
       }
 
-      // Process stock movements if requested
+      
       if (processStock) {
         console.log('Processing stock movements...');
         const processedCount = await StockProcessor.processUnprocessedPurchaseOrders(this.userId);
@@ -87,7 +87,7 @@ class SyncCustomerConnect {
         };
       }
 
-      // Update sync log
+      
       this.syncLog.recordsInserted = inserted;
       this.syncLog.recordsUpdated = updated;
       this.syncLog.recordsFailed = failed;
@@ -107,20 +107,20 @@ class SyncCustomerConnect {
     } catch (error) {
       console.error('CustomerConnect sync failed:', error);
 
-      // Take screenshot on error
+      
       if (this.automation && this.automation.page) {
         const screenshotPath = await this.automation.takeScreenshot('sync-error');
         this.syncLog.screenshotPath = screenshotPath;
       }
 
-      // Update sync log with error
+      
       this.syncLog.complete(false, error.message);
       this.syncLog.errorStack = error.stack;
       await this.syncLog.save();
 
       throw error;
     } finally {
-      // Close browser
+      
       if (this.automation) {
         await this.automation.close();
       }
@@ -133,15 +133,15 @@ class SyncCustomerConnect {
    * @returns {Promise<Object>} - { purchaseOrder, isNew }
    */
   async savePurchaseOrder(orderDetails) {
-    // Check if order already exists
+    
     let purchaseOrder = await PurchaseOrder.findBySourceOrderId('customerconnect', orderDetails.orderNumber);
 
     const isNew = !purchaseOrder;
 
-    // Map items to internal SKUs
+    
     const mappedItems = await SKUMapper.mapItems(orderDetails.items, 'customerconnect');
 
-    // Prepare items array
+    
     const items = mappedItems.map(mapped => ({
       sku: mapped.sku,
       name: mapped.externalName || mapped.product?.name || 'Unknown',
@@ -151,11 +151,11 @@ class SyncCustomerConnect {
       rawText: mapped.externalName
     }));
 
-    // Parse date
+    
     const orderDate = this.parseDate(orderDetails.orderDate);
 
     if (isNew) {
-      // Create new purchase order
+      
       purchaseOrder = await PurchaseOrder.create({
         source: 'customerconnect',
         sourceOrderId: orderDetails.orderNumber,
@@ -176,7 +176,7 @@ class SyncCustomerConnect {
 
       console.log(`Created new purchase order: ${orderDetails.orderNumber}`);
     } else {
-      // Update existing purchase order
+      
       purchaseOrder.status = this.normalizeStatus(orderDetails.status);
       purchaseOrder.orderDate = orderDate;
       purchaseOrder.vendor = orderDetails.vendor;

@@ -32,7 +32,7 @@ const stockMovementSchema = new mongoose.Schema({
   sourceRef: {
     type: String,
     trim: true
-  }, // External order/invoice number for reference
+  }, 
   timestamp: {
     type: Date,
     default: Date.now,
@@ -47,12 +47,12 @@ const stockMovementSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound indexes
+
 stockMovementSchema.index({ sku: 1, timestamp: -1 });
 stockMovementSchema.index({ refType: 1, refId: 1 });
 stockMovementSchema.index({ type: 1, timestamp: -1 });
 
-// Static methods
+
 stockMovementSchema.statics.getMovementsBySKU = function(sku, startDate, endDate) {
   const query = { sku: sku.toUpperCase() };
 

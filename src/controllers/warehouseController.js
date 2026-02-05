@@ -1,5 +1,7 @@
 const PurchaseOrder = require('../models/PurchaseOrder');
 const ExternalInvoice = require('../models/ExternalInvoice');
+const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const RouteStarInvoice = require('../models/RouteStarInvoice');
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 const Product = require('../models/Product');
@@ -7,7 +9,7 @@ const StockProcessor = require('../services/stockProcessor');
 const SKUMapper = require('../services/skuMapper');
 
 /**
- * Get all purchase orders
+ * Get all purchase orders (including CustomerConnect orders)
  * @route GET /api/warehouse/purchase-orders
  * @access Authenticated
  */
@@ -22,7 +24,8 @@ const getPurchaseOrders = async (req, res, next) => {
       page = 1,
       limit = 20,
       sortBy = 'orderDate',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      includeSync = 'true'
     } = req.query;
 
     const query = {};
@@ -50,15 +53,67 @@ const getPurchaseOrders = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    
+    let customerConnectOrders = [];
+    let ccTotal = 0;
+    if (includeSync === 'true') {
+      const ccQuery = {};
+      if (status) ccQuery.status = status;
+      if (vendor) ccQuery['vendor.name'] = { $regex: vendor, $options: 'i' };
+      if (startDate || endDate) {
+        ccQuery.orderDate = {};
+        if (startDate) ccQuery.orderDate.$gte = new Date(startDate);
+        if (endDate) ccQuery.orderDate.$lte = new Date(endDate);
+      }
+
+      ccTotal = await CustomerConnectOrder.countDocuments(ccQuery);
+      customerConnectOrders = await CustomerConnectOrder.find(ccQuery)
+        .populate('createdBy', 'username fullName')
+        .populate('lastUpdatedBy', 'username fullName')
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit));
+    }
+
+    
+    const enrichedPurchaseOrders = purchaseOrders.map(order => ({
+      ...order.toObject(),
+      syncMetadata: {
+        source: order.source || 'manual',
+        lastSynced: order.lastSyncedAt || order.updatedAt,
+        stockProcessed: order.stockProcessed || false,
+        stockProcessedAt: order.stockProcessedAt || null
+      }
+    }));
+
+    const enrichedCCOrders = customerConnectOrders.map(order => ({
+      ...order.toObject(),
+      syncMetadata: {
+        source: 'customerconnect',
+        lastSynced: order.lastSyncedAt,
+        stockProcessed: order.stockProcessed,
+        stockProcessedAt: order.stockProcessedAt
+      }
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        purchaseOrders,
+        purchaseOrders: enrichedPurchaseOrders,
+        customerConnectOrders: enrichedCCOrders,
         pagination: {
-          total,
-          page: parseInt(page),
-          pages: Math.ceil(total / parseInt(limit)),
-          limit: parseInt(limit)
+          purchaseOrders: {
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / parseInt(limit)),
+            limit: parseInt(limit)
+          },
+          customerConnectOrders: {
+            total: ccTotal,
+            page: parseInt(page),
+            pages: Math.ceil(ccTotal / parseInt(limit)),
+            limit: parseInt(limit)
+          }
         }
       }
     });
@@ -89,9 +144,20 @@ const getPurchaseOrder = async (req, res, next) => {
       });
     }
 
+    
+    const enrichedOrder = {
+      ...purchaseOrder.toObject(),
+      syncMetadata: {
+        source: purchaseOrder.source || 'manual',
+        lastSynced: purchaseOrder.lastSyncedAt || purchaseOrder.updatedAt,
+        stockProcessed: purchaseOrder.stockProcessed || false,
+        stockProcessedAt: purchaseOrder.stockProcessedAt || null
+      }
+    };
+
     res.status(200).json({
       success: true,
-      data: { purchaseOrder }
+      data: { purchaseOrder: enrichedOrder }
     });
   } catch (error) {
     console.error('Get purchase order error:', error);
@@ -100,7 +166,7 @@ const getPurchaseOrder = async (req, res, next) => {
 };
 
 /**
- * Get all external invoices
+ * Get all external invoices (including RouteStar invoices)
  * @route GET /api/warehouse/invoices
  * @access Authenticated
  */
@@ -115,7 +181,8 @@ const getExternalInvoices = async (req, res, next) => {
       page = 1,
       limit = 20,
       sortBy = 'invoiceDate',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      includeSync = 'true'
     } = req.query;
 
     const query = {};
@@ -143,15 +210,77 @@ const getExternalInvoices = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    
+    let routeStarInvoices = [];
+    let rsTotal = 0;
+    if (includeSync === 'true') {
+      const rsQuery = {};
+      if (status) {
+        
+        if (status === 'paid' || status === 'completed') {
+          rsQuery.status = { $in: ['Completed', 'Closed'] };
+        } else if (status === 'pending') {
+          rsQuery.status = 'Pending';
+        } else {
+          rsQuery.status = status;
+        }
+      }
+      if (customer) rsQuery['customer.name'] = { $regex: customer, $options: 'i' };
+      if (startDate || endDate) {
+        rsQuery.invoiceDate = {};
+        if (startDate) rsQuery.invoiceDate.$gte = new Date(startDate);
+        if (endDate) rsQuery.invoiceDate.$lte = new Date(endDate);
+      }
+
+      rsTotal = await RouteStarInvoice.countDocuments(rsQuery);
+      routeStarInvoices = await RouteStarInvoice.find(rsQuery)
+        .populate('createdBy', 'username fullName')
+        .populate('lastUpdatedBy', 'username fullName')
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit));
+    }
+
+    
+    const enrichedInvoices = invoices.map(invoice => ({
+      ...invoice.toObject(),
+      syncMetadata: {
+        source: invoice.source || 'manual',
+        lastSynced: invoice.lastSyncedAt || invoice.updatedAt,
+        stockProcessed: invoice.stockProcessed || false,
+        stockProcessedAt: invoice.stockProcessedAt || null
+      }
+    }));
+
+    const enrichedRSInvoices = routeStarInvoices.map(invoice => ({
+      ...invoice.toObject(),
+      syncMetadata: {
+        source: 'routestar',
+        syncSource: invoice.syncSource,
+        lastSynced: invoice.lastSyncedAt,
+        stockProcessed: invoice.stockProcessed,
+        stockProcessedAt: invoice.stockProcessedAt
+      }
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        invoices,
+        invoices: enrichedInvoices,
+        routeStarInvoices: enrichedRSInvoices,
         pagination: {
-          total,
-          page: parseInt(page),
-          pages: Math.ceil(total / parseInt(limit)),
-          limit: parseInt(limit)
+          invoices: {
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / parseInt(limit)),
+            limit: parseInt(limit)
+          },
+          routeStarInvoices: {
+            total: rsTotal,
+            page: parseInt(page),
+            pages: Math.ceil(rsTotal / parseInt(limit)),
+            limit: parseInt(limit)
+          }
         }
       }
     });
@@ -182,9 +311,20 @@ const getExternalInvoice = async (req, res, next) => {
       });
     }
 
+    
+    const enrichedInvoice = {
+      ...invoice.toObject(),
+      syncMetadata: {
+        source: invoice.source || 'manual',
+        lastSynced: invoice.lastSyncedAt || invoice.updatedAt,
+        stockProcessed: invoice.stockProcessed || false,
+        stockProcessedAt: invoice.stockProcessedAt || null
+      }
+    };
+
     res.status(200).json({
       success: true,
-      data: { invoice }
+      data: { invoice: enrichedInvoice }
     });
   } catch (error) {
     console.error('Get external invoice error:', error);
@@ -246,7 +386,7 @@ const getStockSummary = async (req, res, next) => {
 };
 
 /**
- * Get stock movements for a SKU
+ * Get stock movements for a SKU (including movements from sync sources)
  * @route GET /api/warehouse/stock/:sku/movements
  * @access Authenticated
  */
@@ -257,6 +397,7 @@ const getStockMovements = async (req, res, next) => {
       startDate,
       endDate,
       type,
+      source,
       page = 1,
       limit = 50
     } = req.query;
@@ -264,6 +405,7 @@ const getStockMovements = async (req, res, next) => {
     const query = { sku: sku.toUpperCase() };
 
     if (type) query.type = type;
+    if (source) query.source = source;
 
     if (startDate || endDate) {
       query.timestamp = {};
@@ -280,14 +422,68 @@ const getStockMovements = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Get current stock summary
+    
+    const enrichedMovements = movements.map(movement => {
+      const movementObj = movement.toObject();
+
+      
+      movementObj.syncMetadata = {
+        source: movementObj.source || 'manual',
+        refType: movementObj.refType,
+        refId: movementObj.refId,
+        timestamp: movementObj.timestamp
+      };
+
+      
+      if (movementObj.refType === 'PURCHASE_ORDER' && movementObj.source) {
+        movementObj.syncMetadata.syncSource = movementObj.source === 'customerconnect' ? 'CustomerConnect' : null;
+      } else if (movementObj.refType === 'INVOICE' && movementObj.source) {
+        movementObj.syncMetadata.syncSource = movementObj.source === 'routestar' ? 'RouteStar' : null;
+      }
+
+      return movementObj;
+    });
+
+    
     const stockSummary = await StockSummary.findOne({ sku: sku.toUpperCase() }).populate('product');
+
+    
+    const movementStats = await StockMovement.aggregate([
+      { $match: { sku: sku.toUpperCase() } },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            source: '$source',
+            refType: '$refType'
+          },
+          totalQty: { $sum: '$qty' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          sources: {
+            $push: {
+              source: '$_id.source',
+              refType: '$_id.refType',
+              totalQty: '$totalQty',
+              count: '$count'
+            }
+          },
+          totalQty: { $sum: '$totalQty' },
+          totalCount: { $sum: '$count' }
+        }
+      }
+    ]);
 
     res.status(200).json({
       success: true,
       data: {
-        movements,
+        movements: enrichedMovements,
         stockSummary,
+        movementStats,
         pagination: {
           total,
           page: parseInt(page),
@@ -335,7 +531,14 @@ const createStockAdjustment = async (req, res, next) => {
       success: true,
       message: 'Stock adjustment created successfully',
       data: {
-        movement,
+        movement: {
+          ...movement.toObject(),
+          syncMetadata: {
+            source: 'manual',
+            type: 'adjustment',
+            createdBy: req.user.id
+          }
+        },
         stockSummary
       }
     });
@@ -346,7 +549,7 @@ const createStockAdjustment = async (req, res, next) => {
 };
 
 /**
- * Get sales summary/statistics
+ * Get sales summary/statistics (including RouteStar data)
  * @route GET /api/warehouse/sales/summary
  * @access Authenticated
  */
@@ -354,44 +557,85 @@ const getSalesSummary = async (req, res, next) => {
   try {
     const {
       startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      endDate = new Date()
+      endDate = new Date(),
+      includeSync = 'true'
     } = req.query;
 
-    const stats = await ExternalInvoice.getSalesStats(new Date(startDate), new Date(endDate));
+    const start = new Date(startDate);
+    const end = new Date(endDate);
 
-    // Get top selling items
+    
+    const externalStats = await ExternalInvoice.getSalesStats(start, end);
+
+    
+    let routeStarStats = null;
+    if (includeSync === 'true') {
+      routeStarStats = await RouteStarInvoice.getSalesStats(start, end);
+    }
+
+    
     const topItems = await StockMovement.aggregate([
       {
         $match: {
           type: 'OUT',
           refType: 'INVOICE',
           timestamp: {
-            $gte: new Date(startDate),
-            $lte: new Date(endDate)
+            $gte: start,
+            $lte: end
           }
         }
       },
       {
         $group: {
-          _id: '$sku',
+          _id: {
+            sku: '$sku',
+            source: '$source'
+          },
           totalQty: { $sum: '$qty' },
           count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.sku',
+          totalQty: { $sum: '$totalQty' },
+          count: { $sum: '$count' },
+          sources: {
+            $push: {
+              source: '$_id.source',
+              qty: '$totalQty',
+              count: '$count'
+            }
+          }
         }
       },
       { $sort: { totalQty: -1 } },
       { $limit: 10 }
     ]);
 
-    // Populate product info
+    
     for (const item of topItems) {
       const product = await Product.findOne({ sku: item._id });
       item.product = product;
     }
 
+    
+    const combinedStats = {
+      totalSales: (externalStats.totalSales || 0) + (routeStarStats?.totalSales || 0),
+      totalInvoices: (externalStats.totalInvoices || 0) + (routeStarStats?.totalInvoices || 0),
+      averageInvoiceValue: routeStarStats
+        ? ((externalStats.totalSales || 0) + (routeStarStats.totalSales || 0)) / ((externalStats.totalInvoices || 0) + (routeStarStats.totalInvoices || 0))
+        : externalStats.averageInvoiceValue || 0,
+      breakdown: {
+        external: externalStats,
+        routeStar: routeStarStats
+      }
+    };
+
     res.status(200).json({
       success: true,
       data: {
-        stats,
+        stats: combinedStats,
         topItems,
         period: {
           startDate,
@@ -456,6 +700,385 @@ const mapSKU = async (req, res, next) => {
   }
 };
 
+/**
+ * Get warehouse sync health status
+ * @route GET /api/warehouse/sync/health
+ * @access Authenticated
+ */
+const getSyncHealth = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
+    const lastHour = new Date(now - 60 * 60 * 1000);
+
+    
+    const ccStats = {
+      totalOrders: await CustomerConnectOrder.countDocuments(),
+      recentOrders: await CustomerConnectOrder.countDocuments({
+        lastSyncedAt: { $gte: last24Hours }
+      }),
+      lastHourOrders: await CustomerConnectOrder.countDocuments({
+        lastSyncedAt: { $gte: lastHour }
+      }),
+      unprocessedOrders: await CustomerConnectOrder.countDocuments({
+        stockProcessed: false,
+        status: { $in: ['Complete', 'Processing', 'Shipped'] }
+      }),
+      processingErrors: await CustomerConnectOrder.countDocuments({
+        stockProcessingError: { $exists: true, $ne: null }
+      }),
+      lastSync: await CustomerConnectOrder.findOne()
+        .sort({ lastSyncedAt: -1 })
+        .select('lastSyncedAt')
+    };
+
+    
+    const rsStats = {
+      totalInvoices: await RouteStarInvoice.countDocuments(),
+      recentInvoices: await RouteStarInvoice.countDocuments({
+        lastSyncedAt: { $gte: last24Hours }
+      }),
+      lastHourInvoices: await RouteStarInvoice.countDocuments({
+        lastSyncedAt: { $gte: lastHour }
+      }),
+      unprocessedInvoices: await RouteStarInvoice.countDocuments({
+        stockProcessed: false,
+        isComplete: true,
+        status: { $in: ['Completed', 'Closed'] }
+      }),
+      processingErrors: await RouteStarInvoice.countDocuments({
+        stockProcessingError: { $exists: true, $ne: null }
+      }),
+      lastSync: await RouteStarInvoice.findOne()
+        .sort({ lastSyncedAt: -1 })
+        .select('lastSyncedAt syncSource')
+    };
+
+    
+    const movementStats = await StockMovement.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: last24Hours }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            source: '$source',
+            type: '$type'
+          },
+          count: { $sum: 1 },
+          totalQty: { $sum: '$qty' }
+        }
+      }
+    ]);
+
+    
+    const calculateHealthScore = () => {
+      let score = 100;
+
+      
+      const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+      if (ccStats.lastSync?.lastSyncedAt < twoHoursAgo) score -= 20;
+      if (rsStats.lastSync?.lastSyncedAt < twoHoursAgo) score -= 20;
+
+      
+      if (ccStats.unprocessedOrders > 10) score -= 15;
+      if (rsStats.unprocessedInvoices > 10) score -= 15;
+
+      
+      if (ccStats.processingErrors > 0) score -= 15;
+      if (rsStats.processingErrors > 0) score -= 15;
+
+      return Math.max(0, score);
+    };
+
+    const healthScore = calculateHealthScore();
+    const healthStatus = healthScore >= 80 ? 'healthy' : healthScore >= 50 ? 'degraded' : 'unhealthy';
+
+    res.status(200).json({
+      success: true,
+      data: {
+        healthScore,
+        healthStatus,
+        timestamp: now,
+        customerConnect: ccStats,
+        routeStar: rsStats,
+        stockMovements: {
+          last24Hours: movementStats
+        },
+        recommendations: [
+          ...(ccStats.unprocessedOrders > 10 ? ['Process pending CustomerConnect orders'] : []),
+          ...(rsStats.unprocessedInvoices > 10 ? ['Process pending RouteStar invoices'] : []),
+          ...(ccStats.processingErrors > 0 ? ['Review CustomerConnect processing errors'] : []),
+          ...(rsStats.processingErrors > 0 ? ['Review RouteStar processing errors'] : []),
+          ...(ccStats.lastSync?.lastSyncedAt < new Date(now - 2 * 60 * 60 * 1000)
+            ? ['CustomerConnect sync may be delayed'] : []),
+          ...(rsStats.lastSync?.lastSyncedAt < new Date(now - 2 * 60 * 60 * 1000)
+            ? ['RouteStar sync may be delayed'] : [])
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Get sync health error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get sync statistics for a date range
+ * @route GET /api/warehouse/sync/stats
+ * @access Authenticated
+ */
+const getSyncStats = async (req, res, next) => {
+  try {
+    const {
+      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      endDate = new Date()
+    } = req.query;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    
+    const ccOrderStats = await CustomerConnectOrder.aggregate([
+      {
+        $match: {
+          orderDate: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            status: '$status',
+            stockProcessed: '$stockProcessed'
+          },
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$total' }
+        }
+      }
+    ]);
+
+    const ccPurchaseStats = await CustomerConnectOrder.getPurchaseStats(start, end);
+    const ccTopVendors = await CustomerConnectOrder.getTopVendors(start, end, 5);
+
+    
+    const rsInvoiceStats = await RouteStarInvoice.aggregate([
+      {
+        $match: {
+          invoiceDate: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            status: '$status',
+            stockProcessed: '$stockProcessed',
+            syncSource: '$syncSource'
+          },
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$total' }
+        }
+      }
+    ]);
+
+    const rsSalesStats = await RouteStarInvoice.getSalesStats(start, end);
+    const rsTopCustomers = await RouteStarInvoice.getTopCustomers(start, end, 5);
+
+    
+    const stockMovementsBySyncSource = await StockMovement.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            source: '$source',
+            type: '$type',
+            refType: '$refType'
+          },
+          count: { $sum: 1 },
+          totalQty: { $sum: '$qty' }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        period: { startDate: start, endDate: end },
+        customerConnect: {
+          orderStats: ccOrderStats,
+          purchaseStats: ccPurchaseStats,
+          topVendors: ccTopVendors
+        },
+        routeStar: {
+          invoiceStats: rsInvoiceStats,
+          salesStats: rsSalesStats,
+          topCustomers: rsTopCustomers
+        },
+        stockMovements: {
+          bySyncSource: stockMovementsBySyncSource
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get sync stats error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get unprocessed sync items that need stock processing
+ * @route GET /api/warehouse/sync/unprocessed
+ * @access Authenticated
+ */
+const getUnprocessedSyncItems = async (req, res, next) => {
+  try {
+    const { limit = 50, source } = req.query;
+
+    let unprocessedOrders = [];
+    let unprocessedInvoices = [];
+
+    if (!source || source === 'customerconnect') {
+      unprocessedOrders = await CustomerConnectOrder.getUnprocessedOrders()
+        .limit(parseInt(limit));
+    }
+
+    if (!source || source === 'routestar') {
+      unprocessedInvoices = await RouteStarInvoice.getUnprocessedInvoices()
+        .limit(parseInt(limit));
+    }
+
+    
+    const enrichedOrders = unprocessedOrders.map(order => ({
+      ...order.toObject(),
+      syncMetadata: {
+        source: 'customerconnect',
+        type: 'purchase_order',
+        itemCount: order.items?.length || 0,
+        shouldProcess: order.shouldProcessStock
+      }
+    }));
+
+    const enrichedInvoices = unprocessedInvoices.map(invoice => ({
+      ...invoice.toObject(),
+      syncMetadata: {
+        source: 'routestar',
+        type: 'invoice',
+        itemCount: invoice.lineItems?.length || 0,
+        shouldProcess: invoice.shouldProcessStock
+      }
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        customerConnectOrders: enrichedOrders,
+        routeStarInvoices: enrichedInvoices,
+        summary: {
+          totalUnprocessedOrders: enrichedOrders.length,
+          totalUnprocessedInvoices: enrichedInvoices.length,
+          total: enrichedOrders.length + enrichedInvoices.length
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get unprocessed sync items error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Retry failed stock processing for sync items
+ * @route POST /api/warehouse/sync/retry-processing
+ * @access Admin only
+ */
+const retrySyncProcessing = async (req, res, next) => {
+  try {
+    const { source, id } = req.body;
+
+    if (!source || !id) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Source and ID are required',
+          code: 'INVALID_INPUT'
+        }
+      });
+    }
+
+    let result = null;
+    let itemType = '';
+
+    if (source === 'customerconnect') {
+      const order = await CustomerConnectOrder.findById(id);
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'CustomerConnect order not found',
+            code: 'ORDER_NOT_FOUND'
+          }
+        });
+      }
+
+      
+      order.stockProcessed = false;
+      order.stockProcessingError = null;
+      await order.save();
+
+      result = order;
+      itemType = 'CustomerConnect Order';
+    } else if (source === 'routestar') {
+      const invoice = await RouteStarInvoice.findById(id);
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'RouteStar invoice not found',
+            code: 'INVOICE_NOT_FOUND'
+          }
+        });
+      }
+
+      
+      invoice.stockProcessed = false;
+      invoice.stockProcessingError = null;
+      await invoice.save();
+
+      result = invoice;
+      itemType = 'RouteStar Invoice';
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid source. Must be "customerconnect" or "routestar"',
+          code: 'INVALID_SOURCE'
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${itemType} marked for reprocessing`,
+      data: {
+        item: result,
+        syncMetadata: {
+          source,
+          resetAt: new Date(),
+          resetBy: req.user.id
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Retry sync processing error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getPurchaseOrders,
   getPurchaseOrder,
@@ -466,5 +1089,9 @@ module.exports = {
   createStockAdjustment,
   getSalesSummary,
   getUnmappedProducts,
-  mapSKU
+  mapSKU,
+  getSyncHealth,
+  getSyncStats,
+  getUnprocessedSyncItems,
+  retrySyncProcessing
 };

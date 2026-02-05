@@ -2,6 +2,8 @@ const Invoice = require('../models/Invoice');
 const Inventory = require('../models/Inventory');
 const Purchase = require('../models/Purchase');
 const AuditLog = require('../models/AuditLog');
+const StockMovement = require('../models/StockMovement');
+const RouteStarInvoice = require('../models/RouteStarInvoice');
 const PDFDocument = require('pdfkit');
 
 
@@ -9,9 +11,9 @@ const PDFDocument = require('pdfkit');
 
 const createInvoice = async (req, res, next) => {
   try {
-    const { items, customer, taxRate, discount, notes, remarks, dueDate, paymentMethod, paymentStatus, status, coupon } = req.body;
+    const { items, customer, taxRate, discount, notes, remarks, dueDate, paymentMethod, paymentStatus, status, coupon, syncMetadata } = req.body;
 
-    
+
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
@@ -22,7 +24,7 @@ const createInvoice = async (req, res, next) => {
       });
     }
 
-    
+
     const processedItems = [];
     for (const item of items) {
       const inventoryItem = await Inventory.findById(item.inventory);
@@ -47,7 +49,7 @@ const createInvoice = async (req, res, next) => {
         });
       }
 
-      
+
       if (inventoryItem.quantity.current < item.quantity) {
         return res.status(400).json({
           success: false,
@@ -66,14 +68,14 @@ const createInvoice = async (req, res, next) => {
         unit: inventoryItem.quantity.unit || 'pieces',
         priceAtSale: item.unitPrice || item.priceAtSale || inventoryItem.pricing.sellingPrice,
         subtotal: 0,
-        purchaseAllocations: item.purchaseAllocations || [] // Store which purchases to deduct from
+        purchaseAllocations: item.purchaseAllocations || [] 
       });
     }
 
-    
+
     const calculatedDueDate = dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-    
+
     const invoiceNumber = await Invoice.generateInvoiceNumber();
 
 
@@ -89,12 +91,18 @@ const createInvoice = async (req, res, next) => {
       paymentMethod,
       paymentStatus: paymentStatus || 'pending',
       status: status || 'draft',
+      syncMetadata: syncMetadata || {
+        isSynced: false,
+        source: 'manual',
+        sourceInvoiceId: null,
+        lastSyncedAt: null
+      },
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
 
 
-    // Deduct stock from inventory and update purchase batches
+    
     for (const item of processedItems) {
       const inventoryItem = await Inventory.findById(item.inventory);
       const previousQuantity = inventoryItem.quantity.current;
@@ -113,7 +121,19 @@ const createInvoice = async (req, res, next) => {
 
       await inventoryItem.save();
 
-      // If purchaseAllocations are specified, deduct from specific purchase batches
+      
+      await StockMovement.create({
+        sku: item.skuCode,
+        type: 'OUT',
+        qty: item.quantity,
+        refType: 'INVOICE',
+        refId: invoice._id,
+        sourceRef: invoice.invoiceNumber,
+        notes: `Sale to ${customer.name}`,
+        createdBy: req.user.id
+      });
+
+      
       if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
         for (const allocation of item.purchaseAllocations) {
           const purchase = await Purchase.findById(allocation.purchaseId);
@@ -126,7 +146,7 @@ const createInvoice = async (req, res, next) => {
       }
     }
 
-    
+
     await AuditLog.create({
       action: 'CREATE',
       resource: 'INVOICE',
@@ -136,13 +156,14 @@ const createInvoice = async (req, res, next) => {
         invoiceNumber: invoice.invoiceNumber,
         customer: invoice.customer.name,
         total: invoice.totalAmount,
-        itemCount: invoice.items.length
+        itemCount: invoice.items.length,
+        source: invoice.syncMetadata?.source || 'manual'
       },
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
 
-    
+
     const populatedInvoice = await Invoice.findOne({ _id: invoice._id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName')
@@ -174,6 +195,7 @@ const getAllInvoices = async (req, res, next) => {
       endDate,
       search,
       itemId,
+      source, 
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
@@ -213,6 +235,11 @@ const getAllInvoices = async (req, res, next) => {
       }
     }
 
+    
+    if (source && source !== 'all') {
+      query['syncMetadata.source'] = source;
+    }
+
 
     if (search) {
       query.$or = [
@@ -238,10 +265,22 @@ const getAllInvoices = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    
+    const invoicesWithSyncInfo = invoices.map(invoice => {
+      const invoiceObj = invoice.toObject();
+      invoiceObj.syncInfo = {
+        source: invoiceObj.syncMetadata?.source || 'manual',
+        isSynced: invoiceObj.syncMetadata?.isSynced || false,
+        sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
+        lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
+      };
+      return invoiceObj;
+    });
+
     res.status(200).json({
       success: true,
       data: {
-        invoices,
+        invoices: invoicesWithSyncInfo,
         pagination: {
           total,
           page: parseInt(page),
@@ -276,9 +315,25 @@ const getInvoice = async (req, res, next) => {
       });
     }
 
+    
+    const stockMovements = await StockMovement.find({
+      refType: 'INVOICE',
+      refId: invoice._id
+    }).sort({ timestamp: -1 });
+
+    
+    const invoiceObj = invoice.toObject();
+    invoiceObj.syncInfo = {
+      source: invoiceObj.syncMetadata?.source || 'manual',
+      isSynced: invoiceObj.syncMetadata?.isSynced || false,
+      sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
+      lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
+    };
+    invoiceObj.stockMovements = stockMovements;
+
     res.status(200).json({
       success: true,
-      data: { invoice }
+      data: { invoice: invoiceObj }
     });
   } catch (error) {
     console.error('Get invoice error:', error);
@@ -313,7 +368,7 @@ const updateInvoice = async (req, res, next) => {
       });
     }
 
-    
+
     if (invoice.status === 'paid' && req.body.items) {
       return res.status(400).json({
         success: false,
@@ -324,9 +379,9 @@ const updateInvoice = async (req, res, next) => {
       });
     }
 
-    
+
     if (req.body.items) {
-      
+
       for (const item of invoice.items) {
         const inventoryItem = await Inventory.findById(item.inventory);
         if (inventoryItem) {
@@ -345,10 +400,22 @@ const updateInvoice = async (req, res, next) => {
           inventoryItem.lastUpdatedBy = req.user.id;
 
           await inventoryItem.save();
+
+          
+          await StockMovement.create({
+            sku: item.skuCode,
+            type: 'IN',
+            qty: item.quantity,
+            refType: 'ADJUSTMENT',
+            refId: invoice._id,
+            sourceRef: invoice.invoiceNumber,
+            notes: `Invoice update - stock restored`,
+            createdBy: req.user.id
+          });
         }
       }
 
-      
+
       const processedItems = [];
       for (const item of req.body.items) {
         const inventoryItem = await Inventory.findById(item.inventory);
@@ -373,7 +440,7 @@ const updateInvoice = async (req, res, next) => {
           });
         }
 
-        
+
         if (inventoryItem.quantity.current < item.quantity) {
           return res.status(400).json({
             success: false,
@@ -391,11 +458,11 @@ const updateInvoice = async (req, res, next) => {
           quantity: item.quantity,
           unit: inventoryItem.quantity.unit || 'pieces',
           priceAtSale: item.priceAtSale || inventoryItem.pricing.sellingPrice,
-          subtotal: 0 
+          subtotal: 0
         });
       }
 
-      
+
       for (const item of processedItems) {
         const inventoryItem = await Inventory.findById(item.inventory);
         const previousQuantity = inventoryItem.quantity.current;
@@ -413,12 +480,24 @@ const updateInvoice = async (req, res, next) => {
         inventoryItem.lastUpdatedBy = req.user.id;
 
         await inventoryItem.save();
+
+        
+        await StockMovement.create({
+          sku: item.skuCode,
+          type: 'OUT',
+          qty: item.quantity,
+          refType: 'INVOICE',
+          refId: invoice._id,
+          sourceRef: invoice.invoiceNumber,
+          notes: `Invoice update - stock deducted`,
+          createdBy: req.user.id
+        });
       }
 
       req.body.items = processedItems;
     }
 
-    
+
     const allowedUpdates = ['customer', 'items', 'taxRate', 'discount', 'notes', 'remarks', 'status', 'paymentStatus', 'paymentMethod', 'dueDate'];
     allowedUpdates.forEach(field => {
       if (req.body[field] !== undefined) {
@@ -429,7 +508,7 @@ const updateInvoice = async (req, res, next) => {
     invoice.lastUpdatedBy = req.user.id;
     await invoice.save();
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -443,7 +522,7 @@ const updateInvoice = async (req, res, next) => {
       userAgent: req.get('User-Agent')
     });
 
-    
+
     const populatedInvoice = await Invoice.findOne({ _id: invoice._id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category')
       .populate('createdBy', 'username fullName')
@@ -487,7 +566,7 @@ const deleteInvoice = async (req, res, next) => {
       });
     }
 
-    
+
     if (invoice.status === 'paid') {
       return res.status(400).json({
         success: false,
@@ -498,7 +577,7 @@ const deleteInvoice = async (req, res, next) => {
       });
     }
 
-    // Restore stock to inventory and purchase batches
+    
     for (const item of invoice.items) {
       const inventoryItem = await Inventory.findById(item.inventory);
       if (inventoryItem) {
@@ -518,7 +597,19 @@ const deleteInvoice = async (req, res, next) => {
 
         await inventoryItem.save();
 
-        // Restore remainingQuantity to purchase batches if allocations exist
+        
+        await StockMovement.create({
+          sku: item.skuCode,
+          type: 'IN',
+          qty: item.quantity,
+          refType: 'ADJUSTMENT',
+          refId: invoice._id,
+          sourceRef: invoice.invoiceNumber,
+          notes: `Invoice cancelled - stock restored`,
+          createdBy: req.user.id
+        });
+
+        
         if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
           for (const allocation of item.purchaseAllocations) {
             const purchase = await Purchase.findById(allocation.purchaseId);
@@ -532,7 +623,7 @@ const deleteInvoice = async (req, res, next) => {
       }
     }
 
-    
+
     invoice.status = 'cancelled';
     invoice.paymentStatus = 'cancelled';
     invoice.isDeleted = true;
@@ -541,7 +632,7 @@ const deleteInvoice = async (req, res, next) => {
     invoice.lastUpdatedBy = req.user.id;
     await invoice.save();
 
-    
+
     await AuditLog.create({
       action: 'DELETE',
       resource: 'INVOICE',
@@ -585,17 +676,17 @@ const generateInvoicePDF = async (req, res, next) => {
       });
     }
 
-    
+
     const doc = new PDFDocument({ margin: 50 });
 
-    
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`);
 
-    
+
     doc.pipe(res);
 
-    
+
     doc.fontSize(20).text('Your Company Name', 50, 50);
     doc.fontSize(10)
       .text('123 Business Street', 50, 75)
@@ -603,7 +694,7 @@ const generateInvoicePDF = async (req, res, next) => {
       .text('Email: company@example.com', 50, 105)
       .text('Phone: (123) 456-7890', 50, 120);
 
-    
+
     doc.fontSize(25).text('INVOICE', 400, 50);
     doc.fontSize(10)
       .text(`Invoice #: ${invoice.invoiceNumber}`, 400, 85)
@@ -612,13 +703,17 @@ const generateInvoicePDF = async (req, res, next) => {
       .text(`Status: ${invoice.status.toUpperCase()}`, 400, 130);
 
     
+    const syncSource = invoice.syncMetadata?.source || 'manual';
+    doc.text(`Source: ${syncSource.toUpperCase()}`, 400, 145);
+
+
     doc.fontSize(12).text('Bill To:', 50, 170);
     doc.fontSize(10)
       .text(invoice.customer.name, 50, 190)
       .text(invoice.customer.email || '', 50, 205)
       .text(invoice.customer.phone || '', 50, 220);
 
-    // Handle address as string or object
+    
     if (invoice.customer.address) {
       if (typeof invoice.customer.address === 'string') {
         doc.text(invoice.customer.address, 50, 235);
@@ -628,11 +723,11 @@ const generateInvoicePDF = async (req, res, next) => {
       }
     }
 
-    
+
     const tableTop = 300;
     const itemHeight = 30;
 
-    
+
     doc.fontSize(10).font('Helvetica-Bold');
     doc.text('Item', 50, tableTop);
     doc.text('SKU', 200, tableTop);
@@ -640,10 +735,10 @@ const generateInvoicePDF = async (req, res, next) => {
     doc.text('Unit Price', 340, tableTop);
     doc.text('Total', 450, tableTop);
 
-    
+
     doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
 
-    
+
     doc.font('Helvetica');
     let yPosition = tableTop + 25;
 
@@ -656,11 +751,11 @@ const generateInvoicePDF = async (req, res, next) => {
       yPosition += itemHeight;
     });
 
-    
+
     yPosition += 10;
     doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
 
-    
+
     yPosition += 20;
     doc.text('Subtotal:', 350, yPosition);
     doc.text(`$${invoice.subtotalAmount.toFixed(2)}`, 450, yPosition);
@@ -682,7 +777,7 @@ const generateInvoicePDF = async (req, res, next) => {
     doc.text('Total Amount:', 350, yPosition);
     doc.text(`$${invoice.totalAmount.toFixed(2)}`, 450, yPosition);
 
-    
+
     doc.fontSize(10).font('Helvetica');
     yPosition += 40;
 
@@ -699,7 +794,7 @@ const generateInvoicePDF = async (req, res, next) => {
       }
     }
 
-    
+
     yPosition += 20;
     if (invoice.notes) {
       doc.text('Notes:', 50, yPosition);
@@ -714,15 +809,15 @@ const generateInvoicePDF = async (req, res, next) => {
       doc.text(invoice.remarks, 50, yPosition, { width: 500 });
     }
 
-    
+
     const footerY = doc.page.height - 100;
     doc.fontSize(8)
       .text('Thank you for your business!', 50, footerY, { align: 'center', width: 500 });
 
-    
+
     doc.end();
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -748,7 +843,7 @@ const getInvoiceStats = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
 
-    
+
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -760,22 +855,28 @@ const getInvoiceStats = async (req, res, next) => {
       }
     }
 
-    
+
     const totalInvoices = await Invoice.countDocuments(dateFilter);
 
-    
+
     const invoicesByStatus = await Invoice.aggregate([
       { $match: dateFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
 
-    
+
     const invoicesByPaymentStatus = await Invoice.aggregate([
       { $match: dateFilter },
       { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
     ]);
 
     
+    const invoicesBySource = await Invoice.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: '$syncMetadata.source', count: { $sum: 1 }, total: { $sum: '$totalAmount' } } }
+    ]);
+
+
     const revenueStats = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'paid' } },
       {
@@ -788,7 +889,7 @@ const getInvoiceStats = async (req, res, next) => {
       }
     ]);
 
-    
+
     const pendingPayments = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'pending' } },
       {
@@ -800,14 +901,14 @@ const getInvoiceStats = async (req, res, next) => {
       }
     ]);
 
-    
+
     const overdueInvoices = await Invoice.countDocuments({
       ...dateFilter,
       paymentStatus: 'pending',
       dueDate: { $lt: new Date() }
     });
 
-    
+
     const topCustomers = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'paid' } },
       {
@@ -822,7 +923,7 @@ const getInvoiceStats = async (req, res, next) => {
       { $limit: 10 }
     ]);
 
-    
+
     const monthlyRevenue = await Invoice.aggregate([
       {
         $match: {
@@ -858,6 +959,7 @@ const getInvoiceStats = async (req, res, next) => {
         },
         statusBreakdown: invoicesByStatus,
         paymentStatusBreakdown: invoicesByPaymentStatus,
+        sourceBreakdown: invoicesBySource,
         topCustomers,
         monthlyRevenue
       }
@@ -895,19 +997,19 @@ const sendInvoiceEmail = async (req, res, next) => {
       });
     }
 
-    
-    
+
+
     console.log(`Email would be sent to: ${invoice.customer.email}`);
     console.log(`Invoice: ${invoice.invoiceNumber}`);
 
-    
+
     if (invoice.status === 'draft') {
       invoice.status = 'issued';
       invoice.lastUpdatedBy = req.user.id;
       await invoice.save();
     }
 
-    
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -936,6 +1038,203 @@ const sendInvoiceEmail = async (req, res, next) => {
   }
 };
 
+
+
+
+const getUnprocessedInvoices = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      source = 'routestar', 
+      sortBy = 'invoiceDate',
+      sortOrder = 'desc'
+    } = req.query;
+
+    
+    if (source === 'routestar') {
+      const query = {
+        stockProcessed: false,
+        isComplete: true
+      };
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const total = await RouteStarInvoice.countDocuments(query);
+
+      const sort = {};
+      sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+      const unprocessedInvoices = await RouteStarInvoice.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          invoices: unprocessedInvoices,
+          pagination: {
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / parseInt(limit)),
+            limit: parseInt(limit)
+          }
+        },
+        message: `Found ${total} unprocessed invoices from RouteStar`
+      });
+    } else {
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          invoices: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            pages: 0,
+            limit: parseInt(limit)
+          }
+        },
+        message: 'Manual invoices are processed upon creation'
+      });
+    }
+  } catch (error) {
+    console.error('Get unprocessed invoices error:', error);
+    next(error);
+  }
+};
+
+
+
+
+const getSyncedInvoices = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      source, 
+      startDate,
+      endDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const query = { isDeleted: false };
+
+    
+    if (source) {
+      query['syncMetadata.source'] = source;
+    }
+
+    
+    if (startDate || endDate) {
+      query.invoiceDate = {};
+      if (startDate) {
+        query.invoiceDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.invoiceDate.$lte = new Date(endDate);
+      }
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Invoice.countDocuments(query);
+
+    const sort = {};
+    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    const invoices = await Invoice.find(query)
+      .populate('createdBy', 'username fullName')
+      .populate('lastUpdatedBy', 'username fullName')
+      .populate('items.inventory', 'itemName skuCode category quantity pricing')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    
+    const invoicesWithSyncInfo = invoices.map(invoice => {
+      const invoiceObj = invoice.toObject();
+      invoiceObj.syncInfo = {
+        source: invoiceObj.syncMetadata?.source || 'manual',
+        isSynced: invoiceObj.syncMetadata?.isSynced || false,
+        sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
+        lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
+      };
+      return invoiceObj;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        invoices: invoicesWithSyncInfo,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get synced invoices error:', error);
+    next(error);
+  }
+};
+
+
+
+
+const getStockMovementsByInvoice = async (req, res, next) => {
+  try {
+    const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false });
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Invoice not found',
+          code: 'INVOICE_NOT_FOUND'
+        }
+      });
+    }
+
+    
+    const stockMovements = await StockMovement.find({
+      refType: 'INVOICE',
+      refId: invoice._id
+    })
+      .populate('createdBy', 'username fullName')
+      .sort({ timestamp: -1 });
+
+    
+    const movementsBySKU = {};
+    stockMovements.forEach(movement => {
+      if (!movementsBySKU[movement.sku]) {
+        movementsBySKU[movement.sku] = [];
+      }
+      movementsBySKU[movement.sku].push(movement);
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        invoice: {
+          id: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceDate: invoice.invoiceDate,
+          customer: invoice.customer.name
+        },
+        stockMovements,
+        movementsBySKU,
+        totalMovements: stockMovements.length
+      }
+    });
+  } catch (error) {
+    console.error('Get stock movements by invoice error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   createInvoice,
   getAllInvoices,
@@ -944,5 +1243,8 @@ module.exports = {
   deleteInvoice,
   generateInvoicePDF,
   getInvoiceStats,
-  sendInvoiceEmail
+  sendInvoiceEmail,
+  getUnprocessedInvoices,
+  getSyncedInvoices,
+  getStockMovementsByInvoice
 };

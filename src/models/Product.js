@@ -60,12 +60,12 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
+
 productSchema.index({ sku: 1 });
 productSchema.index({ name: 'text', aliases: 'text' });
 productSchema.index({ category: 1, isActive: 1 });
 
-// Instance methods
+
 productSchema.methods.addAlias = function(alias) {
   if (!this.aliases.includes(alias.toLowerCase())) {
     this.aliases.push(alias.toLowerCase());
@@ -73,7 +73,7 @@ productSchema.methods.addAlias = function(alias) {
   return this;
 };
 
-// Static methods
+
 productSchema.statics.findBySKUOrAlias = async function(searchTerm) {
   const normalizedSearch = searchTerm.toLowerCase().trim();
 

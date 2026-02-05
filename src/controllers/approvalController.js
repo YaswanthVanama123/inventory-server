@@ -93,7 +93,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
       });
     }
 
-    // Restore inventory quantity by subtracting the purchase quantity
+    
     const previousInventoryQuantity = inventoryItem.quantity.current;
     const newInventoryQuantity = previousInventoryQuantity - purchase.quantity;
 
@@ -110,7 +110,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
 
     await inventoryItem.save();
 
-    // Create audit log before permanent deletion
+    
     await AuditLog.create({
       action: 'DELETE_APPROVE',
       resource: 'PURCHASE',
@@ -129,7 +129,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
       userAgent: req.get('User-Agent')
     });
 
-    // Permanently delete the purchase
+    
     await Purchase.findByIdAndDelete(purchaseId);
 
     res.status(200).json({
@@ -179,7 +179,7 @@ const rejectPurchaseDeletion = async (req, res, next) => {
 
     const inventoryItem = await Inventory.findById(purchase.inventoryItem);
 
-    // Update purchase status to rejected
+    
     purchase.deletionStatus = 'rejected';
     purchase.deletionRejectedBy = req.user.id;
     purchase.deletionRejectedAt = Date.now();
@@ -188,7 +188,7 @@ const rejectPurchaseDeletion = async (req, res, next) => {
 
     await purchase.save();
 
-    // Create audit log
+    
     await AuditLog.create({
       action: 'DELETE_REJECT',
       resource: 'PURCHASE',

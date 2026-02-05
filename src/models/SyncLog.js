@@ -53,7 +53,7 @@ const syncLogSchema = new mongoose.Schema({
   },
   details: {
     type: mongoose.Schema.Types.Mixed
-  }, // Store additional sync details
+  }, 
   triggeredBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -62,17 +62,17 @@ const syncLogSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
+
 syncLogSchema.index({ source: 1, startedAt: -1 });
 syncLogSchema.index({ status: 1, source: 1 });
 
-// Virtual for duration
+
 syncLogSchema.virtual('duration').get(function() {
   if (!this.endedAt) return null;
-  return this.endedAt - this.startedAt; // milliseconds
+  return this.endedAt - this.startedAt; 
 });
 
-// Instance methods
+
 syncLogSchema.methods.complete = function(success = true, message = null) {
   this.endedAt = new Date();
   if (success) {
@@ -84,7 +84,7 @@ syncLogSchema.methods.complete = function(success = true, message = null) {
   return this;
 };
 
-// Static methods
+
 syncLogSchema.statics.getLatestSync = function(source) {
   return this.findOne({ source }).sort({ startedAt: -1 });
 };
@@ -134,7 +134,7 @@ syncLogSchema.statics.getSyncStats = async function(source, days = 30) {
   return result.length > 0 ? result[0] : null;
 };
 
-// Enable virtuals in JSON
+
 syncLogSchema.set('toJSON', { virtuals: true });
 syncLogSchema.set('toObject', { virtuals: true });
 

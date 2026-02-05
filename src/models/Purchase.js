@@ -80,6 +80,24 @@ const purchaseSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  syncMetadata: {
+    source: {
+      type: String,
+      enum: ['manual', 'customerconnect'],
+      default: 'manual'
+    },
+    isSynced: { type: Boolean, default: false },
+    lastSyncedAt: Date,
+    syncedAt: Date,
+    syncedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    purchaseOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseOrder' },
+    sourceOrderNumber: String,
+    purchaseOrderNumber: String,
+    stockProcessed: { type: Boolean, default: false },
+    stockProcessedAt: Date,
+    stockMovementIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StockMovement' }],
+    error: String
+  },
   isDeleted: {
     type: Boolean,
     default: false,

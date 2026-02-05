@@ -69,7 +69,7 @@ const invoiceSchema = new mongoose.Schema({
       required: [true, 'Line total is required'],
       min: [0, 'Line total cannot be negative']
     },
-    rawText: String // Original text from portal if needed for debugging
+    rawText: String 
   }],
   subtotal: {
     type: Number,
@@ -100,12 +100,12 @@ const invoiceSchema = new mongoose.Schema({
   },
   raw: {
     type: mongoose.Schema.Types.Mixed
-  }, // Store raw extracted data for debugging
+  }, 
   stockProcessed: {
     type: Boolean,
     default: false,
     index: true
-  }, // Track if stock movements were created
+  }, 
   stockProcessedAt: Date,
   notes: String,
   createdBy: {
@@ -120,12 +120,12 @@ const invoiceSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound indexes
+
 invoiceSchema.index({ source: 1, sourceInvoiceId: 1 }, { unique: true });
 invoiceSchema.index({ invoiceDate: -1, status: 1 });
 invoiceSchema.index({ 'customer.name': 1 });
 
-// Pre-save hook to calculate totals
+
 invoiceSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0) {
     this.subtotal = this.items.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -134,7 +134,7 @@ invoiceSchema.pre('save', function(next) {
   next();
 });
 
-// Static methods
+
 invoiceSchema.statics.findBySourceInvoiceId = function(source, sourceInvoiceId) {
   return this.findOne({ source, sourceInvoiceId });
 };
