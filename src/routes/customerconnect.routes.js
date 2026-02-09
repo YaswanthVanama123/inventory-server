@@ -379,6 +379,140 @@ router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
 });
 
 /**
+ * @route   GET /api/customerconnect/items/grouped
+ * @desc    Get all items from orders grouped by SKU with all order entries
+ * @access  Private
+ */
+router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    // Aggregate all items across all orders
+    const groupedItems = await CustomerConnectOrder.aggregate([
+      // Unwind items array to get individual items
+      { $unwind: '$items' },
+
+      // Group by SKU and item name
+      {
+        $group: {
+          _id: {
+            sku: '$items.sku',
+            name: '$items.name'
+          },
+          totalQuantity: { $sum: '$items.qty' },
+          totalValue: { $sum: '$items.lineTotal' },
+          avgUnitPrice: { $avg: '$items.unitPrice' },
+          orderCount: { $sum: 1 },
+          orders: {
+            $push: {
+              orderNumber: '$orderNumber',
+              poNumber: '$poNumber',
+              orderDate: '$orderDate',
+              status: '$status',
+              vendor: '$vendor.name',
+              qty: '$items.qty',
+              unitPrice: '$items.unitPrice',
+              lineTotal: '$items.lineTotal',
+              stockProcessed: '$stockProcessed'
+            }
+          }
+        }
+      },
+
+      // Sort by item name
+      { $sort: { '_id.name': 1 } },
+
+      // Project to clean format
+      {
+        $project: {
+          _id: 0,
+          sku: '$_id.sku',
+          name: '$_id.name',
+          totalQuantity: 1,
+          totalValue: 1,
+          avgUnitPrice: 1,
+          orderCount: 1,
+          orders: 1
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        items: groupedItems,
+        totalItems: groupedItems.length
+      }
+    });
+  } catch (error) {
+    console.error('Get grouped items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch grouped items',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   GET /api/customerconnect/items/:sku/orders
+ * @desc    Get all orders containing a specific SKU
+ * @access  Private
+ */
+router.get('/items/:sku/orders', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { sku } = req.params;
+
+    console.log(`[getOrdersBySKU] Looking for SKU: ${sku}`);
+
+    // Find all orders that contain this SKU
+    const orders = await CustomerConnectOrder.find({
+      'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
+    }).sort({ orderDate: -1 }).lean();
+
+    console.log(`[getOrdersBySKU] Found ${orders.length} orders`);
+
+    // Extract only the matching items from each order
+    const orderEntries = orders.map(order => {
+      const matchingItems = order.items.filter(item =>
+        item.sku.toLowerCase() === sku.toLowerCase()
+      );
+
+      return matchingItems.map(item => ({
+        orderNumber: order.orderNumber,
+        poNumber: order.poNumber,
+        orderDate: order.orderDate,
+        status: order.status,
+        vendor: order.vendor?.name || 'N/A',
+        sku: item.sku,
+        name: item.name,
+        qty: item.qty,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+        stockProcessed: order.stockProcessed
+      }));
+    }).flat();
+
+    console.log(`[getOrdersBySKU] Extracted ${orderEntries.length} matching entries`);
+
+    res.json({
+      success: true,
+      data: {
+        sku: sku,
+        entries: orderEntries,
+        totalOrders: orders.length,
+        totalQuantity: orderEntries.reduce((sum, entry) => sum + entry.qty, 0)
+      }
+    });
+  } catch (error) {
+    console.error('Get orders by SKU error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders for SKU',
+      error: error.message
+    });
+  }
+});
+
+/**
  * @route   DELETE /api/customerconnect/orders/all
  * @desc    Delete ALL CustomerConnect orders (for testing/cleanup)
  * @access  Private (Admin only)

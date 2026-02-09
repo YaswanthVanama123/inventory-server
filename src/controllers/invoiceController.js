@@ -1235,6 +1235,81 @@ const getStockMovementsByInvoice = async (req, res, next) => {
   }
 };
 
+/**
+ * Get grouped items from all invoices
+ * Groups items by SKU and item name, showing all invoice entries
+ */
+const getGroupedInvoiceItems = async (req, res, next) => {
+  try {
+    console.log('[getGroupedInvoiceItems] Starting aggregation...');
+
+    // Aggregate all items across all invoices
+    const groupedItems = await Invoice.aggregate([
+      // Unwind items array to get individual items
+      { $unwind: '$items' },
+
+      // Group by SKU and item name
+      {
+        $group: {
+          _id: {
+            sku: '$items.skuCode',
+            name: '$items.itemName'
+          },
+          totalQuantity: { $sum: '$items.quantity' },
+          totalValue: { $sum: '$items.subtotal' },
+          avgUnitPrice: { $avg: '$items.priceAtSale' },
+          invoiceCount: { $sum: 1 },
+          invoices: {
+            $push: {
+              invoiceId: '$_id',
+              invoiceNumber: '$invoiceNumber',
+              invoiceDate: '$invoiceDate',
+              customerName: '$customer.name',
+              customerEmail: '$customer.email',
+              quantity: '$items.quantity',
+              unit: '$items.unit',
+              priceAtSale: '$items.priceAtSale',
+              subtotal: '$items.subtotal',
+              status: '$status',
+              paymentStatus: '$paymentStatus'
+            }
+          }
+        }
+      },
+
+      // Sort by item name
+      { $sort: { '_id.name': 1 } },
+
+      // Project to clean format
+      {
+        $project: {
+          _id: 0,
+          sku: '$_id.sku',
+          name: '$_id.name',
+          totalQuantity: 1,
+          totalValue: 1,
+          avgUnitPrice: 1,
+          invoiceCount: 1,
+          invoices: 1
+        }
+      }
+    ]);
+
+    console.log(`[getGroupedInvoiceItems] Found ${groupedItems.length} grouped items`);
+
+    res.json({
+      success: true,
+      data: {
+        items: groupedItems,
+        totalItems: groupedItems.length
+      }
+    });
+  } catch (error) {
+    console.error('Get grouped invoice items error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   createInvoice,
   getAllInvoices,
@@ -1246,5 +1321,6 @@ module.exports = {
   sendInvoiceEmail,
   getUnprocessedInvoices,
   getSyncedInvoices,
-  getStockMovementsByInvoice
+  getStockMovementsByInvoice,
+  getGroupedInvoiceItems
 };

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Purchase = require('../models/Purchase');
 const Inventory = require('../models/Inventory');
 const AuditLog = require('../models/AuditLog');
@@ -20,7 +21,27 @@ const createPurchase = async (req, res, next) => {
       syncMetadata
     } = req.body;
 
-    const inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
+    // Check if inventoryId is a valid MongoDB ObjectId
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
+
+    console.log(`[createPurchase] Looking for inventory: ${inventoryId}`);
+
+    let inventoryItem;
+    if (isValidObjectId && inventoryId.length === 24) {
+      // Try to find by ObjectId
+      inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
+      console.log(`[createPurchase] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
+    }
+
+    // If not found by ObjectId or invalid ObjectId, try SKU code (case-insensitive)
+    if (!inventoryItem) {
+      console.log(`[createPurchase] Trying SKU code search: ${inventoryId}`);
+      inventoryItem = await Inventory.findOne({
+        skuCode: { $regex: new RegExp(`^${inventoryId}$`, 'i') },
+        isDeleted: false
+      });
+      console.log(`[createPurchase] Search by SKU result:`, inventoryItem ? `Found: ${inventoryItem.skuCode}` : 'Not found');
+    }
 
     if (!inventoryItem) {
       return res.status(404).json({
@@ -46,7 +67,7 @@ const createPurchase = async (req, res, next) => {
     }
 
     const purchase = await Purchase.create({
-      inventoryItem: inventoryId,
+      inventoryItem: inventoryItem._id,
       purchaseDate: purchaseDate || Date.now(),
       quantity,
       unit: inventoryItem.quantity.unit,
@@ -140,9 +161,31 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
       source = 'all' 
     } = req.query;
 
-    const inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
+    // Check if inventoryId is a valid MongoDB ObjectId
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
+
+    console.log(`[getPurchasesByInventoryItem] Looking for inventory: ${inventoryId}`);
+    console.log(`[getPurchasesByInventoryItem] Is valid ObjectId: ${isValidObjectId}`);
+
+    let inventoryItem;
+    if (isValidObjectId && inventoryId.length === 24) {
+      // Try to find by ObjectId
+      inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
+      console.log(`[getPurchasesByInventoryItem] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
+    }
+
+    // If not found by ObjectId or invalid ObjectId, try SKU code (case-insensitive)
+    if (!inventoryItem) {
+      console.log(`[getPurchasesByInventoryItem] Trying SKU code search (case-insensitive): ${inventoryId}`);
+      inventoryItem = await Inventory.findOne({
+        skuCode: { $regex: new RegExp(`^${inventoryId}$`, 'i') },
+        isDeleted: false
+      });
+      console.log(`[getPurchasesByInventoryItem] Search by SKU result:`, inventoryItem ? `Found: ${inventoryItem.skuCode}` : 'Not found');
+    }
 
     if (!inventoryItem) {
+      console.log(`[getPurchasesByInventoryItem] Item not found. Searched for: ${inventoryId}`);
       return res.status(404).json({
         success: false,
         error: {
@@ -152,8 +195,10 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
       });
     }
 
+    console.log(`[getPurchasesByInventoryItem] Found inventory item: ${inventoryItem.itemName} (${inventoryItem.skuCode})`);
+
     const query = {
-      inventoryItem: inventoryId,
+      inventoryItem: inventoryItem._id,
       isDeleted: false
     };
 
@@ -621,9 +666,24 @@ const getPurchaseAnalytics = async (req, res, next) => {
       if (endDate) query.purchaseDate.$lte = new Date(endDate);
     }
 
-    
+
     if (inventoryId) {
-      query.inventoryItem = inventoryId;
+      // Check if inventoryId is a valid MongoDB ObjectId
+      const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
+
+      if (isValidObjectId && inventoryId.length === 24) {
+        // Use ObjectId directly
+        query.inventoryItem = inventoryId;
+      } else {
+        // Look up by SKU code
+        const inventoryItem = await Inventory.findOne({ skuCode: inventoryId.toUpperCase(), isDeleted: false });
+        if (inventoryItem) {
+          query.inventoryItem = inventoryItem._id;
+        } else {
+          // If not found, set an invalid ObjectId to return empty results
+          query.inventoryItem = new mongoose.Types.ObjectId();
+        }
+      }
     }
 
     

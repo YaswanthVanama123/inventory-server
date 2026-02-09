@@ -8,7 +8,8 @@ const {
   deleteInvoice,
   generateInvoicePDF,
   getInvoiceStats,
-  sendInvoiceEmail
+  sendInvoiceEmail,
+  getGroupedInvoiceItems
 } = require('../controllers/invoiceController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { invoiceValidation, validate } = require('../middleware/validation');
@@ -18,7 +19,10 @@ const { param } = require('express-validator');
 router.use(authenticate);
 router.use(requireAdmin());
 
+// Get grouped items from all invoices
+router.get('/items/grouped', getGroupedInvoiceItems);
 
+// Get invoice statistics
 router.get('/stats', getInvoiceStats);
 
 
