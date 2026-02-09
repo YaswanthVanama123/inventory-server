@@ -40,6 +40,83 @@ class RouteStarNavigator {
   }
 
   /**
+   * Sort table by Invoice # column
+   * @param {string} direction - 'asc' for ascending (old first), 'desc' for descending (new first)
+   */
+  async sortByInvoiceNumber(direction = 'desc') {
+    console.log(`Sorting invoices by Invoice # (${direction === 'desc' ? 'newest first' : 'oldest first'})...`);
+
+    try {
+      // Try different selectors for the Invoice # column header
+      let invoiceHeader = null;
+
+      // Try selector 1: .columnSorting in 2nd th
+      invoiceHeader = await this.page.$('table.htCore thead th:nth-of-type(2) .columnSorting');
+
+      // Try selector 2: Just the 2nd th element itself
+      if (!invoiceHeader) {
+        console.log('  Trying alternative selector...');
+        invoiceHeader = await this.page.$('table.htCore thead th:nth-of-type(2)');
+      }
+
+      // Try selector 3: Look for span with text "Invoice #"
+      if (!invoiceHeader) {
+        console.log('  Trying text-based selector...');
+        const headers = await this.page.$$('table.htCore thead th');
+        for (const header of headers) {
+          const text = await header.textContent();
+          if (text && text.includes('Invoice #')) {
+            invoiceHeader = header;
+            break;
+          }
+        }
+      }
+
+      if (!invoiceHeader) {
+        console.log('⚠️  Could not find Invoice # column header for sorting - will proceed without sorting');
+        return false;
+      }
+
+      // Check if element is visible before clicking
+      const isVisible = await invoiceHeader.isVisible().catch(() => false);
+      if (!isVisible) {
+        console.log('⚠️  Invoice # column header is not visible - will proceed without sorting');
+        return false;
+      }
+
+      // Click once for ascending (default), twice for descending
+      // First click - ascending
+      await invoiceHeader.click({ timeout: 5000 });
+      await this.page.waitForTimeout(1500);
+      console.log('  Clicked once (ascending)');
+
+      if (direction === 'desc') {
+        // Second click - descending
+        await invoiceHeader.click({ timeout: 5000 });
+        await this.page.waitForTimeout(1500);
+        console.log('  Clicked twice (descending)');
+      }
+
+      console.log(`✓ Table sorted by Invoice # (${direction === 'desc' ? 'descending' : 'ascending'})`);
+      return true;
+    } catch (error) {
+      console.log(`⚠️  Sorting failed: ${error.message} - will proceed without sorting`);
+
+      // Take screenshot for debugging
+      try {
+        const timestamp = Date.now();
+        const screenshotPath = `./screenshots/sort-failed-${timestamp}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`  Screenshot saved to: ${screenshotPath}`);
+      } catch (screenshotError) {
+        console.log(`  Could not save screenshot: ${screenshotError.message}`);
+      }
+
+      return false;
+    }
+  }
+
+  /**
    * Navigate to closed invoices page
    */
   async navigateToClosedInvoices() {
@@ -83,10 +160,13 @@ class RouteStarNavigator {
     const nextButton = await this.page.$(this.selectors.pagination.nextButton);
 
     if (!nextButton) {
+      console.log('❌ Next button not found (either last page or disabled)');
       return false;
     }
 
-    
+    console.log('✓ Next button found, preparing to click');
+
+    // Close any dialogs that might be open
     try {
       const dialog = await this.page.$('.jconfirm');
       if (dialog) {
@@ -100,10 +180,19 @@ class RouteStarNavigator {
         }
       }
     } catch (err) {
-      
+      // No dialog, continue
     }
 
-    await nextButton.click();
+    // Click the link inside the next button li element
+    const nextLink = await nextButton.$('a');
+    if (nextLink) {
+      console.log('Clicking next page link...');
+      await nextLink.click();
+    } else {
+      console.log('Clicking next button element...');
+      await nextButton.click();
+    }
+
     await this.page.waitForTimeout(3000);
     return true;
   }

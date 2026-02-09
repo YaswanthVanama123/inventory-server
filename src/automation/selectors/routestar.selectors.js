@@ -22,60 +22,74 @@ module.exports = {
   invoicesList: {
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
-    invoiceNumber: 'td:nth-child(2) a',
-    invoiceLink: 'td:nth-child(2) a',
-    invoiceDate: 'td:nth-child(3)',
-    enteredBy: 'td:nth-child(4)',
-    assignedTo: 'td:nth-child(5)',
-    stop: 'td:nth-child(6)',
-    customerName: 'td:nth-child(7) a',
-    customerLink: 'td:nth-child(7) a',
-    invoiceType: 'td:nth-child(8)',
-    serviceNotes: 'td:nth-child(9)',
-    status: 'td:nth-child(10)',
-    complete: 'td:nth-child(11) input[type="checkbox"]',
-    posted: 'td:nth-child(12) input[type="checkbox"]',
-    invoiceTotal: 'td:nth-child(13)',
-    lastModified: 'td:nth-child(14)',
-    payment: 'td:nth-child(15)',
-    arrivalTime: 'td:nth-child(16)'
+    invoiceNumber: 'td:nth-of-type(1) a',
+    invoiceLink: 'td:nth-of-type(1) a',
+    invoiceDate: 'td:nth-of-type(2)',
+    enteredBy: 'td:nth-of-type(3)',
+    assignedTo: 'td:nth-of-type(4)',
+    stop: 'td:nth-of-type(5)',
+    customerName: 'td:nth-of-type(6) a',
+    customerLink: 'td:nth-of-type(6) a',
+    invoiceType: 'td:nth-of-type(7)',
+    serviceNotes: 'td:nth-of-type(8)',
+    status: 'td:nth-of-type(9)',
+    complete: 'td:nth-of-type(10) input[type="checkbox"]',
+    posted: 'td:nth-of-type(11) input[type="checkbox"]',
+    invoiceTotal: 'td:nth-of-type(12)',
+    lastModified: 'td:nth-of-type(13)',
+    payment: 'td:nth-of-type(14)',
+    arrivalTime: 'td:nth-of-type(15)'
   },
 
   closedInvoicesList: {
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
-    invoiceNumber: 'td:nth-child(2) a',
-    invoiceLink: 'td:nth-child(2) a',
-    invoiceDate: 'td:nth-child(3)',
-    enteredBy: 'td:nth-child(4)',
-    assignedTo: 'td:nth-child(5)',
-    stop: 'td:nth-child(6)',
-    customerName: 'td:nth-child(7) a',
-    customerLink: 'td:nth-child(7) a',
-    invoiceType: 'td:nth-child(8)',
-    serviceNotes: 'td:nth-child(9)',
-    status: 'td:nth-child(10)',
-    complete: 'td:nth-child(11) input[type="checkbox"]',
-    posted: 'td:nth-child(12) input[type="checkbox"]',
-    invoiceTotal: 'td:nth-child(13)',
-    lastModified: 'td:nth-child(14)',
-    payment: 'td:nth-child(15)',
-    arrivalTime: 'td:nth-child(16)'
+    invoiceNumber: 'td:nth-of-type(1) a',
+    invoiceLink: 'td:nth-of-type(1) a',
+    invoiceDate: 'td:nth-of-type(2)',
+    enteredBy: 'td:nth-of-type(3)',
+    assignedTo: 'td:nth-of-type(4)',
+    stop: 'td:nth-of-type(5)',
+    customerName: 'td:nth-of-type(6) a',
+    customerLink: 'td:nth-of-type(6) a',
+    invoiceType: 'td:nth-of-type(7)',
+    serviceNotes: 'td:nth-of-type(8)',
+    status: 'td:nth-of-type(9)',
+    complete: 'td:nth-of-type(10) input[type="checkbox"]',
+    posted: 'td:nth-of-type(11) input[type="checkbox"]',
+    invoiceTotal: 'td:nth-of-type(12)',
+    lastModified: 'td:nth-of-type(13)',
+    payment: 'td:nth-of-type(14)',
+    arrivalTime: 'td:nth-of-type(15)'
   },
 
-  invoiceDetails: {
-    invoiceInfo: '.invoice-header',
-    lineItemsTable: '.line-items-table',
-    lineItemRows: '.line-items-table tbody tr',
-    itemDescription: 'td:nth-child(1)',
-    itemQuantity: 'td:nth-child(2)',
-    itemPrice: 'td:nth-child(3)',
-    itemTotal: 'td:nth-child(4)'
+  invoiceDetail: {
+    // Handsontable structure
+    itemsTable: 'div.ht_master',
+    // Individual item fields (relative to row)
+    itemName: 'td:nth-of-type(1)',          // Item column
+    itemDescription: 'td:nth-of-type(2)',   // Description column
+    itemQuantity: 'td:nth-of-type(3)',      // Qty column
+    itemRate: 'td:nth-of-type(4)',          // Rate column
+    itemAmount: 'td:nth-of-type(5)',        // Amount column
+    itemClass: 'td:nth-of-type(6)',         // Class column
+    itemWarehouse: 'td:nth-of-type(7)',     // Warehouse column
+    itemTaxCode: 'td:nth-of-type(8)',       // Tax Code column
+    itemLocation: 'td:nth-of-type(9)',      // Item Location column
+    // Invoice totals
+    subtotal: '#inv_subtotal',
+    tax: '#inv_taxtotal',
+    total: '#inv_total',
+    // Additional info
+    signedBy: '#txt_signedby',
+    invoiceMemo: '#txt_memo',
+    serviceNotes: '#txt_service_notes',
+    salesTaxRate: '#txt_inv_taxrate'
   },
 
   pagination: {
-    nextButton: 'button.next-page',
-    prevButton: 'button.prev-page',
-    pageInfo: '.page-info'
+    nextButton: '.pagination li.next:not(.disabled)',
+    prevButton: '.pagination li.prev:not(.disabled)',
+    pageInfo: '#page-selection'
   }
 };

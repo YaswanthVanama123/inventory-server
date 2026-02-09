@@ -26,7 +26,7 @@ class RouteStarAutomation extends BaseAutomation {
 
     
     this.navigator = new RouteStarNavigator(this.page, config, selectors);
-    this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors);
+    this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
 
     return this;
   }
@@ -88,25 +88,27 @@ class RouteStarAutomation extends BaseAutomation {
   /**
    * Fetch list of invoices (pending)
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
+   * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
    */
-  async fetchInvoicesList(limit = Infinity) {
+  async fetchInvoicesList(limit = Infinity, direction = 'new') {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    return await this.fetcher.fetchPendingInvoices(limit);
+    return await this.fetcher.fetchPendingInvoices(limit, direction);
   }
 
   /**
    * Fetch list of closed invoices
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
+   * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
    */
-  async fetchClosedInvoicesList(limit = Infinity) {
+  async fetchClosedInvoicesList(limit = Infinity, direction = 'new') {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    return await this.fetcher.fetchClosedInvoices(limit);
+    return await this.fetcher.fetchClosedInvoices(limit, direction);
   }
 
   /**

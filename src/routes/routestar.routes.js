@@ -190,6 +190,185 @@ router.post('/sync/details/:invoiceNumber', authenticate, requireAdmin(), async 
 });
 
 /**
+ * @route   POST /api/routestar/sync/all-details
+ * @desc    Sync detailed line items for all invoices without details
+ * @access  Private
+ */
+router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { limit = 0 } = req.body;
+
+    console.log('\n========================================');
+    console.log('Starting sync all invoice details request');
+    console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
+    console.log('========================================\n');
+
+    console.log('Created sync service, initializing...');
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    console.log('Sync service initialized, starting sync...');
+    const results = await syncService.syncAllInvoiceDetails(limit);
+
+    console.log('\n========================================');
+    console.log('Invoice details sync completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Invoice details synced successfully',
+      data: results
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ INVOICE DETAILS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync invoice details',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
+
+/**
+ * @route   POST /api/routestar/sync/pending-with-details
+ * @desc    Sync pending invoices with their details (keeps browser open)
+ * @access  Private
+ */
+router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { limit = 0, direction = 'new' } = req.body;
+
+    console.log('\n========================================');
+    console.log('Starting pending invoices + details sync');
+    console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}, Direction: ${direction}`);
+    console.log('========================================\n');
+
+    console.log('Created sync service, initializing...');
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    console.log('Sync service initialized, starting sync...');
+
+    // Step 1: Sync pending invoices
+    const invoiceResults = await syncService.syncPendingInvoices(limit, direction);
+    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
+
+    // Step 2: Sync invoice details (reusing same browser session)
+    const detailsResults = await syncService.syncAllInvoiceDetails(0);
+    console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
+
+    console.log('\n========================================');
+    console.log('Pending invoices + details sync completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Pending invoices and details synced successfully',
+      data: {
+        invoices: invoiceResults,
+        details: detailsResults
+      }
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ PENDING + DETAILS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync pending invoices and details',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
+
+/**
+ * @route   POST /api/routestar/sync/closed-with-details
+ * @desc    Sync closed invoices with their details (keeps browser open)
+ * @access  Private
+ */
+router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { limit = 0, direction = 'new' } = req.body;
+
+    console.log('\n========================================');
+    console.log('Starting closed invoices + details sync');
+    console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}, Direction: ${direction}`);
+    console.log('========================================\n');
+
+    console.log('Created sync service, initializing...');
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    console.log('Sync service initialized, starting sync...');
+
+    // Step 1: Sync closed invoices
+    const invoiceResults = await syncService.syncClosedInvoices(limit, direction);
+    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
+
+    // Step 2: Sync invoice details (reusing same browser session)
+    const detailsResults = await syncService.syncAllInvoiceDetails(0);
+    console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
+
+    console.log('\n========================================');
+    console.log('Closed invoices + details sync completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Closed invoices and details synced successfully',
+      data: {
+        invoices: invoiceResults,
+        details: detailsResults
+      }
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ CLOSED + DETAILS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync closed invoices and details',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
+
+/**
  * @route   POST /api/routestar/sync/stock
  * @desc    Process stock movements for completed invoices
  * @access  Private

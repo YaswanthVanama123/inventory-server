@@ -5,6 +5,52 @@ const Inventory = require('../models/Inventory');
 const SyncLog = require('../models/SyncLog');
 
 /**
+ * Parse date from MM/DD/YYYY format to Date object
+ */
+function parseRouteStarDate(dateString) {
+  if (!dateString) return null;
+
+  // Handle MM/DD/YYYY format
+  const parts = dateString.trim().split('/');
+  if (parts.length === 3) {
+    const month = parseInt(parts[0]) - 1; // Month is 0-indexed
+    const day = parseInt(parts[1]);
+    const year = parseInt(parts[2]);
+
+    const date = new Date(year, month, day);
+
+    // Validate the date
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+
+    return date;
+  }
+
+  // Try standard Date parsing as fallback
+  const date = new Date(dateString);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Normalize status from RouteStar to match model enum
+ */
+function normalizeStatus(status) {
+  if (!status) return 'Pending';
+
+  const statusMap = {
+    'complete': 'Completed',
+    'completed': 'Completed',
+    'pending': 'Pending',
+    'closed': 'Closed',
+    'cancelled': 'Cancelled'
+  };
+
+  const normalized = statusMap[status.toLowerCase()];
+  return normalized || 'Pending';
+}
+
+/**
  * RouteStar Sync Service
  * Handles syncing invoices from RouteStar and processing stock movements
  */
@@ -86,16 +132,17 @@ class RouteStarSyncService {
   /**
    * Sync pending invoices from RouteStar
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
+   * @param {string} direction - 'new' for newest first, 'old' for oldest first
    */
-  async syncPendingInvoices(limit = Infinity) {
+  async syncPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing RouteStar Pending Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    console.log(`\n📦 Syncing RouteStar Pending Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
 
     await this.createSyncLog();
 
     try {
-      
-      const invoices = await this.automation.fetchInvoicesList(limit);
+
+      const invoices = await this.automation.fetchInvoicesList(limit, direction);
       console.log(`✓ Fetched ${invoices.length} pending invoices from RouteStar`);
 
       let created = 0;
@@ -103,16 +150,14 @@ class RouteStarSyncService {
       let skipped = 0;
       const errors = [];
 
-      
+
       for (const invoice of invoices) {
         try {
-          const existing = await RouteStarInvoice.findByInvoiceNumber(invoice.invoiceNumber);
-
           const invoiceData = {
             invoiceNumber: invoice.invoiceNumber,
             invoiceType: 'pending',
-            status: invoice.status || 'Pending',
-            invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date(),
+            status: normalizeStatus(invoice.status),
+            invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
             customer: {
               name: invoice.customerName || 'Unknown',
               link: invoice.customerLink
@@ -125,7 +170,7 @@ class RouteStarSyncService {
             isPosted: invoice.isPosted || false,
             total: parseFloat(invoice.total) || 0,
             payment: invoice.payment,
-            lastModified: invoice.lastModified ? new Date(invoice.lastModified) : null,
+            lastModified: parseRouteStarDate(invoice.lastModified),
             arrivalTime: invoice.arrivalTime,
             detailUrl: invoice.detailUrl,
             lastSyncedAt: new Date(),
@@ -133,17 +178,28 @@ class RouteStarSyncService {
             rawData: invoice
           };
 
-          if (existing) {
-            
-            Object.assign(existing, invoiceData);
-            await existing.save();
-            updated++;
-            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
-          } else {
-            
-            await RouteStarInvoice.create(invoiceData);
+          // Use findOneAndUpdate with upsert to prevent race conditions
+          const result = await RouteStarInvoice.findOneAndUpdate(
+            { invoiceNumber: invoice.invoiceNumber },
+            invoiceData,
+            {
+              upsert: true,
+              new: true,
+              runValidators: true,
+              setDefaultsOnInsert: true
+            }
+          );
+
+          // Check if it was created or updated by checking if it existed before
+          const wasCreated = !result.createdAt ||
+                            (new Date() - result.createdAt < 1000);
+
+          if (wasCreated) {
             created++;
             console.log(`  ✓ Created: ${invoice.invoiceNumber}`);
+          } else {
+            updated++;
+            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
           }
         } catch (error) {
           errors.push({
@@ -181,16 +237,17 @@ class RouteStarSyncService {
   /**
    * Sync closed invoices from RouteStar
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
+   * @param {string} direction - 'new' for newest first, 'old' for oldest first
    */
-  async syncClosedInvoices(limit = Infinity) {
+  async syncClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
 
     await this.createSyncLog();
 
     try {
-      
-      const invoices = await this.automation.fetchClosedInvoicesList(limit);
+
+      const invoices = await this.automation.fetchClosedInvoicesList(limit, direction);
       console.log(`✓ Fetched ${invoices.length} closed invoices from RouteStar`);
 
       let created = 0;
@@ -198,17 +255,15 @@ class RouteStarSyncService {
       let skipped = 0;
       const errors = [];
 
-      
+
       for (const invoice of invoices) {
         try {
-          const existing = await RouteStarInvoice.findByInvoiceNumber(invoice.invoiceNumber);
-
           const invoiceData = {
             invoiceNumber: invoice.invoiceNumber,
             invoiceType: 'closed',
-            status: invoice.status || 'Closed',
-            invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date(),
-            dateCompleted: invoice.dateCompleted ? new Date(invoice.dateCompleted) : null,
+            status: normalizeStatus(invoice.status) || 'Closed',
+            invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
+            dateCompleted: parseRouteStarDate(invoice.dateCompleted),
             customer: {
               name: invoice.customerName || 'Unknown',
               link: invoice.customerLink
@@ -219,7 +274,7 @@ class RouteStarSyncService {
             isComplete: invoice.isComplete || false,
             subtotal: parseFloat(invoice.subtotal) || 0,
             total: parseFloat(invoice.total) || 0,
-            lastModified: invoice.lastModified ? new Date(invoice.lastModified) : null,
+            lastModified: parseRouteStarDate(invoice.lastModified),
             arrivalTime: invoice.arrivalTime,
             departureTime: invoice.departureTime,
             elapsedTime: invoice.elapsedTime,
@@ -229,17 +284,28 @@ class RouteStarSyncService {
             rawData: invoice
           };
 
-          if (existing) {
-            
-            Object.assign(existing, invoiceData);
-            await existing.save();
-            updated++;
-            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
-          } else {
-            
-            await RouteStarInvoice.create(invoiceData);
+          // Use findOneAndUpdate with upsert to prevent race conditions
+          const result = await RouteStarInvoice.findOneAndUpdate(
+            { invoiceNumber: invoice.invoiceNumber },
+            invoiceData,
+            {
+              upsert: true,
+              new: true,
+              runValidators: true,
+              setDefaultsOnInsert: true
+            }
+          );
+
+          // Check if it was created or updated by checking if it existed before
+          const wasCreated = !result.createdAt ||
+                            (new Date() - result.createdAt < 1000);
+
+          if (wasCreated) {
             created++;
             console.log(`  ✓ Created: ${invoice.invoiceNumber}`);
+          } else {
+            updated++;
+            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
           }
         } catch (error) {
           errors.push({

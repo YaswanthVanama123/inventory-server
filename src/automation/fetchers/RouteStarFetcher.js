@@ -15,11 +15,15 @@ class RouteStarFetcher {
   /**
    * Fetch pending invoices
    */
-  async fetchPendingInvoices(limit = Infinity) {
+  async fetchPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Pending Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToInvoices();
+
+    // Sort by invoice number based on direction
+    const sortDirection = direction === 'new' ? 'desc' : 'asc';
+    await this.navigator.sortByInvoiceNumber(sortDirection);
 
     return await this.fetchInvoicesList(limit, this.selectors.invoicesList, 'pending');
   }
@@ -27,11 +31,15 @@ class RouteStarFetcher {
   /**
    * Fetch closed invoices
    */
-  async fetchClosedInvoices(limit = Infinity) {
+  async fetchClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Closed Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToClosedInvoices();
+
+    // Sort by invoice number based on direction
+    const sortDirection = direction === 'new' ? 'desc' : 'asc';
+    await this.navigator.sortByInvoiceNumber(sortDirection);
 
     return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed');
   }
@@ -113,7 +121,6 @@ class RouteStarFetcher {
    */
   async extractInvoiceData(row, selectors) {
     try {
-      
       let invoiceNumber = null;
       try {
         invoiceNumber = await row.$eval(
@@ -123,11 +130,11 @@ class RouteStarFetcher {
       } catch (err) {
         try {
           invoiceNumber = await row.$eval(
-            'td:nth-child(2)',
+            'td:nth-of-type(1)',
             el => el.textContent.trim()
           );
         } catch (err2) {
-          
+          // Could not extract invoice number
         }
       }
 
@@ -251,6 +258,7 @@ class RouteStarFetcher {
         detailUrl: invoiceLink ? new URL(invoiceLink, this.baseUrl).href : null
       };
     } catch (error) {
+      console.log(`    Error extracting row data: ${error.message}`);
       return null;
     }
   }
