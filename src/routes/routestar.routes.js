@@ -641,4 +641,89 @@ router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, 
   }
 });
 
+/**
+ * @route   GET /api/routestar/items/grouped
+ * @desc    Get grouped items from all RouteStar invoices (pending and closed)
+ * @access  Private (Admin only)
+ */
+router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    console.log('[getGroupedRouteStarItems] Starting aggregation...');
+
+    // Aggregate all line items across all RouteStar invoices (pending and closed)
+    const groupedItems = await RouteStarInvoice.aggregate([
+      // Only include invoices with line items
+      { $match: { 'lineItems.0': { $exists: true } } },
+
+      // Unwind line items array to get individual items
+      { $unwind: '$lineItems' },
+
+      // Filter out items without name
+      { $match: { 'lineItems.name': { $exists: true, $ne: null, $ne: '' } } },
+
+      // Group by name (and SKU if available)
+      {
+        $group: {
+          _id: {
+            name: '$lineItems.name',
+            sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } // Use name as fallback if no SKU
+          },
+          totalQuantity: { $sum: '$lineItems.quantity' },
+          totalValue: { $sum: '$lineItems.amount' },
+          avgUnitPrice: { $avg: '$lineItems.rate' },
+          invoiceCount: { $sum: 1 },
+          invoices: {
+            $push: {
+              invoiceId: '$_id',
+              invoiceNumber: '$invoiceNumber',
+              invoiceDate: '$invoiceDate',
+              invoiceType: '$invoiceType',
+              customerName: '$customer.name',
+              quantity: '$lineItems.quantity',
+              rate: '$lineItems.rate',
+              amount: '$lineItems.amount',
+              status: '$status',
+              stockProcessed: '$stockProcessed'
+            }
+          }
+        }
+      },
+
+      // Sort by item name
+      { $sort: { '_id.name': 1 } },
+
+      // Project to clean format
+      {
+        $project: {
+          _id: 0,
+          sku: '$_id.sku',
+          name: '$_id.name',
+          totalQuantity: 1,
+          totalValue: 1,
+          avgUnitPrice: 1,
+          invoiceCount: 1,
+          invoices: 1
+        }
+      }
+    ]);
+
+    console.log(`[getGroupedRouteStarItems] Found ${groupedItems.length} grouped items`);
+
+    res.json({
+      success: true,
+      data: {
+        items: groupedItems,
+        totalItems: groupedItems.length
+      }
+    });
+  } catch (error) {
+    console.error('Get grouped RouteStar items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch grouped items',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
