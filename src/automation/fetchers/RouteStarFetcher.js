@@ -47,44 +47,64 @@ class RouteStarFetcher {
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
 
     while (hasNextPage && pageCount < maxPages) {
+      console.log(`\nProcessing page ${pageCount + 1}...`);
+
       await this.page.waitForSelector(selectors.invoiceRows, {
         timeout: 10000,
         state: 'visible'
       });
       await this.page.waitForTimeout(3000);
 
-      
+
       const masterTable = await this.page.$('div.ht_master');
       if (!masterTable) {
+        console.log('❌ Could not find main table (div.ht_master)');
         throw new Error('Could not find main table (div.ht_master)');
       }
+      console.log('✓ Found master table');
 
       const invoiceRows = await masterTable.$$('table.htCore tbody tr');
+      console.log(`Found ${invoiceRows.length} rows in table`);
 
       for (let i = 0; i < invoiceRows.length; i++) {
         const row = invoiceRows[i];
-        if (!fetchAll && invoices.length >= limit) break;
+        if (!fetchAll && invoices.length >= limit) {
+          console.log(`Reached limit of ${limit} invoices, stopping`);
+          break;
+        }
 
         try {
           const invoiceData = await this.extractInvoiceData(row, selectors);
           if (invoiceData) {
+            console.log(`  ✓ Row ${i + 1}: Invoice #${invoiceData.invoiceNumber}`);
             invoices.push(invoiceData);
+          } else {
+            console.log(`  ⊘ Row ${i + 1}: Skipped (no invoice number or empty row)`);
           }
         } catch (error) {
-          
+          console.log(`  ✗ Row ${i + 1}: Error - ${error.message}`);
         }
       }
 
-      
+      console.log(`Page ${pageCount + 1} complete: ${invoices.length} total invoices collected so far`);
+
+
       if (fetchAll || invoices.length < limit) {
+        console.log('Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
-        if (hasNextPage) pageCount++;
+        if (hasNextPage) {
+          console.log('✓ Moving to next page');
+          pageCount++;
+        } else {
+          console.log('✓ No more pages');
+        }
       } else {
         hasNextPage = false;
+        console.log('✓ Reached desired limit, stopping pagination');
       }
     }
 
-    console.log(`   ✓ Fetched: ${invoices.length} ${type} invoices\n`);
+    console.log(`\n   ✓ Fetched: ${invoices.length} ${type} invoices\n`);
     return invoices;
   }
 

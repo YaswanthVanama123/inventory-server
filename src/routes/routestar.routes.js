@@ -13,20 +13,45 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    const { limit = 100 } = req.body;
+    let { limit = 100, direction = 'new' } = req.body;
+
+    // Handle unlimited sync
+    if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
+      limit = Infinity;
+    } else {
+      limit = parseInt(limit);
+    }
+
+    console.log(`\n========================================`);
+    console.log(`Starting pending invoices sync request`);
+    console.log(`Limit: ${limit}, Direction: ${direction}`);
+    console.log(`========================================\n`);
 
     syncService = new RouteStarSyncService();
+    console.log('Created sync service, initializing...');
     await syncService.init();
+    console.log('Sync service initialized, starting sync...');
 
     const results = await syncService.syncPendingInvoices(limit);
 
+    const limitText = limit === Infinity ? 'all available' : limit;
+
+    console.log(`\n========================================`);
+    console.log(`Pending invoices sync completed successfully`);
+    console.log(`========================================\n`);
+
     res.json({
       success: true,
-      message: 'Pending invoices synced successfully',
+      message: `Pending invoices synced successfully (${limitText} ${direction} invoices requested)`,
       data: results
     });
   } catch (error) {
-    console.error('Pending invoices sync error:', error);
+    console.error('\n========================================');
+    console.error('❌ PENDING INVOICES SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync pending invoices',
@@ -34,8 +59,54 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
     });
   } finally {
     if (syncService) {
+      console.log('Closing sync service...');
       await syncService.close();
+      console.log('Sync service closed\n');
     }
+  }
+});
+
+/**
+ * @route   GET /api/routestar/invoice-range
+ * @desc    Get the highest and lowest invoice numbers in the database
+ * @access  Private (Admin only)
+ */
+router.get('/invoice-range', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { invoiceType } = req.query;
+
+    const query = invoiceType ? { invoiceType } : {};
+
+    const highestInvoice = await RouteStarInvoice.findOne(query)
+      .sort({ invoiceNumber: -1 })
+      .select('invoiceNumber invoiceDate invoiceType')
+      .lean();
+
+    const lowestInvoice = await RouteStarInvoice.findOne(query)
+      .sort({ invoiceNumber: 1 })
+      .select('invoiceNumber invoiceDate invoiceType')
+      .lean();
+
+    const totalInvoices = await RouteStarInvoice.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        highest: highestInvoice?.invoiceNumber || null,
+        lowest: lowestInvoice?.invoiceNumber || null,
+        highestDate: highestInvoice?.invoiceDate || null,
+        lowestDate: lowestInvoice?.invoiceDate || null,
+        totalInvoices,
+        invoiceType: invoiceType || 'all'
+      }
+    });
+  } catch (error) {
+    console.error('Get invoice range error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get invoice range',
+      error: error.message
+    });
   }
 });
 
@@ -48,16 +119,25 @@ router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    const { limit = 100 } = req.body;
+    let { limit = 100, direction = 'new' } = req.body;
+
+    // Handle unlimited sync
+    if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
+      limit = Infinity;
+    } else {
+      limit = parseInt(limit);
+    }
 
     syncService = new RouteStarSyncService();
     await syncService.init();
 
     const results = await syncService.syncClosedInvoices(limit);
 
+    const limitText = limit === Infinity ? 'all available' : limit;
+
     res.json({
       success: true,
-      message: 'Closed invoices synced successfully',
+      message: `Closed invoices synced successfully (${limitText} ${direction} invoices requested)`,
       data: results
     });
   } catch (error) {
@@ -325,6 +405,58 @@ router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch statistics',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/routestar/invoices/pending/all
+ * @desc    Delete all pending invoices
+ * @access  Private (Admin only)
+ */
+router.delete('/invoices/pending/all', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const result = await RouteStarInvoice.deleteMany({ invoiceType: 'pending' });
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} pending invoices`,
+      data: {
+        deletedCount: result.deletedCount
+      }
+    });
+  } catch (error) {
+    console.error('Delete all pending invoices error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete pending invoices',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/routestar/invoices/closed/all
+ * @desc    Delete all closed invoices
+ * @access  Private (Admin only)
+ */
+router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const result = await RouteStarInvoice.deleteMany({ invoiceType: 'closed' });
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} closed invoices`,
+      data: {
+        deletedCount: result.deletedCount
+      }
+    });
+  } catch (error) {
+    console.error('Delete all closed invoices error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete closed invoices',
       error: error.message
     });
   }

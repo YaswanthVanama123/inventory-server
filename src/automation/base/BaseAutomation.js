@@ -27,25 +27,30 @@ class BaseAutomation {
     }
 
     try {
-      
+      // Get timeout from environment or use default
+      const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
+      console.log(`Browser timeout set to: ${browserTimeout}ms`);
+
       this.browser = await chromium.launch({
         headless: process.env.HEADLESS !== 'false',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        timeout: browserTimeout
       });
 
-      
+
       this.context = await this.browser.newContext({
         viewport: { width: 1920, height: 1080 },
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
       });
 
-      
+
       this.page = await this.context.newPage();
 
-      
-      this.page.setDefaultTimeout(30000);
+      // Set default timeout from environment variable
+      this.page.setDefaultTimeout(browserTimeout);
 
       this.isInitialized = true;
+      console.log('✓ Browser automation initialized successfully');
     } catch (error) {
       throw new Error(`Failed to initialize automation: ${error.message}`);
     }
@@ -55,7 +60,7 @@ class BaseAutomation {
    * Login to the portal
    */
   async login() {
-    
+
     if (!this.config.baseUrl || !this.config.routes || !this.config.credentials) {
       throw new Error('Login configuration missing');
     }
@@ -68,15 +73,22 @@ class BaseAutomation {
       throw new Error('Login selectors not configured');
     }
 
+    const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
+    const loginTimeout = browserTimeout * 1.5; // Give extra time for login
+
     try {
-      
+
       const loginUrl = this.config.baseUrl + this.config.routes.login;
 
       console.log('Navigating to login page...');
-      await this.page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+      console.log(`URL: ${loginUrl}`);
+      await this.page.goto(loginUrl, {
+        waitUntil: 'load',
+        timeout: loginTimeout
+      });
       await this.page.waitForTimeout(2000);
 
-      
+
       try {
         const cookieButton = await this.page.$(this.selectors.login.cookieAcceptButton);
         if (cookieButton) {
@@ -85,20 +97,20 @@ class BaseAutomation {
           await this.page.waitForTimeout(1000);
         }
       } catch (error) {
-        
+        console.log('No cookie banner found or already accepted');
       }
 
-      
+
       console.log('Waiting for login form...');
       const usernameSelector = this.selectors.login.usernameInput || this.selectors.login.username;
       const passwordSelector = this.selectors.login.passwordInput || this.selectors.login.password;
 
       await this.page.waitForSelector(usernameSelector, {
-        timeout: 15000,
+        timeout: 20000,
         state: 'visible'
       });
 
-      
+
       console.log('Filling username...');
       await this.page.fill(usernameSelector, '');
       await this.page.waitForTimeout(500);
@@ -109,26 +121,85 @@ class BaseAutomation {
       await this.page.waitForTimeout(500);
       await this.page.fill(passwordSelector, this.config.credentials.password);
 
-      
-      console.log('Clicking login button...');
-      await this.page.click(this.selectors.login.submitButton);
-      await this.page.waitForLoadState('networkidle', { timeout: 30000 });
-      await this.page.waitForTimeout(2000);
 
-      
-      const hasError = await this.page.$(this.selectors.login.errorMessage);
-      if (hasError) {
-        const errorText = await this.page.textContent(this.selectors.login.errorMessage);
-        throw new Error(`Login failed: ${errorText}`);
+      console.log('Clicking login button...');
+      const submitButton = await this.page.$(this.selectors.login.submitButton);
+      if (!submitButton) {
+        await this.takeScreenshot('login-button-not-found');
+        throw new Error(`Login button not found with selector: ${this.selectors.login.submitButton}`);
+      }
+      console.log('Submit button found, clicking...');
+      await submitButton.click();
+
+      console.log('Waiting for navigation after login...');
+
+      // Wait a bit for the page to start navigating
+      await this.page.waitForTimeout(3000);
+
+      // Check current URL
+      const currentUrl = this.page.url();
+      console.log(`Current URL after 3 seconds: ${currentUrl}`);
+
+      // Check for error messages
+      try {
+        const errorElement = await this.page.$(this.selectors.login.errorMessage);
+        if (errorElement) {
+          const errorText = await errorElement.textContent();
+          console.log(`⚠️  Error message found: ${errorText}`);
+          await this.takeScreenshot('login-error-message');
+          throw new Error(`Login error: ${errorText}`);
+        }
+      } catch (error) {
+        if (error.message.includes('Login error:')) {
+          throw error;
+        }
+        // No error message found, continue
       }
 
-      
+      // If still on login page, login failed
+      if (currentUrl.includes('/web/login')) {
+        console.log('❌ Still on login page after submit');
+        await this.takeScreenshot('still-on-login-after-submit');
+
+        // Get page title for debugging
+        const title = await this.page.title();
+        console.log(`Page title: ${title}`);
+
+        throw new Error('Login failed: Still on login page after clicking submit. Check credentials or login page structure.');
+      }
+
+      console.log('✓ Successfully navigated away from login page');
+
+      // Give a moment for page to stabilize
+      console.log('Waiting 2 seconds for page stabilization...');
+      await this.page.waitForTimeout(2000);
+
+
+      try {
+        const hasError = await this.page.$(this.selectors.login.errorMessage);
+        if (hasError) {
+          const errorText = await this.page.textContent(this.selectors.login.errorMessage);
+          throw new Error(`Login failed: ${errorText}`);
+        }
+      } catch (error) {
+        // If we can't find error selector, that's fine
+        if (error.message.includes('Login failed:')) {
+          throw error;
+        }
+      }
+
+
+      console.log('Verifying login success...');
       await this.verifyLoginSuccess();
 
       this.isLoggedIn = true;
       console.log('✓ Successfully logged in');
     } catch (error) {
-      await this.takeScreenshot('login-error');
+      console.error('❌ Login error:', error.message);
+      const screenshotPath = await this.takeScreenshot('login-error');
+      if (screenshotPath) {
+        console.log(`Screenshot saved: ${screenshotPath}`);
+      }
       throw new Error(`Login failed: ${error.message}`);
     }
   }
@@ -145,13 +216,26 @@ class BaseAutomation {
    * Navigate to a specific URL
    */
   async navigateTo(url, waitForSelector = null) {
+    const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
+
     try {
-      await this.page.goto(url);
-      await this.page.waitForLoadState('networkidle');
+      console.log(`Navigating to: ${url}`);
+      await this.page.goto(url, {
+        waitUntil: 'load',
+        timeout: browserTimeout
+      });
+
+      try {
+        await this.page.waitForLoadState('networkidle', { timeout: 15000 });
+      } catch (error) {
+        console.log('Network idle timeout during navigation, continuing...');
+      }
 
       if (waitForSelector) {
-        await this.page.waitForSelector(waitForSelector, { timeout: 10000 });
+        await this.page.waitForSelector(waitForSelector, { timeout: 15000 });
       }
+
+      console.log('✓ Navigation successful');
     } catch (error) {
       throw new Error(`Navigation failed: ${error.message}`);
     }
@@ -232,19 +316,28 @@ class BaseAutomation {
     const results = [];
 
     while (hasNextPage && pageCount < maxPages) {
-      
+
       const pageResults = await callback(pageCount);
       results.push(...pageResults);
 
-      
+
       const nextButton = await this.page.$(nextButtonSelector);
       if (nextButton) {
+        console.log(`Moving to page ${pageCount + 2}...`);
         await nextButton.click();
-        await this.page.waitForLoadState('networkidle', { timeout: 20000 });
+
+        try {
+          await this.page.waitForLoadState('networkidle', { timeout: 30000 });
+        } catch (error) {
+          console.log('Network idle timeout during pagination, continuing...');
+          await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+        }
+
         await this.page.waitForTimeout(pageDelay);
         pageCount++;
       } else {
         hasNextPage = false;
+        console.log('No more pages to load');
       }
     }
 

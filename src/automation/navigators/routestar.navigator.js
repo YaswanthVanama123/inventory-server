@@ -17,10 +17,26 @@ class RouteStarNavigator {
    */
   async navigateToInvoices() {
     const invoicesUrl = `${this.config.baseUrl}${this.config.routes.invoices}`;
-    await this.page.goto(invoicesUrl);
-    await this.page.waitForLoadState('networkidle');
-    await this.page.waitForSelector(this.selectors.invoicesList.invoicesTable, { timeout: 10000 });
-    await this.page.waitForTimeout(2000);
+    console.log(`Navigating to pending invoices: ${invoicesUrl}`);
+
+    await this.page.goto(invoicesUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    });
+
+    // Check if we were redirected back to login
+    const currentUrl = this.page.url();
+    if (currentUrl.includes('/web/login')) {
+      throw new Error('Redirected to login page - session may have expired');
+    }
+
+    console.log('Waiting for invoices table to appear...');
+    await this.page.waitForSelector(this.selectors.invoicesList.invoicesTable, { timeout: 30000 });
+
+    console.log('Waiting for page to stabilize...');
+    await this.page.waitForTimeout(3000);
+
+    console.log('✓ Successfully navigated to pending invoices page');
   }
 
   /**
@@ -28,10 +44,26 @@ class RouteStarNavigator {
    */
   async navigateToClosedInvoices() {
     const closedInvoicesUrl = `${this.config.baseUrl}${this.config.routes.closedInvoices}`;
-    await this.page.goto(closedInvoicesUrl);
-    await this.page.waitForLoadState('networkidle');
-    await this.page.waitForSelector(this.selectors.closedInvoicesList.invoicesTable, { timeout: 10000 });
-    await this.page.waitForTimeout(2000);
+    console.log(`Navigating to closed invoices: ${closedInvoicesUrl}`);
+
+    await this.page.goto(closedInvoicesUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    });
+
+    // Check if we were redirected back to login
+    const currentUrl = this.page.url();
+    if (currentUrl.includes('/web/login')) {
+      throw new Error('Redirected to login page - session may have expired');
+    }
+
+    console.log('Waiting for closed invoices table to appear...');
+    await this.page.waitForSelector(this.selectors.closedInvoicesList.invoicesTable, { timeout: 30000 });
+
+    console.log('Waiting for page to stabilize...');
+    await this.page.waitForTimeout(3000);
+
+    console.log('✓ Successfully navigated to closed invoices page');
   }
 
   /**

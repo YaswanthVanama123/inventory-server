@@ -13,16 +13,25 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    const { limit = 100 } = req.body;
+    let { limit = 100, direction = 'new' } = req.body;
+
+    // Handle unlimited sync
+    if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
+      limit = Infinity;
+    } else {
+      limit = parseInt(limit);
+    }
 
     syncService = new CustomerConnectSyncService();
     await syncService.init();
 
     const results = await syncService.syncOrders(limit);
 
+    const limitText = limit === Infinity ? 'all available' : limit;
+
     res.json({
       success: true,
-      message: 'Orders synced successfully',
+      message: `Orders synced successfully (${limitText} ${direction} orders requested)`,
       data: results
     });
   } catch (error) {
@@ -36,6 +45,45 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
     if (syncService) {
       await syncService.close();
     }
+  }
+});
+
+/**
+ * @route   GET /api/customerconnect/order-range
+ * @desc    Get the highest and lowest order numbers in the database
+ * @access  Private (Admin only)
+ */
+router.get('/order-range', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const highestOrder = await CustomerConnectOrder.findOne()
+      .sort({ orderNumber: -1 })
+      .select('orderNumber orderDate')
+      .lean();
+
+    const lowestOrder = await CustomerConnectOrder.findOne()
+      .sort({ orderNumber: 1 })
+      .select('orderNumber orderDate')
+      .lean();
+
+    const totalOrders = await CustomerConnectOrder.countDocuments();
+
+    res.json({
+      success: true,
+      data: {
+        highest: highestOrder?.orderNumber || null,
+        lowest: lowestOrder?.orderNumber || null,
+        highestDate: highestOrder?.orderDate || null,
+        lowestDate: lowestOrder?.orderDate || null,
+        totalOrders
+      }
+    });
+  } catch (error) {
+    console.error('Get order range error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get order range',
+      error: error.message
+    });
   }
 });
 

@@ -18,9 +18,17 @@ class RouteStarSyncService {
    * Initialize the automation
    */
   async init() {
+    console.log('Initializing RouteStarSyncService...');
+    console.log('Creating new RouteStarAutomation instance...');
     this.automation = new RouteStarAutomation();
+
+    console.log('Initializing automation (launching browser)...');
     await this.automation.init();
+
+    console.log('Logging into RouteStar portal...');
     await this.automation.login();
+
+    console.log('✓ RouteStarSyncService initialization complete');
     return this;
   }
 

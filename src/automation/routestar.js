@@ -35,10 +35,32 @@ class RouteStarAutomation extends BaseAutomation {
    * Verify login success by checking that login form is gone
    */
   async verifyLoginSuccess() {
-    const stillOnLoginPage = await this.page.$(this.selectors.login.usernameInput);
-    if (stillOnLoginPage && await this.page.isVisible(this.selectors.login.usernameInput)) {
-      throw new Error('Login appears to have failed - still on login page');
+    console.log('Verifying login success...');
+
+    // Wait a bit for redirect after login
+    await this.page.waitForTimeout(2000);
+
+    // Check current URL - should not be on login page
+    const currentUrl = this.page.url();
+    console.log(`Current URL after login: ${currentUrl}`);
+
+    if (currentUrl.includes('/web/login')) {
+      // Take screenshot for debugging
+      await this.takeScreenshot('still-on-login-page');
+      throw new Error('Login appears to have failed - still on login page URL');
     }
+
+    // Check if login form is still visible
+    const stillOnLoginPage = await this.page.$(this.selectors.login.usernameInput);
+    if (stillOnLoginPage) {
+      const isVisible = await this.page.isVisible(this.selectors.login.usernameInput);
+      if (isVisible) {
+        await this.takeScreenshot('login-form-still-visible');
+        throw new Error('Login appears to have failed - login form still visible');
+      }
+    }
+
+    console.log('✓ Login verification passed');
   }
 
   /**
