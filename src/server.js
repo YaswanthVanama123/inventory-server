@@ -88,6 +88,7 @@ const schedulerRoutes = require('./routes/schedulerRoutes');
 const inventorySchedulerRoutes = require('./routes/inventoryScheduler.routes');
 const customerconnectRoutes = require('./routes/customerconnect.routes');
 const routestarRoutes = require('./routes/routestar.routes');
+const stockReconciliationRoutes = require('./routes/stock-reconciliation.routes');
 
 
 app.get('/health', (req, res) => {
@@ -117,6 +118,7 @@ app.use('/api', schedulerRoutes);
 app.use('/api/inventory-scheduler', inventorySchedulerRoutes);
 app.use('/api/customerconnect', customerconnectRoutes);
 app.use('/api/routestar', routestarRoutes);
+app.use('/api/stock-reconciliation', stockReconciliationRoutes);
 
 
 app.use(notFound);
