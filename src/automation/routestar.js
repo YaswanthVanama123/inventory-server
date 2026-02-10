@@ -1,66 +1,121 @@
 /**
  * RouteStar Automation
- * Refactored to use professional architecture with reusable components
+ * Refactored to use NEW core architecture with reusable base classes
  */
 
-const BaseAutomation = require('./base/BaseAutomation');
+const BaseBrowser = require('./core/BaseBrowser');
+const BaseNavigator = require('./core/BaseNavigator');
+const BaseParser = require('./core/BaseParser');
 const config = require('./config/routestar.config');
 const selectors = require('./selectors/routestar.selectors');
 const RouteStarNavigator = require('./navigators/routestar.navigator');
 const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
 const RouteStarParser = require('./parsers/routestar.parser');
+const logger = require('./utils/logger');
+const { retry } = require('./utils/retry');
+const { LoginError, NavigationError, ParsingError } = require('./errors');
 
-class RouteStarAutomation extends BaseAutomation {
+class RouteStarAutomation {
   constructor() {
-    super(config);
+    this.config = config;
     this.selectors = selectors;
+    this.browser = new BaseBrowser();
+    this.baseNavigator = null;
     this.navigator = null;
     this.fetcher = null;
+    this.page = null;
+    this.isLoggedIn = false;
+    this.logger = logger.child({ automation: 'RouteStar' });
   }
 
   /**
    * Initialize browser and components
    */
   async init() {
-    await super.init();
+    try {
+      this.logger.info('Initializing RouteStar automation');
 
-    
-    this.navigator = new RouteStarNavigator(this.page, config, selectors);
-    this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
+      // Launch browser using new BaseBrowser
+      await this.browser.launch('chromium');
+      this.page = await this.browser.createPage();
 
-    return this;
+      // Initialize base navigator for common operations
+      this.baseNavigator = new BaseNavigator(this.page);
+
+      // Initialize custom navigator and fetcher
+      this.navigator = new RouteStarNavigator(this.page, config, selectors);
+      this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
+
+      this.logger.info('Initialization complete');
+      return this;
+    } catch (error) {
+      this.logger.error('Initialization failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Login to RouteStar portal
+   */
+  async login() {
+    try {
+      this.logger.info('Attempting login', { username: config.credentials.username });
+
+      await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
+
+      // Use BaseNavigator's generic login method
+      await this.baseNavigator.login(
+        config.credentials,
+        selectors.login,
+        config.routes.dashboard // Success URL check
+      );
+
+      // Verify login success
+      await this.verifyLoginSuccess();
+
+      // Save cookies for session persistence
+      await this.browser.saveCookies();
+
+      this.isLoggedIn = true;
+      this.logger.info('Login successful');
+      return true;
+    } catch (error) {
+      this.logger.error('Login failed', { error: error.message });
+      await this.takeScreenshot('login-failed');
+      throw new LoginError('RouteStar login failed', {
+        username: config.credentials.username,
+        url: config.baseUrl,
+        errorMessage: error.message
+      });
+    }
   }
 
   /**
    * Verify login success by checking that login form is gone
    */
   async verifyLoginSuccess() {
-    console.log('Verifying login success...');
+    this.logger.info('Verifying login success');
 
     // Wait a bit for redirect after login
-    await this.page.waitForTimeout(2000);
+    await this.baseNavigator.wait(2000);
 
     // Check current URL - should not be on login page
-    const currentUrl = this.page.url();
-    console.log(`Current URL after login: ${currentUrl}`);
+    const currentUrl = this.baseNavigator.getUrl();
+    this.logger.info('Current URL after login', { currentUrl });
 
     if (currentUrl.includes('/web/login')) {
-      // Take screenshot for debugging
       await this.takeScreenshot('still-on-login-page');
-      throw new Error('Login appears to have failed - still on login page URL');
+      throw new LoginError('Login appears to have failed - still on login page URL');
     }
 
     // Check if login form is still visible
-    const stillOnLoginPage = await this.page.$(this.selectors.login.usernameInput);
+    const stillOnLoginPage = await this.baseNavigator.exists(selectors.login.usernameInput);
     if (stillOnLoginPage) {
-      const isVisible = await this.page.isVisible(this.selectors.login.usernameInput);
-      if (isVisible) {
-        await this.takeScreenshot('login-form-still-visible');
-        throw new Error('Login appears to have failed - login form still visible');
-      }
+      await this.takeScreenshot('login-form-still-visible');
+      throw new LoginError('Login appears to have failed - login form still visible');
     }
 
-    console.log('✓ Login verification passed');
+    this.logger.info('Login verification passed');
   }
 
   /**
@@ -86,7 +141,7 @@ class RouteStarAutomation extends BaseAutomation {
   }
 
   /**
-   * Fetch list of invoices (pending)
+   * Fetch list of invoices (pending) with retry logic
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
    * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
    */
@@ -95,11 +150,22 @@ class RouteStarAutomation extends BaseAutomation {
       await this.login();
     }
 
-    return await this.fetcher.fetchPendingInvoices(limit, direction);
+    // Wrap in retry logic for resilience
+    return await retry(
+      async () => await this.fetcher.fetchPendingInvoices(limit, direction),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching invoices', { attempt, error: error.message });
+        }
+      }
+    );
   }
 
   /**
-   * Fetch list of closed invoices
+   * Fetch list of closed invoices with retry logic
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
    * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
    */
@@ -108,7 +174,18 @@ class RouteStarAutomation extends BaseAutomation {
       await this.login();
     }
 
-    return await this.fetcher.fetchClosedInvoices(limit, direction);
+    // Wrap in retry logic for resilience
+    return await retry(
+      async () => await this.fetcher.fetchClosedInvoices(limit, direction),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching closed invoices', { attempt, error: error.message });
+        }
+      }
+    );
   }
 
   /**
@@ -121,34 +198,38 @@ class RouteStarAutomation extends BaseAutomation {
     }
 
     try {
-      console.log(`Navigating to invoice details: ${invoiceUrl}`);
-      await this.page.goto(invoiceUrl, {
+      this.logger.info('Fetching invoice details', { invoiceUrl });
+
+      // Navigate using BaseNavigator
+      await this.baseNavigator.navigateTo(invoiceUrl, {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       });
 
-      
-      await this.page.waitForSelector(this.selectors.invoiceDetail.itemsTable, {
-        timeout: 30000,
-        state: 'visible'
+      // Wait for items table
+      await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
+        timeout: 30000
       });
 
-      
-      await this.page.waitForTimeout(3000);
+      // Wait for dynamic content to load
+      await this.baseNavigator.wait(3000);
 
-      console.log('Extracting invoice details...');
+      this.logger.info('Extracting invoice details');
 
-      
+      // Extract line items
       const items = await this.extractLineItems();
 
-      
+      // Extract totals
       const totals = await this.extractTotals();
 
-      
+      // Extract additional info
       const additionalInfo = await this.extractAdditionalInfo();
 
-      console.log(`✓ Extracted ${items.length} line items`);
-      console.log(`  Subtotal: $${totals.subtotal}, Tax: $${totals.tax}, Total: $${totals.total}`);
+      this.logger.info('Invoice details extracted', {
+        itemCount: items.length,
+        subtotal: totals.subtotal,
+        total: totals.total
+      });
 
       return {
         items,
@@ -156,9 +237,15 @@ class RouteStarAutomation extends BaseAutomation {
         ...additionalInfo
       };
     } catch (error) {
-      console.error('Fetch invoice details error:', error.message);
+      this.logger.error('Failed to fetch invoice details', {
+        invoiceUrl,
+        error: error.message
+      });
       await this.takeScreenshot('fetch-invoice-details-error');
-      throw new Error(`Failed to fetch invoice details: ${error.message}`);
+      throw new ParsingError('Failed to fetch invoice details', {
+        context: { invoiceUrl },
+        rawData: error.message
+      });
     }
   }
 
@@ -170,64 +257,64 @@ class RouteStarAutomation extends BaseAutomation {
     const masterTable = await this.page.$('div.ht_master');
 
     if (!masterTable) {
-      throw new Error('Could not find invoice items table');
+      throw new ParsingError('Could not find invoice items table');
     }
 
     const itemRows = await masterTable.$$('table.htCore tbody tr');
-    console.log(`Found ${itemRows.length} line item rows`);
+    this.logger.info('Found line item rows', { count: itemRows.length });
 
     for (let i = 0; i < itemRows.length; i++) {
       const row = itemRows[i];
 
       try {
-        
+        // Extract item name
         const itemName = await row.$eval(
-          this.selectors.invoiceDetail.itemName,
+          selectors.invoiceDetail.itemName,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => null);
 
-        
+        // Skip empty rows
         if (!itemName || itemName === 'Choose..') {
           continue;
         }
 
         const itemDescription = await row.$eval(
-          this.selectors.invoiceDetail.itemDescription,
+          selectors.invoiceDetail.itemDescription,
           el => el.textContent.trim()
         ).catch(() => '');
 
         const itemQuantity = await row.$eval(
-          this.selectors.invoiceDetail.itemQuantity,
+          selectors.invoiceDetail.itemQuantity,
           el => parseFloat(el.textContent.trim().replace(/[^0-9.-]/g, '')) || 0
         ).catch(() => 0);
 
         const itemRate = await row.$eval(
-          this.selectors.invoiceDetail.itemRate,
+          selectors.invoiceDetail.itemRate,
           el => el.textContent.replace(/[$,]/g, '').trim()
         ).catch(() => '0.00');
 
         const itemAmount = await row.$eval(
-          this.selectors.invoiceDetail.itemAmount,
+          selectors.invoiceDetail.itemAmount,
           el => el.textContent.replace(/[$,]/g, '').trim()
         ).catch(() => '0.00');
 
         const itemClass = await row.$eval(
-          this.selectors.invoiceDetail.itemClass,
+          selectors.invoiceDetail.itemClass,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => '');
 
         const itemWarehouse = await row.$eval(
-          this.selectors.invoiceDetail.itemWarehouse,
+          selectors.invoiceDetail.itemWarehouse,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => '');
 
         const itemTaxCode = await row.$eval(
-          this.selectors.invoiceDetail.itemTaxCode,
+          selectors.invoiceDetail.itemTaxCode,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => '');
 
         const itemLocation = await row.$eval(
-          this.selectors.invoiceDetail.itemLocation,
+          selectors.invoiceDetail.itemLocation,
           el => el.textContent.trim()
         ).catch(() => '');
 
@@ -243,9 +330,16 @@ class RouteStarAutomation extends BaseAutomation {
           location: itemLocation
         });
 
-        console.log(`  ✓ Extracted item: ${itemName} - Qty: ${itemQuantity} - Amount: $${itemAmount}`);
+        this.logger.debug('Extracted line item', {
+          name: itemName,
+          quantity: itemQuantity,
+          amount: itemAmount
+        });
       } catch (error) {
-        console.warn(`  ⚠ Error extracting line item row ${i + 1}:`, error.message);
+        this.logger.warn('Error extracting line item row', {
+          rowIndex: i + 1,
+          error: error.message
+        });
       }
     }
 
@@ -253,23 +347,21 @@ class RouteStarAutomation extends BaseAutomation {
   }
 
   /**
-   * Extract totals from invoice detail page
+   * Extract totals from invoice detail page using BaseParser
    */
   async extractTotals() {
-    const subtotal = await this.page.$eval(
-      this.selectors.invoiceDetail.subtotal,
-      el => el.value.replace(/[$,]/g, '').trim()
-    ).catch(() => '0.00');
+    const extractValue = async (selector) => {
+      try {
+        const text = await this.page.$eval(selector, el => el.value);
+        return BaseParser.parseCurrency(text);
+      } catch {
+        return 0;
+      }
+    };
 
-    const tax = await this.page.$eval(
-      this.selectors.invoiceDetail.tax,
-      el => el.value.replace(/[$,]/g, '').trim()
-    ).catch(() => '0.00');
-
-    const total = await this.page.$eval(
-      this.selectors.invoiceDetail.total,
-      el => el.value.replace(/[$,]/g, '').trim()
-    ).catch(() => '0.00');
+    const subtotal = await extractValue(selectors.invoiceDetail.subtotal);
+    const tax = await extractValue(selectors.invoiceDetail.tax);
+    const total = await extractValue(selectors.invoiceDetail.total);
 
     return { subtotal, tax, total };
   }
@@ -278,23 +370,21 @@ class RouteStarAutomation extends BaseAutomation {
    * Extract additional invoice information
    */
   async extractAdditionalInfo() {
-    const signedBy = await this.page.$eval(
-      this.selectors.invoiceDetail.signedBy,
-      el => el.value.trim()
-    ).catch(() => '');
+    const extractField = async (selector) => {
+      try {
+        return await this.baseNavigator.getAttribute(selector, 'value') || '';
+      } catch {
+        return '';
+      }
+    };
 
-    const invoiceMemo = await this.page.$eval(
-      this.selectors.invoiceDetail.invoiceMemo,
-      el => el.value.trim()
-    ).catch(() => '');
+    const signedBy = await extractField(selectors.invoiceDetail.signedBy);
+    const invoiceMemo = await extractField(selectors.invoiceDetail.invoiceMemo);
+    const serviceNotes = await extractField(selectors.invoiceDetail.serviceNotes);
 
-    const serviceNotes = await this.page.$eval(
-      this.selectors.invoiceDetail.serviceNotes,
-      el => el.value.trim()
-    ).catch(() => '');
-
+    // Get sales tax rate from dropdown
     const salesTaxRate = await this.page.$eval(
-      this.selectors.invoiceDetail.salesTaxRate,
+      selectors.invoiceDetail.salesTaxRate,
       el => {
         const selectedOption = el.options[el.selectedIndex];
         return selectedOption ? selectedOption.textContent.trim() : '';
@@ -307,6 +397,33 @@ class RouteStarAutomation extends BaseAutomation {
       serviceNotes,
       salesTaxRate
     };
+  }
+
+  /**
+   * Take screenshot for debugging
+   */
+  async takeScreenshot(name) {
+    try {
+      const { captureScreenshot } = require('./utils/screenshot');
+      await captureScreenshot(this.page, name);
+      this.logger.info('Screenshot captured', { name });
+    } catch (error) {
+      this.logger.warn('Failed to capture screenshot', { error: error.message });
+    }
+  }
+
+  /**
+   * Close browser and cleanup
+   */
+  async close() {
+    try {
+      this.logger.info('Closing browser');
+      await this.browser.close();
+      this.logger.info('Browser closed successfully');
+    } catch (error) {
+      this.logger.error('Error closing browser', { error: error.message });
+      throw error;
+    }
   }
 }
 

@@ -1,0 +1,15 @@
+{
+  "name": "inventory-server-scripts",
+  "version": "1.0.0",
+  "description": "Utility scripts for database management and automation debugging",
+  "scripts": {
+    "check-data": "node check-automation-data.js",
+    "clear-orders": "node clear-orders.js",
+    "debug-selectors": "node debug-customerconnect-selectors.js",
+    "trigger-sync": "node trigger-sync.js",
+    "fix-wheat": "node fix-wheat-stock.js"
+  },
+  "keywords": ["automation", "debugging", "database", "utility"],
+  "author": "",
+  "license": "ISC"
+}

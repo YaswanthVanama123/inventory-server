@@ -1,34 +1,93 @@
 /**
  * CustomerConnect Automation
- * Refactored to use professional architecture with reusable components
+ * Refactored to use NEW core architecture with reusable base classes
  */
 
-const BaseAutomation = require('./base/BaseAutomation');
+const BaseBrowser = require('./core/BaseBrowser');
+const BaseNavigator = require('./core/BaseNavigator');
+const BaseParser = require('./core/BaseParser');
 const config = require('./config/customerconnect.config');
 const selectors = require('./selectors/customerconnect.selectors');
 const CustomerConnectNavigator = require('./navigators/customerconnect.navigator');
 const CustomerConnectFetcher = require('./fetchers/CustomerConnectFetcher');
 const CustomerConnectParser = require('./parsers/customerconnect.parser');
+const logger = require('./utils/logger');
+const { retry } = require('./utils/retry');
+const { LoginError, NavigationError, ParsingError } = require('./errors');
 
-class CustomerConnectAutomation extends BaseAutomation {
+class CustomerConnectAutomation {
   constructor() {
-    super(config);
+    this.config = config;
     this.selectors = selectors;
+    this.browser = new BaseBrowser();
+    this.baseNavigator = null;
     this.navigator = null;
     this.fetcher = null;
+    this.page = null;
+    this.isLoggedIn = false;
+    this.logger = logger.child({ automation: 'CustomerConnect' });
   }
 
   /**
    * Initialize browser and components
    */
   async init() {
-    await super.init();
+    try {
+      this.logger.info('Initializing CustomerConnect automation');
 
-    
-    this.navigator = new CustomerConnectNavigator(this.page, config, selectors);
-    this.fetcher = new CustomerConnectFetcher(this.page, this.navigator, selectors);
+      // Launch browser using new BaseBrowser
+      await this.browser.launch('chromium');
+      this.page = await this.browser.createPage();
 
-    return this;
+      // Initialize base navigator for common operations
+      this.baseNavigator = new BaseNavigator(this.page);
+
+      // Initialize custom navigator and fetcher
+      this.navigator = new CustomerConnectNavigator(this.page, config, selectors);
+      this.fetcher = new CustomerConnectFetcher(this.page, this.navigator, selectors);
+
+      this.logger.info('Initialization complete');
+      return this;
+    } catch (error) {
+      this.logger.error('Initialization failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Login to CustomerConnect portal
+   */
+  async login() {
+    try {
+      this.logger.info('Attempting login', { username: config.credentials.username });
+
+      await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
+
+      // Use BaseNavigator's generic login method
+      await this.baseNavigator.login(
+        config.credentials,
+        selectors.login,
+        config.routes.orders // Success URL check
+      );
+
+      // Verify login success
+      await this.verifyLoginSuccess();
+
+      // Save cookies for session persistence
+      await this.browser.saveCookies();
+
+      this.isLoggedIn = true;
+      this.logger.info('Login successful');
+      return true;
+    } catch (error) {
+      this.logger.error('Login failed', { error: error.message });
+      await this.takeScreenshot('login-failed');
+      throw new LoginError('CustomerConnect login failed', {
+        username: config.credentials.username,
+        url: config.baseUrl,
+        errorMessage: error.message
+      });
+    }
   }
 
   /**
@@ -36,15 +95,14 @@ class CustomerConnectAutomation extends BaseAutomation {
    */
   async verifyLoginSuccess() {
     try {
-      await this.page.waitForSelector(this.selectors.login.loggedInIndicator, {
-        timeout: 10000,
-        state: 'visible'
+      await this.baseNavigator.waitForElement(selectors.login.loggedInIndicator, {
+        timeout: 10000
       });
     } catch (error) {
-      
-      const stillOnLoginPage = await this.page.$(this.selectors.login.usernameInput);
+      // Double-check if still on login page
+      const stillOnLoginPage = await this.baseNavigator.exists(selectors.login.usernameInput);
       if (stillOnLoginPage) {
-        throw new Error('Login appears to have failed - still on login page');
+        throw new LoginError('Login appears to have failed - still on login page');
       }
     }
   }
@@ -68,7 +126,7 @@ class CustomerConnectAutomation extends BaseAutomation {
   }
 
   /**
-   * Fetch list of orders
+   * Fetch list of orders with retry logic
    * @param {number} limit - Max orders to fetch (default: Infinity = fetch all)
    */
   async fetchOrdersList(limit = Infinity) {
@@ -76,7 +134,18 @@ class CustomerConnectAutomation extends BaseAutomation {
       await this.login();
     }
 
-    return await this.fetcher.fetchOrders(limit);
+    // Wrap in retry logic for resilience
+    return await retry(
+      async () => await this.fetcher.fetchOrders(limit),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching orders', { attempt, error: error.message });
+        }
+      }
+    );
   }
 
   /**
@@ -89,23 +158,32 @@ class CustomerConnectAutomation extends BaseAutomation {
     }
 
     try {
-      await this.page.goto(orderUrl, { waitUntil: 'domcontentloaded' });
-      await this.page.waitForLoadState('networkidle');
-      await this.page.waitForTimeout(1000);
+      this.logger.info('Fetching order details', { orderUrl });
 
-      const orderDetailsText = await this.page.locator('table.list').first().locator('tbody tr td.left').first().textContent();
+      // Navigate using BaseNavigator
+      await this.baseNavigator.navigateTo(orderUrl, {
+        waitUntil: 'domcontentloaded'
+      });
+      await this.baseNavigator.waitForNetwork();
+      await this.baseNavigator.wait(1000);
 
+      // Extract order details text using BaseNavigator
+      const orderDetailsText = await this.baseNavigator.getText('table.list tbody tr td.left');
+
+      // Parse using existing parser
       const orderNumber = CustomerConnectParser.extractOrderNumber(orderDetailsText);
       const poNumber = CustomerConnectParser.extractPONumberFromDetails(orderDetailsText);
       const orderDate = CustomerConnectParser.extractDate(orderDetailsText);
       const vendorName = CustomerConnectParser.extractVendorFromDetails(orderDetailsText);
 
-      const orderStatus = await this.page.locator('table.list').last()
-        .locator('tbody tr td:nth-child(2)').first().textContent()
+      // Get order status
+      const orderStatus = await this.baseNavigator.getText('table.list:last-child tbody tr td:nth-child(2)')
         .catch(() => 'Unknown');
 
+      // Extract line items using new method
       const items = await this.extractLineItems();
 
+      // Extract totals
       const totals = await this.extractTotals();
 
       const orderData = {
@@ -122,47 +200,65 @@ class CustomerConnectAutomation extends BaseAutomation {
         ...totals
       };
 
-      console.log(`✓ Extracted order details: #${orderNumber} with ${items.length} items`);
+      this.logger.info('Order details extracted', {
+        orderNumber,
+        itemCount: items.length
+      });
+
       return orderData;
     } catch (error) {
-      console.error('Fetch order details error:', error.message);
+      this.logger.error('Failed to fetch order details', {
+        orderUrl,
+        error: error.message
+      });
       await this.takeScreenshot('fetch-order-details-error');
-      throw new Error(`Failed to fetch order details: ${error.message}`);
+      throw new ParsingError('Failed to fetch order details', {
+        context: { orderUrl },
+        rawData: error.message
+      });
     }
   }
 
   /**
-   * Extract line items from order detail page
+   * Extract line items from order detail page using BaseParser
    */
   async extractLineItems() {
     const items = [];
-    const itemRows = await this.page.locator('table.list:nth-of-type(3) tbody tr').all();
 
-    for (const row of itemRows) {
+    // Use BaseParser's list parsing
+    const tableSelector = 'table.list:nth-of-type(3)';
+
+    // Get all rows
+    const rows = await this.page.$$(`${tableSelector} tbody tr`);
+
+    for (const row of rows) {
       try {
-        const itemName = await row.locator('td:nth-child(1)').textContent().then(t => t.trim()).catch(() => '');
-        const itemSKU = await row.locator('td:nth-child(2)').textContent().then(t => t.trim()).catch(() => '');
-        const itemQuantity = await row.locator('td:nth-child(3)').textContent()
-          .then(t => parseFloat(t.trim()))
-          .catch(() => 0);
-        const itemPrice = await row.locator('td:nth-child(4)').textContent()
-          .then(t => parseFloat(t.replace(/[$,]/g, '')))
-          .catch(() => 0);
-        const itemTotal = await row.locator('td:nth-child(5)').textContent()
-          .then(t => parseFloat(t.replace(/[$,]/g, '')))
-          .catch(() => 0);
+        const cells = await row.$$('td');
+        if (cells.length >= 5) {
+          const itemName = await cells[0].textContent().then(t => t.trim()).catch(() => '');
+          const itemSKU = await cells[1].textContent().then(t => t.trim()).catch(() => '');
+          const itemQuantity = await cells[2].textContent()
+            .then(t => parseFloat(t.trim()))
+            .catch(() => 0);
+          const itemPrice = await cells[3].textContent()
+            .then(t => BaseParser.parseCurrency(t))
+            .catch(() => 0);
+          const itemTotal = await cells[4].textContent()
+            .then(t => BaseParser.parseCurrency(t))
+            .catch(() => 0);
 
-        if (itemName) {
-          items.push({
-            name: itemName,
-            sku: itemSKU,
-            qty: itemQuantity,
-            unitPrice: itemPrice,
-            lineTotal: itemTotal
-          });
+          if (itemName) {
+            items.push({
+              name: itemName,
+              sku: itemSKU,
+              qty: itemQuantity,
+              unitPrice: itemPrice,
+              lineTotal: itemTotal
+            });
+          }
         }
       } catch (error) {
-        console.warn('Error extracting item row:', error.message);
+        this.logger.warn('Error extracting item row', { error: error.message });
       }
     }
 
@@ -170,42 +266,54 @@ class CustomerConnectAutomation extends BaseAutomation {
   }
 
   /**
-   * Extract totals from order detail page
+   * Extract totals from order detail page using BaseParser
    */
   async extractTotals() {
-    const subtotal = await this.page.locator('table.list:nth-of-type(3) tfoot tr')
-      .filter({ hasText: 'Sub-Total' })
-      .locator('td.right')
-      .last()
-      .textContent()
-      .then(text => parseFloat(text.replace(/[$,]/g, '')))
-      .catch(() => 0);
+    const extractTotal = async (labelText) => {
+      try {
+        const text = await this.page.$eval(
+          `table.list:nth-of-type(3) tfoot tr:has-text("${labelText}") td.right:last-child`,
+          el => el.textContent
+        );
+        return BaseParser.parseCurrency(text);
+      } catch {
+        return 0;
+      }
+    };
 
-    const tax = await this.page.locator('table.list:nth-of-type(3) tfoot tr')
-      .filter({ hasText: 'Tax' })
-      .locator('td.right')
-      .last()
-      .textContent()
-      .then(text => parseFloat(text.replace(/[$,]/g, '')))
-      .catch(() => 0);
-
-    const shipping = await this.page.locator('table.list:nth-of-type(3) tfoot tr')
-      .filter({ hasText: 'Shipping' })
-      .locator('td.right')
-      .last()
-      .textContent()
-      .then(text => parseFloat(text.replace(/[$,]/g, '')))
-      .catch(() => 0);
-
-    const total = await this.page.locator('table.list:nth-of-type(3) tfoot tr')
-      .filter({ hasText: 'Total' })
-      .locator('td.right')
-      .last()
-      .textContent()
-      .then(text => parseFloat(text.replace(/[$,]/g, '')))
-      .catch(() => 0);
+    const subtotal = await extractTotal('Sub-Total');
+    const tax = await extractTotal('Tax');
+    const shipping = await extractTotal('Shipping');
+    const total = await extractTotal('Total');
 
     return { subtotal, tax, shipping, total };
+  }
+
+  /**
+   * Take screenshot for debugging
+   */
+  async takeScreenshot(name) {
+    try {
+      const { captureScreenshot } = require('./utils/screenshot');
+      await captureScreenshot(this.page, name);
+      this.logger.info('Screenshot captured', { name });
+    } catch (error) {
+      this.logger.warn('Failed to capture screenshot', { error: error.message });
+    }
+  }
+
+  /**
+   * Close browser and cleanup
+   */
+  async close() {
+    try {
+      this.logger.info('Closing browser');
+      await this.browser.close();
+      this.logger.info('Browser closed successfully');
+    } catch (error) {
+      this.logger.error('Error closing browser', { error: error.message });
+      throw error;
+    }
   }
 }
 
