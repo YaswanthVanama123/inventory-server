@@ -163,93 +163,140 @@ const generateSyncWarnings = (syncStats) => {
 
 const getDashboard = async (req, res, next) => {
   try {
-    
+
     const totalItems = await Inventory.countDocuments({ isActive: true, isDeleted: false });
 
-    
+
     const items = await Inventory.find({ isActive: true, isDeleted: false });
     const totalValue = items.reduce((sum, item) => {
       return sum + (item.pricing.sellingPrice * item.quantity.current);
     }, 0);
 
-    
+
     const lowStockCount = items.filter(item => item.isLowStock).length;
 
-    
+
     const reorderCount = items.filter(item => item.needsReorder).length;
 
-    
+
     const categoryStats = await Inventory.aggregate([
       { $match: { isActive: true, isDeleted: false } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
 
-    
+
     const recentActivity = await AuditLog.find({ resource: 'INVENTORY' })
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .limit(10);
 
-    
-    const topValueItems = items
-      .map(item => ({
-        id: item._id,
-        itemName: item.itemName,
-        skuCode: item.skuCode,
-        value: item.pricing.sellingPrice * item.quantity.current,
-        quantity: item.quantity.current
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
 
-    
-    const invoices = await Invoice.find({
-      status: { $ne: 'cancelled' },
-      createdAt: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) } 
+    const routeStarInvoices = await RouteStarInvoice.find({
+      status: { $ne: 'Cancelled' },
+      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
     })
-      .populate('items.inventory', 'pricing')
-      .sort({ createdAt: 1 });
+      .sort({ invoiceDate: 1 })
+      .lean();
 
-    console.log('=== DASHBOARD DEBUG ===');
-    console.log('Total invoices found:', invoices.length);
-    console.log('Sample invoice:', invoices.length > 0 ? {
-      id: invoices[0]._id,
-      totalAmount: invoices[0].totalAmount,
-      amounts: invoices[0].amounts,
-      itemsCount: invoices[0].items.length
-    } : 'No invoices');
-
-    
-    const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.amounts?.total || inv.totalAmount || 0), 0);
-    const totalOrders = invoices.length;
-    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
-    console.log('Calculated totalRevenue:', totalRevenue);
-    console.log('Calculated totalOrders:', totalOrders);
-
-    
-    let totalProfit = 0;
-    let totalCost = 0;
-    invoices.forEach(inv => {
-      inv.items.forEach(item => {
-        if (item.inventory && item.inventory.pricing) {
-          const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
-          totalCost += itemCost;
-          totalProfit += (item.unitPrice * item.quantity) - itemCost;
-        }
-      });
+    // Calculate top selling items from RouteStarInvoice automation data
+    const itemSalesMap = {};
+    routeStarInvoices.forEach(invoice => {
+      if (invoice.items && Array.isArray(invoice.items)) {
+        invoice.items.forEach(item => {
+          const key = item.sku || item.name;
+          if (!itemSalesMap[key]) {
+            itemSalesMap[key] = {
+              sku: item.sku || '',
+              name: item.name || 'Unknown',
+              totalQty: 0,
+              totalRevenue: 0,
+              orderCount: 0
+            };
+          }
+          itemSalesMap[key].totalQty += item.qty || 0;
+          itemSalesMap[key].totalRevenue += (item.unitPrice || 0) * (item.qty || 0);
+          itemSalesMap[key].orderCount += 1;
+        });
+      }
     });
 
-    
+    // Convert to array and sort by revenue
+    const topSellingItems = Object.values(itemSalesMap)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 5)
+      .map(item => ({
+        itemName: item.name,
+        skuCode: item.sku,
+        value: item.totalRevenue,
+        quantity: item.totalQty,
+        orderCount: item.orderCount
+      }));
+
+
+    const customerConnectOrders = await CustomerConnectOrder.find({
+      status: 'Complete',
+      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+    })
+      .sort({ orderDate: 1 })
+      .lean();
+
+    console.log('=== DASHBOARD DEBUG (Automation Data) ===');
+    console.log('Total RouteStar invoices found:', routeStarInvoices.length);
+    console.log('Total CustomerConnect orders found:', customerConnectOrders.length);
+    console.log('Sample RouteStar invoice:', routeStarInvoices.length > 0 ? {
+      invoiceNumber: routeStarInvoices[0].invoiceNumber,
+      total: routeStarInvoices[0].total,
+      itemsCount: routeStarInvoices[0].items?.length || 0
+    } : 'No invoices');
+
+
+    const totalRevenue = routeStarInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+    const totalOrders = routeStarInvoices.length;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+
+    const totalPurchaseAmount = customerConnectOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalPurchaseOrders = customerConnectOrders.length;
+    const avgPurchaseValue = totalPurchaseOrders > 0 ? totalPurchaseAmount / totalPurchaseOrders : 0;
+
+    console.log('Calculated totalRevenue (sales):', totalRevenue);
+    console.log('Calculated totalOrders (sales):', totalOrders);
+    console.log('Calculated totalPurchaseAmount:', totalPurchaseAmount);
+    console.log('Calculated totalPurchaseOrders:', totalPurchaseOrders);
+
+
+    let totalProfit = 0;
+    let totalCost = 0;
+
+
+    routeStarInvoices.forEach(inv => {
+      if (inv.items && Array.isArray(inv.items)) {
+        inv.items.forEach(item => {
+          const itemRevenue = (item.unitPrice || 0) * (item.qty || 0);
+
+          const matchingInventory = items.find(invItem =>
+            invItem.skuCode === item.sku || invItem.itemName === item.name
+          );
+
+          if (matchingInventory && matchingInventory.pricing) {
+            const itemCost = matchingInventory.pricing.purchasePrice * (item.qty || 0);
+            totalCost += itemCost;
+            totalProfit += itemRevenue - itemCost;
+          }
+        });
+      }
+    });
+
+
     const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
 
-    
+
     const salesByMonth = {};
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    invoices.forEach(invoice => {
-      const date = new Date(invoice.createdAt || invoice.invoiceDate);
+    routeStarInvoices.forEach(invoice => {
+      const date = new Date(invoice.invoiceDate);
       const monthKey = `${monthNames[date.getMonth()]}`;
 
       if (!salesByMonth[monthKey]) {
@@ -261,25 +308,31 @@ const getDashboard = async (req, res, next) => {
         };
       }
 
-      const invoiceTotal = invoice.amounts?.total || invoice.totalAmount || 0;
-      salesByMonth[monthKey].revenue += invoiceTotal;
+      salesByMonth[monthKey].revenue += (invoice.total || 0);
       salesByMonth[monthKey].orders += 1;
 
-      
+
       let invoiceProfit = 0;
-      invoice.items.forEach(item => {
-        if (item.inventory && item.inventory.pricing) {
-          const itemCost = item.inventory.pricing.purchasePrice * item.quantity;
-          invoiceProfit += (item.unitPrice * item.quantity) - itemCost;
-        }
-      });
+      if (invoice.items && Array.isArray(invoice.items)) {
+        invoice.items.forEach(item => {
+          const matchingInventory = items.find(invItem =>
+            invItem.skuCode === item.sku || invItem.itemName === item.name
+          );
+
+          if (matchingInventory && matchingInventory.pricing) {
+            const itemCost = matchingInventory.pricing.purchasePrice * (item.qty || 0);
+            const itemRevenue = (item.unitPrice || 0) * (item.qty || 0);
+            invoiceProfit += itemRevenue - itemCost;
+          }
+        });
+      }
       salesByMonth[monthKey].profit += invoiceProfit;
     });
 
-    
+
     const salesTrend = Object.values(salesByMonth);
 
-    
+
     const currentMonth = new Date().getMonth();
     const lastMonthName = monthNames[currentMonth === 0 ? 11 : currentMonth - 1];
     const prevMonthName = monthNames[currentMonth <= 1 ? (currentMonth === 0 ? 10 : 11) : currentMonth - 2];
@@ -295,10 +348,25 @@ const getDashboard = async (req, res, next) => {
       ? (((lastMonthData.orders - prevMonthData.orders) / prevMonthData.orders) * 100).toFixed(1)
       : 0;
 
-    const lowStockChange = -15; 
-    const profitMarginChange = 2.1; 
 
-    
+    const currentMonthLowStock = lowStockCount;
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    const lastMonthItems = await Inventory.find({
+      isActive: true,
+      isDeleted: false,
+      updatedAt: { $lte: lastMonth }
+    });
+    const lastMonthLowStock = lastMonthItems.filter(item => item.isLowStock).length;
+    const lowStockChange = lastMonthLowStock > 0
+      ? (((currentMonthLowStock - lastMonthLowStock) / lastMonthLowStock) * 100).toFixed(1)
+      : 0;
+
+    const profitMarginChange = prevMonthData.revenue > 0 && lastMonthData.revenue > 0
+      ? (((lastMonthData.profit / lastMonthData.revenue) - (prevMonthData.profit / prevMonthData.revenue)) * 100).toFixed(1)
+      : 0;
+
+
     const syncStats = await getSyncStatistics();
     const syncWarnings = syncStats ? generateSyncWarnings(syncStats) : [];
 
@@ -318,11 +386,16 @@ const getDashboard = async (req, res, next) => {
           revenueChange,
           ordersChange,
           lowStockChange,
-          profitMarginChange
+          profitMarginChange,
+
+          totalPurchaseAmount,
+          totalPurchaseOrders,
+          avgPurchaseValue,
+          dataSource: 'automation'
         },
         categoryStats,
         recentActivity,
-        topValueItems,
+        topSellingItems,
         salesTrend,
         syncStatus: syncStats ? {
           lastSync: syncStats.lastSync,
@@ -344,9 +417,13 @@ const getDashboard = async (req, res, next) => {
     console.log('Final response summary:', {
       totalRevenue: responseData.data.summary.totalRevenue,
       totalOrders: responseData.data.summary.totalOrders,
+      totalPurchaseAmount: responseData.data.summary.totalPurchaseAmount,
+      totalPurchaseOrders: responseData.data.summary.totalPurchaseOrders,
       profitMargin: responseData.data.summary.profitMargin,
       salesTrendLength: responseData.data.salesTrend.length,
-      syncStatus: responseData.data.syncStatus ? 'included' : 'not available'
+      topSellingItemsCount: responseData.data.topSellingItems.length,
+      syncStatus: responseData.data.syncStatus ? 'included' : 'not available',
+      dataSource: 'automation'
     });
     console.log('=== END DASHBOARD DEBUG ===');
 
