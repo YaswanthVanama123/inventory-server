@@ -12,6 +12,7 @@ module.exports = {
 
   routes: {
     login: '/index.php?route=account/login',
+    account: '/index.php?route=account/account',
     orders: '/index.php?route=account/order',
     orderDetails: '/index.php?route=account/order/info&order_id='
   },

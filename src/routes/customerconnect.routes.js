@@ -13,10 +13,26 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    let { limit = 100, direction = 'new' } = req.body;
+    let { limit = 0, direction = 'new' } = req.body;
 
-    // Handle unlimited sync
-    if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
+    // If limit is 0, auto-detect based on existing orders
+    if (limit === 0 || limit === null || limit === 'auto') {
+      // Get the highest order number in the database
+      const highestOrder = await CustomerConnectOrder.findOne()
+        .sort({ orderNumber: -1 })
+        .select('orderNumber')
+        .lean();
+
+      if (highestOrder) {
+        console.log(`📊 Last stored order: #${highestOrder.orderNumber}`);
+        console.log(`🔄 Syncing NEW orders since #${highestOrder.orderNumber}...`);
+      } else {
+        console.log(`📊 No orders in database. Starting fresh sync...`);
+      }
+
+      // Set to unlimited to get all new orders
+      limit = Infinity;
+    } else if (limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
       limit = parseInt(limit);
@@ -266,7 +282,7 @@ router.get('/orders', authenticate, requireAdmin(), async (req, res) => {
 
     const [orders, total] = await Promise.all([
       CustomerConnectOrder.find(query)
-        .sort({ orderDate: -1 })
+        .sort({ orderNumber: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
@@ -552,7 +568,7 @@ router.get('/items/:sku/orders', authenticate, requireAdmin(), async (req, res) 
     // Find all orders that contain this SKU
     const orders = await CustomerConnectOrder.find({
       'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
-    }).sort({ orderDate: -1 }).lean();
+    }).sort({ orderNumber: -1 }).lean();
 
     console.log(`[getOrdersBySKU] Found ${orders.length} orders`);
 

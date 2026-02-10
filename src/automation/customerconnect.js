@@ -67,7 +67,7 @@ class CustomerConnectAutomation {
       await this.baseNavigator.login(
         config.credentials,
         selectors.login,
-        config.routes.orders // Success URL check
+        config.routes.account // Success URL check - expect account dashboard
       );
 
       // Verify login success
@@ -176,9 +176,27 @@ class CustomerConnectAutomation {
       const orderDate = CustomerConnectParser.extractDate(orderDetailsText);
       const vendorName = CustomerConnectParser.extractVendorFromDetails(orderDetailsText);
 
-      // Get order status
-      const orderStatus = await this.baseNavigator.getText('table.list:last-child tbody tr td:nth-child(2)')
-        .catch(() => 'Unknown');
+      // Get order status (try multiple selectors)
+      let orderStatus = 'Unknown';
+      try {
+        // Check if the status element exists first
+        if (await this.baseNavigator.exists('table.list:last-child tbody tr td:nth-child(2)')) {
+          orderStatus = await this.baseNavigator.getText('table.list:last-child tbody tr td:nth-child(2)', {
+            timeout: 5000
+          });
+        }
+      } catch (error) {
+        // Try alternative selector
+        try {
+          const statusText = await this.page.$eval(
+            'table.list tbody tr:has-text("Status") td:last-child',
+            el => el.textContent
+          ).catch(() => null);
+          if (statusText) orderStatus = statusText.trim();
+        } catch {
+          orderStatus = 'Unknown';
+        }
+      }
 
       // Extract line items using new method
       const items = await this.extractLineItems();

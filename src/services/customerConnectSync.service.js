@@ -156,6 +156,14 @@ class CustomerConnectSyncService {
 
           let savedOrder;
           if (existing) {
+            // Order already exists - check if we need to update
+            if (existing.items && existing.items.length > 0) {
+              console.log(`  ⊙ Skipped #${order.orderNumber} (already has ${existing.items.length} items)`);
+              skipped++;
+              continue; // Skip this order entirely
+            }
+
+            // Order exists but no details yet - update basic info
             Object.assign(existing, orderData);
             savedOrder = await existing.save();
             updated++;
@@ -164,7 +172,7 @@ class CustomerConnectSyncService {
             created++;
           }
 
-          console.log(`  ✓ Saved order #${order.orderNumber}`);
+          console.log(`  ✓ Saved order #${order.orderNumber}${existing ? ' (updated)' : ' (new)'}`);
 
           if (order.detailUrl) {
             try {

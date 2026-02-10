@@ -219,6 +219,15 @@ class BasePage {
   }
 
   /**
+   * Simple wait/sleep for specified milliseconds
+   * @param {number} ms - Milliseconds to wait
+   */
+  async wait(ms) {
+    await wait(ms);
+    logger.debug('Waited', { ms });
+  }
+
+  /**
    * Scroll to element
    * @param {string} selector - CSS selector
    */
