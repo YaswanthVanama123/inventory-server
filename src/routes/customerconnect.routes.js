@@ -453,6 +453,92 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
 });
 
 /**
+ * @route   POST /api/customerconnect/orders/bulk-delete
+ * @desc    Delete all orders containing the specified SKUs
+ * @access  Private (Admin only)
+ */
+router.post('/orders/bulk-delete', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { skus } = req.body;
+
+    if (!skus || !Array.isArray(skus) || skus.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of SKUs to delete'
+      });
+    }
+
+    console.log(`[Bulk Delete] Deleting orders with SKUs: ${skus.join(', ')}`);
+
+    // Delete all orders that contain any of the specified SKUs
+    const result = await CustomerConnectOrder.deleteMany({
+      'items.sku': { $in: skus }
+    });
+
+    console.log(`[Bulk Delete] Deleted ${result.deletedCount} orders`);
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} orders containing the specified SKUs`,
+      data: {
+        deletedCount: result.deletedCount,
+        skus: skus
+      }
+    });
+  } catch (error) {
+    console.error('Bulk delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete orders',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   POST /api/customerconnect/orders/bulk-delete-by-numbers
+ * @desc    Delete orders by their order numbers
+ * @access  Private (Admin only)
+ */
+router.post('/orders/bulk-delete-by-numbers', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { orderNumbers } = req.body;
+
+    if (!orderNumbers || !Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of order numbers to delete'
+      });
+    }
+
+    console.log(`[Bulk Delete Orders] Deleting orders with numbers: ${orderNumbers.join(', ')}`);
+
+    // Delete all orders with the specified order numbers
+    const result = await CustomerConnectOrder.deleteMany({
+      orderNumber: { $in: orderNumbers }
+    });
+
+    console.log(`[Bulk Delete Orders] Deleted ${result.deletedCount} orders`);
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} orders`,
+      data: {
+        deletedCount: result.deletedCount,
+        orderNumbers: orderNumbers
+      }
+    });
+  } catch (error) {
+    console.error('Bulk delete orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete orders',
+      error: error.message
+    });
+  }
+});
+
+/**
  * @route   GET /api/customerconnect/items/:sku/orders
  * @desc    Get all orders containing a specific SKU
  * @access  Private

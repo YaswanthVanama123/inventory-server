@@ -726,4 +726,47 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/routestar/invoices/bulk-delete
+ * @desc    Delete all invoices containing the specified SKUs
+ * @access  Private (Admin only)
+ */
+router.post('/invoices/bulk-delete', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { skus } = req.body;
+
+    if (!skus || !Array.isArray(skus) || skus.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of SKUs to delete'
+      });
+    }
+
+    console.log(`[Bulk Delete Invoices] Deleting invoices with SKUs: ${skus.join(', ')}`);
+
+    // Delete all invoices that contain any of the specified SKUs in their line items
+    const result = await RouteStarInvoice.deleteMany({
+      'lineItems.sku': { $in: skus }
+    });
+
+    console.log(`[Bulk Delete Invoices] Deleted ${result.deletedCount} invoices`);
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} invoices containing the specified SKUs`,
+      data: {
+        deletedCount: result.deletedCount,
+        skus: skus
+      }
+    });
+  } catch (error) {
+    console.error('Bulk delete invoices error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete invoices',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
