@@ -54,8 +54,13 @@ class RouteStarFetcher {
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
 
+    console.log(`📊 Pagination settings:`);
+    console.log(`   - Fetch all: ${fetchAll}`);
+    console.log(`   - Limit: ${limit === Infinity ? 'Infinity' : limit}`);
+    console.log(`   - Max pages: ${maxPages === Infinity ? 'Infinity' : maxPages}`);
+
     while (hasNextPage && pageCount < maxPages) {
-      console.log(`\nProcessing page ${pageCount + 1}...`);
+      console.log(`\n📄 Processing page ${pageCount + 1}...`);
 
       await this.page.waitForSelector(selectors.invoiceRows, {
         timeout: 10000,
@@ -72,12 +77,12 @@ class RouteStarFetcher {
       console.log('✓ Found master table');
 
       const invoiceRows = await masterTable.$$('table.htCore tbody tr');
-      console.log(`Found ${invoiceRows.length} rows in table`);
+      console.log(`   Found ${invoiceRows.length} rows in table`);
 
       for (let i = 0; i < invoiceRows.length; i++) {
         const row = invoiceRows[i];
         if (!fetchAll && invoices.length >= limit) {
-          console.log(`Reached limit of ${limit} invoices, stopping`);
+          console.log(`   Reached limit of ${limit} invoices, stopping`);
           break;
         }
 
@@ -94,25 +99,28 @@ class RouteStarFetcher {
         }
       }
 
-      console.log(`Page ${pageCount + 1} complete: ${invoices.length} total invoices collected so far`);
+      console.log(`   Page ${pageCount + 1} complete: ${invoices.length} total invoices collected so far`);
 
 
       if (fetchAll || invoices.length < limit) {
-        console.log('Checking for next page...');
+        console.log('   Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
         if (hasNextPage) {
-          console.log('✓ Moving to next page');
           pageCount++;
+          console.log(`   ✓ Moving to page ${pageCount + 1}`);
         } else {
-          console.log('✓ No more pages');
+          console.log(`   ✓ No more pages - completed after ${pageCount + 1} page(s)`);
         }
       } else {
         hasNextPage = false;
-        console.log('✓ Reached desired limit, stopping pagination');
+        console.log('   ✓ Reached desired limit, stopping pagination');
       }
     }
 
-    console.log(`\n   ✓ Fetched: ${invoices.length} ${type} invoices\n`);
+    console.log(`\n✅ Pagination complete:`);
+    console.log(`   - Total pages processed: ${pageCount + 1}`);
+    console.log(`   - Total invoices fetched: ${invoices.length}`);
+
     return invoices;
   }
 

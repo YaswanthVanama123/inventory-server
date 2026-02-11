@@ -157,14 +157,73 @@ class RouteStarNavigator {
    * Go to next page
    */
   async goToNextPage() {
-    const nextButton = await this.page.$(this.selectors.pagination.nextButton);
+    console.log('Checking for next page button...');
+
+    // Try multiple selectors for the next button
+    const selectors = [
+      this.selectors.pagination.nextButton,           // Original: .pagination li.next:not(.disabled)
+      '.pagination li.next',                          // Without :not(.disabled)
+      '.pagination .next',                             // Simpler selector
+      'li.next a',                                     // Direct link
+      'a[aria-label="Next"]',                          // Aria label
+      'button:has-text("Next")',                       // Button with text
+      '.paginationjs-next'                             // Alternative pagination library
+    ];
+
+    let nextButton = null;
+    let usedSelector = null;
+
+    for (const selector of selectors) {
+      nextButton = await this.page.$(selector);
+      if (nextButton) {
+        usedSelector = selector;
+        console.log(`✓ Found next button using selector: ${selector}`);
+        break;
+      }
+    }
 
     if (!nextButton) {
-      console.log('❌ Next button not found (either last page or disabled)');
+      console.log('❌ Next button not found with any selector');
+
+      // Debug: Log all pagination elements found
+      const allPaginationElements = await this.page.$$('.pagination li, .paginationjs li, [class*="pagination"] li');
+      console.log(`   Found ${allPaginationElements.length} pagination list items`);
+
+      for (let i = 0; i < allPaginationElements.length; i++) {
+        const element = allPaginationElements[i];
+        const className = await element.getAttribute('class');
+        const text = await element.textContent();
+        console.log(`   Pagination item ${i + 1}: class="${className}", text="${text?.trim()}"`);
+      }
+
       return false;
     }
 
-    console.log('✓ Next button found, preparing to click');
+    // Check if button is disabled
+    const isDisabled = await nextButton.evaluate(el => {
+      // Check various ways a button can be disabled
+      if (el.classList.contains('disabled')) return true;
+      if (el.hasAttribute('disabled')) return true;
+      if (el.parentElement && el.parentElement.classList.contains('disabled')) return true;
+
+      // Check if the link has href="javascript:void(0)" or "#" which often means disabled
+      const link = el.querySelector('a');
+      if (link) {
+        const href = link.getAttribute('href');
+        if (href === '#' || href === 'javascript:void(0)' || href === 'javascript:;') {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (isDisabled) {
+      console.log('⚠️  Next button is disabled - reached last page');
+      return false;
+    }
+
+    console.log('✓ Next button is enabled, preparing to click');
 
     // Close any dialogs that might be open
     try {
@@ -193,7 +252,9 @@ class RouteStarNavigator {
       await nextButton.click();
     }
 
+    console.log('Waiting for page to load...');
     await this.page.waitForTimeout(3000);
+
     return true;
   }
 }

@@ -13,9 +13,9 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    let { limit = 100, direction = 'new' } = req.body;
+    let { limit = 0, direction = 'new' } = req.body;
 
-    // Handle unlimited sync
+    // Handle unlimited/auto-detect sync
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -119,9 +119,9 @@ router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
-    let { limit = 100, direction = 'new' } = req.body;
+    let { limit = 0, direction = 'new' } = req.body;
 
-    // Handle unlimited sync
+    // Handle unlimited/auto-detect sync
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -757,6 +757,49 @@ router.post('/invoices/bulk-delete', authenticate, requireAdmin(), async (req, r
       data: {
         deletedCount: result.deletedCount,
         skus: skus
+      }
+    });
+  } catch (error) {
+    console.error('Bulk delete invoices error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete invoices',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   POST /api/routestar/invoices/bulk-delete-by-numbers
+ * @desc    Delete invoices by their invoice numbers
+ * @access  Private (Admin only)
+ */
+router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { invoiceNumbers } = req.body;
+
+    if (!invoiceNumbers || !Array.isArray(invoiceNumbers) || invoiceNumbers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of invoice numbers to delete'
+      });
+    }
+
+    console.log(`[Bulk Delete Invoices] Deleting invoices with numbers: ${invoiceNumbers.join(', ')}`);
+
+    // Delete all invoices with the specified invoice numbers
+    const result = await RouteStarInvoice.deleteMany({
+      invoiceNumber: { $in: invoiceNumbers }
+    });
+
+    console.log(`[Bulk Delete Invoices] Deleted ${result.deletedCount} invoices`);
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} invoices`,
+      data: {
+        deletedCount: result.deletedCount,
+        invoiceNumbers: invoiceNumbers
       }
     });
   } catch (error) {
