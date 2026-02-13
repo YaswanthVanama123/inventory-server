@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const logger = require('./logger');
+const timeoutConfig = require('../config/timeout.config');
 
 // Create screenshots directory
 const screenshotsDir = path.join(__dirname, '../../../screenshots');
@@ -21,7 +22,8 @@ async function captureScreenshot(page, name) {
 
     await page.screenshot({
       path: filepath,
-      fullPage: true
+      fullPage: true,
+      timeout: timeoutConfig.screenshot  // Add explicit timeout
     });
 
     logger.debug('Screenshot captured', { filename });
@@ -50,7 +52,10 @@ async function captureElementScreenshot(page, selector, name) {
     const filename = `${name}-${timestamp}.png`;
     const filepath = path.join(screenshotsDir, filename);
 
-    await element.screenshot({ path: filepath });
+    await element.screenshot({
+      path: filepath,
+      timeout: timeoutConfig.screenshot  // Add explicit timeout
+    });
 
     logger.debug('Element screenshot captured', { filename, selector });
     return filepath;

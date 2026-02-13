@@ -62,10 +62,18 @@ class RouteStarFetcher {
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
 
-      await this.page.waitForSelector(selectors.invoiceRows, {
-        timeout: 10000,
-        state: 'visible'
-      });
+      // Wait for invoice rows with lenient strategy
+      try {
+        await this.page.waitForSelector(selectors.invoiceRows, {
+          timeout: 30000,  // Increased from 10s to 30s
+          state: 'attached'  // Changed from 'visible' to 'attached' (more lenient)
+        });
+        console.log('✓ Invoice rows found in DOM');
+      } catch (error) {
+        console.log('⚠️  Invoice rows selector timeout - trying to proceed anyway');
+        // Don't throw - table might still be loading dynamically
+      }
+
       await this.page.waitForTimeout(3000);
 
 

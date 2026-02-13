@@ -11,7 +11,7 @@ module.exports = {
   },
 
   routes: {
-    login: '/index.php?route=account/login',
+    login: '/index.php?route=account/login&SSL',  // Added &SSL to handle redirect
     account: '/index.php?route=account/account',
     orders: '/index.php?route=account/order',
     orderDetails: '/index.php?route=account/order/info&order_id='

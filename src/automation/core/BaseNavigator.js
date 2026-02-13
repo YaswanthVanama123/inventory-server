@@ -22,17 +22,41 @@ class BaseNavigator extends BasePage {
     try {
       logger.info('Attempting login', { username: credentials.username });
 
+      // Wait for login form to be fully interactive
+      // This is especially important when using 'commit' navigation strategy
+      logger.debug('Waiting for login form to be interactive');
+      await this.waitForElement(selectors.usernameInput, { timeout: 30000 });
+      await this.wait(2000);  // Extra wait for form to stabilize
+
       // Type username
       await this.type(selectors.usernameInput, credentials.username);
 
       // Type password
       await this.type(selectors.passwordInput, credentials.password);
 
-      // Click submit
-      await this.click(selectors.submitButton);
+      // Wait for submit button to be fully clickable
+      await this.waitForElement(selectors.submitButton, { timeout: 30000 });
+      await this.wait(1000);  // Short wait before clicking
 
-      // Wait for navigation
-      await this.waitForPageLoad();
+      // Click submit with force: true to bypass stability checks
+      // Use noWaitAfter to not wait for navigation (we handle it separately)
+      // RouteStar has ongoing animations and stuck page loads
+      logger.debug('Clicking submit button with force option and no navigation wait');
+      await this.page.click(selectors.submitButton, {
+        timeout: 30000,
+        force: true,
+        noWaitAfter: true  // Don't wait for navigation
+      });
+
+      // Manually wait for navigation to start
+      await this.wait(3000);
+
+      // Wait for navigation to dashboard (but don't fail if it times out)
+      try {
+        await this.waitForPageLoad();
+      } catch (e) {
+        logger.warn('Page load wait timed out after login - proceeding anyway');
+      }
 
       // Check for error message
       if (selectors.errorMessage && await this.exists(selectors.errorMessage)) {

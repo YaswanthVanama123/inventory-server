@@ -22,16 +22,79 @@ class BasePage {
     try {
       logger.info('Navigating to URL', { url });
 
-      await this.page.goto(url, {
-        waitUntil: options.waitUntil || 'domcontentloaded',
-        timeout: options.timeout || this.timeouts.navigation
+      // Try progressive fallback strategies if no specific strategy requested
+      // For slow-loading sites like RouteStar, try commit first
+      const strategies = options.waitUntil
+        ? [options.waitUntil]  // Use specific strategy if requested
+        : ['commit', 'load', 'domcontentloaded'];  // Try commit first (fastest), then fallback to more strict strategies
+
+      let response = null;
+      let successfulStrategy = null;
+
+      for (let i = 0; i < strategies.length; i++) {
+        const strategy = strategies[i];
+        const isLastAttempt = i === strategies.length - 1;
+
+        try {
+          logger.info('Attempting navigation', { strategy, attempt: i + 1, totalStrategies: strategies.length });
+
+          response = await this.page.goto(url, {
+            waitUntil: strategy,
+            timeout: options.timeout || this.timeouts.navigation
+          });
+
+          successfulStrategy = strategy;
+          logger.info('Navigation strategy succeeded', { strategy, status: response?.status() });
+          break;  // Success! Exit loop
+        } catch (error) {
+          logger.warn('Navigation strategy failed', {
+            strategy,
+            attempt: i + 1,
+            error: error.message.split('\n')[0]
+          });
+
+          // If last strategy, throw error
+          if (isLastAttempt) {
+            throw error;
+          }
+          // Otherwise continue to next strategy
+        }
+      }
+
+      // Wait for page to stabilize
+      // If commit strategy was used, wait longer for page to fully load
+      if (successfulStrategy === 'commit') {
+        logger.info('Commit strategy used - waiting extra time for page to stabilize');
+        await wait(10000);  // 10 seconds for commit strategy (increased from 5s)
+      } else {
+        await wait(2000);  // 2 seconds for load/domcontentloaded
+      }
+
+      const finalUrl = this.page.url();
+      if (finalUrl !== url) {
+        logger.info('Navigation redirected', {
+          originalUrl: url,
+          finalUrl: finalUrl
+        });
+      }
+
+      logger.info('Navigation successful', {
+        url: finalUrl,
+        status: response?.status(),
+        strategy: successfulStrategy
       });
 
-      logger.info('Navigation successful', { url });
       return true;
     } catch (error) {
       logger.error('Navigation failed', { url, error: error.message });
-      await captureScreenshot(this.page, 'navigation-error');
+
+      // Try to capture screenshot but don't fail if it times out
+      try {
+        await captureScreenshot(this.page, 'navigation-error');
+      } catch (screenshotError) {
+        logger.warn('Screenshot also failed', { error: screenshotError.message });
+      }
+
       throw error;
     }
   }
@@ -67,8 +130,12 @@ class BasePage {
       logger.debug('Clicking element', { selector });
 
       await this.waitForElement(selector, options);
+
+      // Use force: true to bypass actionability checks if specified
+      // This is useful for elements that exist but may have ongoing animations
       await this.page.click(selector, {
-        timeout: options.timeout || this.timeouts.element
+        timeout: options.timeout || this.timeouts.element,
+        force: options.force || false
       });
 
       // Wait a bit after click for any page transitions

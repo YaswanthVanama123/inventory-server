@@ -17,30 +17,40 @@ class CustomerConnectNavigator {
    */
   async navigateToOrders() {
     const ordersUrl = `${this.config.baseUrl}${this.config.routes.orders}`;
-    await this.page.goto(ordersUrl);
-    await this.page.waitForLoadState('networkidle');
 
-    
+    await this.page.goto(ordersUrl, {
+      waitUntil: 'load',  // Use load strategy
+      timeout: 90000      // 90 second timeout
+    });
+
+    // Wait for page to stabilize
+    await this.page.waitForTimeout(2000);
+
+    // Debug screenshot
     try {
       const screenshotsDir = require('path').join(__dirname, '../../screenshots');
       require('fs').mkdirSync(screenshotsDir, { recursive: true });
       await this.page.screenshot({
         path: require('path').join(screenshotsDir, `orders-page-${Date.now()}.png`),
-        fullPage: true
+        fullPage: true,
+        timeout: 15000
       });
     } catch (e) {}
 
-    
-    await this.page.waitForSelector('#content', { timeout: 10000 });
+    // Wait for content
+    await this.page.waitForSelector('#content', { timeout: 20000 });
   }
 
   /**
    * Navigate to order details
    */
   async navigateToOrderDetails(orderUrl) {
-    await this.page.goto(orderUrl);
-    await this.page.waitForLoadState('networkidle');
-    await this.page.waitForTimeout(1000);
+    await this.page.goto(orderUrl, {
+      waitUntil: 'load',  // Use load strategy
+      timeout: 90000      // 90 second timeout
+    });
+
+    await this.page.waitForTimeout(2000);
   }
 
   /**
@@ -77,8 +87,11 @@ class CustomerConnectNavigator {
     }
 
     await nextButton.click();
-    await this.page.waitForLoadState('networkidle', { timeout: 20000 });
+
+    // Wait for navigation with load strategy
+    await this.page.waitForLoadState('load', { timeout: 90000 });
     await this.page.waitForTimeout(2000);
+
     return true;
   }
 }

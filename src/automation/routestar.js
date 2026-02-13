@@ -61,7 +61,25 @@ class RouteStarAutomation {
     try {
       this.logger.info('Attempting login', { username: config.credentials.username });
 
-      await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
+      // Navigate to login page with retry logic
+      await retry(
+        async () => {
+          await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
+          // Extra wait after navigation for page to stabilize
+          await this.baseNavigator.wait(2000);
+        },
+        {
+          attempts: 3,
+          delay: 3000,
+          backoff: true,
+          onRetry: (attempt, error) => {
+            this.logger.warn('Retrying navigation to login page', {
+              attempt,
+              error: error.message
+            });
+          }
+        }
+      );
 
       // Use BaseNavigator's generic login method
       await this.baseNavigator.login(
