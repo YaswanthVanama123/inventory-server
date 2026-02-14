@@ -30,10 +30,29 @@ class CustomerConnectFetcher {
     let firstOrderLogged = false;
 
     while (hasNextPage && pageCount < maxPages) {
-      await this.page.waitForSelector('#content', {
-        timeout: 10000,
-        state: 'visible'
-      });
+      // Wait for content to be ready (with retry logic)
+      let contentReady = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await this.page.waitForSelector('#content', {
+            timeout: 15000,
+            state: 'visible'
+          });
+          contentReady = true;
+          break;
+        } catch (e) {
+          console.log(`  ⚠️  Attempt ${attempt}/3: Content not ready, waiting...`);
+          if (attempt < 3) {
+            await this.page.waitForTimeout(3000);
+          }
+        }
+      }
+
+      if (!contentReady) {
+        console.log(`  ✗ Content failed to load after 3 attempts, stopping pagination`);
+        break;
+      }
+
       await this.page.waitForTimeout(1000);
 
       const orderDivs = await this.page.$$(this.selectors.ordersList.orderRows);

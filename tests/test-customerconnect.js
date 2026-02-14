@@ -55,9 +55,10 @@ async function test() {
     const startTime = Date.now();
 
     const results = await syncService.fullSync({
-      ordersLimit: Infinity,      // Fetch ALL orders
-      detailsLimit: Infinity,     // Fetch details for ALL orders
-      processStock: true          // Update inventory stock
+      ordersLimit: Infinity,          // Fetch ALL orders
+      detailsLimit: Infinity,         // Fetch details for ALL orders without details
+      forceRefetchDetails: true,      // Set to TRUE to re-fetch details for orders that already have them
+      processStock: true              // Update inventory stock
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);

@@ -218,19 +218,20 @@ class RouteStarAutomation {
     try {
       this.logger.info('Fetching invoice details', { invoiceUrl });
 
-      // Navigate using BaseNavigator
+      // Navigate using commit strategy (same as invoice list pages)
+      // RouteStar pages get stuck in 'loading' state
       await this.baseNavigator.navigateTo(invoiceUrl, {
-        waitUntil: 'domcontentloaded',
+        timeout: 90000
+        // Don't specify waitUntil - let it use default 'commit' strategy
+      });
+
+      // Wait for items table to load
+      await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
         timeout: 60000
       });
 
-      // Wait for items table
-      await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
-        timeout: 30000
-      });
-
       // Wait for dynamic content to load
-      await this.baseNavigator.wait(3000);
+      await this.baseNavigator.wait(5000);
 
       this.logger.info('Extracting invoice details');
 

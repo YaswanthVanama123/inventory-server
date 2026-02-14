@@ -1,13 +1,13 @@
 const CustomerConnectAutomation = require('../automation/customerconnect');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const StockMovement = require('../models/StockMovement');
-const Inventory = require('../models/Inventory');
 const SyncLog = require('../models/SyncLog');
 
 /**
  * CustomerConnect Sync Service
- * Handles syncing orders from CustomerConnect and processing stock movements
- * Orders ADD to stock (incoming inventory/purchases)
+ * Handles syncing orders from CustomerConnect portal
+ * Stores orders in CustomerConnectOrder model and creates StockMovement records
+ * Does NOT interact with Inventory model (Inventory is managed separately)
  */
 
 let syncLock = false;
@@ -110,8 +110,9 @@ class CustomerConnectSyncService {
   /**
    * Sync orders from CustomerConnect
    * @param {number} limit - Max orders to fetch (default: Infinity = fetch all)
+   * @param {boolean} forceRefetchDetails - Force re-fetch details for orders that already have items
    */
-  async syncOrders(limit = Infinity) {
+  async syncOrders(limit = Infinity, forceRefetchDetails = false) {
     if (syncLock) {
       throw new Error('Sync already in progress. Please wait for it to complete.');
     }
@@ -119,7 +120,8 @@ class CustomerConnectSyncService {
     syncLock = true;
 
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing CustomerConnect Orders to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    console.log(`\n📦 Syncing CustomerConnect Orders to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}${forceRefetchDetails ? ' - FORCE RE-FETCH DETAILS' : ''}`);
+
 
     await this.createSyncLog();
 
@@ -155,25 +157,36 @@ class CustomerConnectSyncService {
           };
 
           let savedOrder;
-          if (existing) {
-            // Order already exists - check if we need to update
-            if (existing.items && existing.items.length > 0) {
-              console.log(`  ⊙ Skipped #${order.orderNumber} (already has ${existing.items.length} items)`);
-              skipped++;
-              continue; // Skip this order entirely
-            }
+          let shouldFetchDetails = false;
 
-            // Order exists but no details yet - update basic info
+          if (existing) {
+            // Order already exists - update basic info
             Object.assign(existing, orderData);
             savedOrder = await existing.save();
             updated++;
+
+            // Check if we should fetch details
+            if (existing.items && existing.items.length > 0) {
+              console.log(`  ⊙ Order #${order.orderNumber} exists with ${existing.items.length} items`);
+              // Force re-fetch if parameter is true, otherwise skip
+              shouldFetchDetails = forceRefetchDetails;
+              if (!forceRefetchDetails) {
+                console.log(`     (Skipping detail re-fetch - use forceRefetchDetails=true to update)`);
+              }
+            } else {
+              shouldFetchDetails = true; // No items yet, must fetch
+            }
           } else {
             savedOrder = await CustomerConnectOrder.create(orderData);
             created++;
+            shouldFetchDetails = true; // New order, must fetch
           }
 
           console.log(`  ✓ Saved order #${order.orderNumber}${existing ? ' (updated)' : ' (new)'}`);
 
+          if (!shouldFetchDetails) {
+            continue; // Skip to next order
+          }
           if (order.detailUrl) {
             try {
               console.log(`  → Fetching details for #${order.orderNumber}...`);
@@ -355,7 +368,7 @@ class CustomerConnectSyncService {
 
   /**
    * Process stock movements for completed orders
-   * Adds stock for received items
+   * Creates StockMovement records only (does NOT update Inventory model)
    */
   async processStockMovements() {
     console.log(`\n📦 Processing stock movements for completed orders...`);
@@ -396,32 +409,10 @@ class CustomerConnectSyncService {
               notes: `Purchase: ${order.vendor.name} - Order #${order.orderNumber}${order.poNumber ? ` (PO: ${order.poNumber})` : ''}`
             });
 
-            
-            let inventoryItem = await Inventory.findOne({ sku: item.sku });
-
-            if (inventoryItem) {
-              
-              inventoryItem.quantity += item.qty;
-              inventoryItem.lastRestockDate = order.orderDate || new Date();
-              inventoryItem.lastRestockQuantity = item.qty;
-              await inventoryItem.save();
-              console.log(`  ✓ Added stock for ${item.sku}: +${item.qty} (New total: ${inventoryItem.quantity})`);
-            } else {
-              
-              inventoryItem = await Inventory.create({
-                sku: item.sku,
-                name: item.name,
-                quantity: item.qty,
-                unitPrice: item.unitPrice,
-                lastRestockDate: order.orderDate || new Date(),
-                lastRestockQuantity: item.qty,
-                status: 'active'
-              });
-              console.log(`  ✓ Created new inventory item ${item.sku}: ${item.qty} units`);
-            }
+            console.log(`  ✓ Stock movement created for ${item.sku}: +${item.qty}`);
           }
 
-          
+
           await order.markStockProcessed();
           processed++;
           console.log(`  ✓ Processed: #${order.orderNumber} (${order.items.length} items)`);
@@ -462,12 +453,14 @@ class CustomerConnectSyncService {
    * @param {Object} options - Sync options
    * @param {number} options.ordersLimit - Max orders to fetch (default: Infinity = fetch all)
    * @param {number} options.detailsLimit - Max order details to fetch (default: Infinity = fetch all)
+   * @param {boolean} options.forceRefetchDetails - Force re-fetch details for existing orders (default: false)
    * @param {boolean} options.processStock - Whether to process stock movements
    */
   async fullSync(options = {}) {
     const {
       ordersLimit = Infinity,
       detailsLimit = Infinity,
+      forceRefetchDetails = false,
       processStock = true
     } = options;
 
@@ -481,13 +474,13 @@ class CustomerConnectSyncService {
     };
 
     try {
-      
-      results.orders = await this.syncOrders(ordersLimit);
+      // Step 1: Sync orders and optionally fetch details
+      results.orders = await this.syncOrders(ordersLimit, forceRefetchDetails);
 
-      
+      // Step 2: Fetch details for any remaining orders without details
       results.details = await this.syncAllOrderDetails(detailsLimit);
 
-      
+      // Step 3: Process stock movements
       if (processStock) {
         results.stock = await this.processStockMovements();
       }

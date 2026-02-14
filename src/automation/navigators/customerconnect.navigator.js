@@ -86,12 +86,54 @@ class CustomerConnectNavigator {
       return false;
     }
 
-    await nextButton.click();
+    console.log('  → Navigating to next page...');
 
-    // Wait for navigation with load strategy
-    await this.page.waitForLoadState('load', { timeout: 90000 });
+    // Get current page indicator before clicking
+    let currentPageText = '';
+    try {
+      currentPageText = await this.page.textContent('.pagination', { timeout: 5000 });
+    } catch (e) {
+      // Ignore if can't get current page text
+    }
+
+    // Click without waiting for navigation (CustomerConnect uses AJAX)
+    await nextButton.click({ noWaitAfter: true, timeout: 10000 });
+
+    // Wait for page content to start updating
     await this.page.waitForTimeout(2000);
 
+    // Wait for new content to be visible
+    try {
+      await this.page.waitForSelector('#content', {
+        state: 'visible',
+        timeout: 15000
+      });
+    } catch (e) {
+      console.log('  ⚠️  Content selector timeout - page might not have updated');
+    }
+
+    // Wait for any network activity to settle
+    try {
+      await this.page.waitForLoadState('networkidle', { timeout: 10000 });
+    } catch (e) {
+      // Network idle timeout is acceptable, page might still be loading background stuff
+      console.log('  ⚠️  Network idle timeout - proceeding anyway');
+    }
+
+    // Extra wait for table to fully render
+    await this.page.waitForTimeout(2000);
+
+    // Verify page actually changed by checking pagination text
+    try {
+      const newPageText = await this.page.textContent('.pagination', { timeout: 5000 });
+      if (currentPageText && newPageText === currentPageText) {
+        console.log('  ⚠️  Page may not have changed (pagination text unchanged)');
+      }
+    } catch (e) {
+      // Ignore verification errors
+    }
+
+    console.log('  ✓ Page navigation complete');
     return true;
   }
 }
