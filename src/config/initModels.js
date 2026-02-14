@@ -21,6 +21,7 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const ExternalInvoice = require('../models/ExternalInvoice');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
+const ModelCategory = require('../models/ModelCategory');
 
 /**
  * Create indexes for all models
@@ -46,7 +47,8 @@ async function initModels() {
     { name: 'CustomerConnectOrder', model: CustomerConnectOrder },
     { name: 'ExternalInvoice', model: ExternalInvoice },
     { name: 'RouteStarInvoice', model: RouteStarInvoice },
-    { name: 'RouteStarItem', model: RouteStarItem }
+    { name: 'RouteStarItem', model: RouteStarItem },
+    { name: 'ModelCategory', model: ModelCategory }
   ];
 
   try {
