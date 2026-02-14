@@ -464,6 +464,42 @@ class RouteStarNavigator {
   }
 
   /**
+   * Set items per page to "All" to load all items at once
+   */
+  async setItemsPerPageToAll() {
+    console.log('Setting items per page to "All"...');
+
+    try {
+      // Wait for the dropdown to be available
+      await this.page.waitForSelector('#items_per_page', { timeout: 10000 });
+
+      // Select "All" option (Playwright uses selectOption, not select)
+      await this.page.selectOption('#items_per_page', 'All');
+      console.log('✓ Selected "All" items per page');
+
+      // Wait for the table to reload with all items
+      console.log('Waiting for table to reload with all items (this may take 15-20 seconds for large datasets)...');
+      await this.page.waitForTimeout(15000);  // 15 seconds to allow all items to load
+
+      // Take screenshot
+      try {
+        const screenshotPath = `./screenshots/items-all-loaded-${Date.now()}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`📸 Screenshot: ${screenshotPath}`);
+      } catch (e) {
+        // Ignore screenshot errors
+      }
+
+      console.log('✓ All items loaded');
+      return true;
+    } catch (error) {
+      console.log(`⚠️  Could not set items per page to All: ${error.message}`);
+      console.log('   Will fall back to pagination');
+      return false;
+    }
+  }
+
+  /**
    * Navigate to invoice details
    */
   async navigateToInvoiceDetails(invoiceNumber) {
@@ -505,79 +541,156 @@ class RouteStarNavigator {
       console.log(`   Pagination item ${i + 1}: class="${className}", text="${text?.trim()}", visible=${isVisible}`);
     }
 
-    // Strategy: Find the EXACT "next page" button (increment by 1)
-    // NOT the "skip 10" or "last page" button
-    let nextButton = null;
-    let usedMethod = null;
+    // FIRST: Check if "next" button is disabled (indicates last page)
+    const nextButton = await this.page.$('.pagination li.next');
+    if (nextButton) {
+      const isNextDisabled = await nextButton.evaluate(el => {
+        return el.classList.contains('disabled');
+      });
 
-    // Method 1: Look for pagination li with class "next" that contains ONLY single arrow or "Next" text
-    const nextCandidates = await this.page.$$('.pagination li.next, .pagination li[class*="next"]');
-    console.log(`   Found ${nextCandidates.length} elements with "next" in class name`);
-
-    for (let i = 0; i < nextCandidates.length; i++) {
-      const candidate = nextCandidates[i];
-      const className = await candidate.getAttribute('class');
-      const text = await candidate.textContent();
-      const isDisabled = className?.includes('disabled') || false;
-      const isVisible = await candidate.isVisible().catch(() => false);
-
-      console.log(`   Next candidate ${i + 1}: class="${className}", text="${text?.trim()}", disabled=${isDisabled}, visible=${isVisible}`);
-
-      // Skip if disabled or not visible
-      if (isDisabled || !isVisible) {
-        continue;
+      if (isNextDisabled) {
+        console.log('✓ Next button is disabled - reached last page');
+        return false;
       }
-
-      // Check if this looks like a single-page increment button
-      // It should NOT contain numbers > 1, should NOT contain ">>", "Last", etc.
-      const textContent = text?.trim() || '';
-
-      // Skip if it looks like a "fast forward" or "skip many pages" button
-      if (textContent.includes('>>') ||
-          textContent.includes('Last') ||
-          textContent.includes('»') ||
-          textContent.match(/\d{2,}/)) {  // Has 2+ digit numbers (like "124")
-        console.log(`   ⚠️  Skipping candidate ${i + 1} - appears to be fast-forward button: "${textContent}"`);
-        continue;
-      }
-
-      // This looks like the correct single-page next button
-      nextButton = candidate;
-      usedMethod = `next candidate ${i + 1} (class="${className}", text="${textContent}")`;
-      console.log(`   ✓ Selected next button: ${usedMethod}`);
-      break;
     }
 
-    if (!nextButton) {
-      console.log('❌ Next button not found - may be on last page');
-      return false;
-    }
+    // NEW STRATEGY: Instead of clicking "next", find the current active page number
+    // and click on the next sequential page number
+    let currentPageNum = null;
+    let nextPageElement = null;
 
-    // Check if button is disabled
-    const isDisabled = await nextButton.evaluate(el => {
-      // Check various ways a button can be disabled
-      if (el.classList.contains('disabled')) return true;
-      if (el.hasAttribute('disabled')) return true;
-      if (el.parentElement && el.parentElement.classList.contains('disabled')) return true;
+    // Find active page
+    const activePage = await this.page.$('.pagination li.active');
+    if (activePage) {
+      const activeText = await activePage.textContent();
+      currentPageNum = parseInt(activeText?.trim());
+      console.log(`   📍 Current active page: ${currentPageNum}`);
 
-      // Check if the link has href="javascript:void(0)" or "#" which often means disabled
-      const link = el.querySelector('a');
-      if (link) {
-        const href = link.getAttribute('href');
-        if (href === '#' || href === 'javascript:void(0)' || href === 'javascript:;') {
-          return true;
+      if (!isNaN(currentPageNum)) {
+        // Look for the next page number (currentPageNum + 1)
+        const nextPageNum = currentPageNum + 1;
+        console.log(`   🔍 Looking for page number ${nextPageNum}...`);
+
+        // Find all pagination items that are NOT prev/next/active
+        const allPages = await this.page.$$('.pagination li:not(.prev):not(.next):not(.active)');
+
+        for (const pageItem of allPages) {
+          const pageText = await pageItem.textContent();
+          const pageNum = parseInt(pageText?.trim());
+
+          if (pageNum === nextPageNum) {
+            // Double-check that this page item is not disabled
+            const isDisabled = await pageItem.evaluate(el => {
+              return el.classList.contains('disabled');
+            });
+
+            if (!isDisabled) {
+              nextPageElement = pageItem;
+              console.log(`   ✓ Found next page element: ${nextPageNum}`);
+              break;
+            } else {
+              console.log(`   ⚠️  Page ${nextPageNum} element found but is disabled`);
+            }
+          }
         }
       }
-
-      return false;
-    });
-
-    if (isDisabled) {
-      console.log('⚠️  Next button is disabled - reached last page');
-      return false;
     }
 
-    console.log(`✓ Next button is enabled, preparing to click (${usedMethod})`);
+    // Fallback to original "next" button strategy if we couldn't find the next page number
+    if (!nextPageElement) {
+      console.log(`   ℹ️  Could not find next page number, falling back to "next" button strategy`);
+
+      // Strategy: Find the EXACT "next page" button (increment by 1)
+      // NOT the "skip 10" or "last page" button
+      let nextButton = null;
+      let usedMethod = null;
+
+      // Method 1: Look for pagination li with class "next" that contains ONLY single arrow or "Next" text
+      const nextCandidates = await this.page.$$('.pagination li.next, .pagination li[class*="next"]');
+      console.log(`   Found ${nextCandidates.length} elements with "next" in class name`);
+
+      for (let i = 0; i < nextCandidates.length; i++) {
+        const candidate = nextCandidates[i];
+        const className = await candidate.getAttribute('class');
+        const text = await candidate.textContent();
+        const isDisabled = className?.includes('disabled') || false;
+        const isVisible = await candidate.isVisible().catch(() => false);
+
+        console.log(`   Next candidate ${i + 1}: class="${className}", text="${text?.trim()}", disabled=${isDisabled}, visible=${isVisible}`);
+
+        // Skip if disabled (don't check visibility - Playwright's visibility detection is too strict)
+        if (isDisabled) {
+          continue;
+        }
+
+        // Check if this looks like a single-page increment button
+        // It should NOT contain numbers > 1, should NOT contain ">>", "Last", etc.
+        const textContent = text?.trim() || '';
+
+        // Skip if it looks like a "fast forward" or "skip many pages" button
+        // Note: "»" (single right arrow) is next page, "»»" (double arrows) is fast-forward
+        if (textContent.includes('>>') ||
+            textContent.includes('»»') ||
+            textContent.includes('Last') ||
+            textContent.match(/\d{2,}/)) {  // Has 2+ digit numbers (like "124")
+          console.log(`   ⚠️  Skipping candidate ${i + 1} - appears to be fast-forward button: "${textContent}"`);
+          continue;
+        }
+
+        // This looks like the correct single-page next button
+        nextButton = candidate;
+        usedMethod = `next candidate ${i + 1} (class="${className}", text="${textContent}")`;
+        console.log(`   ✓ Selected next button: ${usedMethod}`);
+        break;
+      }
+
+      if (!nextButton) {
+        console.log('❌ Next button not found - may be on last page');
+        return false;
+      }
+
+      // Check if button is disabled
+      const isDisabled = await nextButton.evaluate(el => {
+        // Check various ways a button can be disabled
+        if (el.classList.contains('disabled')) return true;
+        if (el.hasAttribute('disabled')) return true;
+        if (el.parentElement && el.parentElement.classList.contains('disabled')) return true;
+
+        // Check if the link has href="javascript:void(0)" or "#" which often means disabled
+        const link = el.querySelector('a');
+        if (link) {
+          const href = link.getAttribute('href');
+          if (href === '#' || href === 'javascript:void(0)' || href === 'javascript:;') {
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (isDisabled) {
+        console.log('⚠️  Next button is disabled - reached last page');
+        return false;
+      }
+
+      nextPageElement = nextButton;
+      console.log(`✓ Next button is enabled, preparing to click (${usedMethod})`);
+    }
+
+    // Before clicking, get the first item name to detect page change
+    let firstItemBefore = null;
+    try {
+      const masterTable = await this.page.$('div.ht_master');
+      if (masterTable) {
+        const firstRow = await masterTable.$('table.htCore tbody tr:first-child td:nth-of-type(2)');
+        if (firstRow) {
+          firstItemBefore = await firstRow.textContent();
+          console.log(`   Current first item: "${firstItemBefore?.trim()}"`);
+        }
+      }
+    } catch (e) {
+      // Ignore errors getting first item
+    }
 
     // Close any dialogs that might be open
     try {
@@ -596,21 +709,74 @@ class RouteStarNavigator {
       // No dialog, continue
     }
 
-    // Click the link inside the next button li element
-    const nextLink = await nextButton.$('a');
+    // IMPORTANT: Scroll the pagination element into view before clicking
+    try {
+      await nextPageElement.scrollIntoViewIfNeeded();
+      console.log('   ✓ Scrolled pagination into view');
+      await this.page.waitForTimeout(500); // Wait for scroll to complete
+    } catch (e) {
+      console.log('   ⚠️  Could not scroll pagination into view, attempting click anyway');
+    }
+
+    // Click the link inside the pagination element
+    const nextLink = await nextPageElement.$('a');
     if (nextLink) {
       const linkText = await nextLink.textContent();
       const linkHref = await nextLink.getAttribute('href');
-      console.log(`Clicking next page link: text="${linkText?.trim()}", href="${linkHref}"`);
-      await nextLink.click();
+      console.log(`Clicking pagination link: text="${linkText?.trim()}", href="${linkHref}"`);
+
+      // Force click using JavaScript if element is not interactive
+      try {
+        await nextLink.click({ timeout: 5000 });
+      } catch (e) {
+        console.log('   ⚠️  Regular click failed, trying force click via JavaScript');
+        await nextLink.evaluate(el => el.click());
+      }
     } else {
-      const buttonText = await nextButton.textContent();
-      console.log(`Clicking next button element directly: text="${buttonText?.trim()}"`);
-      await nextButton.click();
+      const buttonText = await nextPageElement.textContent();
+      console.log(`Clicking pagination element directly: text="${buttonText?.trim()}"`);
+
+      try {
+        await nextPageElement.click({ timeout: 5000 });
+      } catch (e) {
+        console.log('   ⚠️  Regular click failed, trying force click via JavaScript');
+        await nextPageElement.evaluate(el => el.click());
+      }
     }
 
-    console.log('Waiting for page to load...');
-    await this.page.waitForTimeout(3000);
+    console.log('Waiting for table to reload...');
+
+    // Wait for table to change (check if first item changed)
+    if (firstItemBefore) {
+      let pageChanged = false;
+      for (let i = 0; i < 15; i++) {  // Try up to 15 times (15 seconds total) - increased from 10
+        await this.page.waitForTimeout(1000);
+
+        try {
+          const masterTable = await this.page.$('div.ht_master');
+          if (masterTable) {
+            const firstRow = await masterTable.$('table.htCore tbody tr:first-child td:nth-of-type(2)');
+            if (firstRow) {
+              const firstItemAfter = await firstRow.textContent();
+              if (firstItemAfter && firstItemAfter !== firstItemBefore) {
+                console.log(`   ✓ Page changed - new first item: "${firstItemAfter.trim()}"`);
+                pageChanged = true;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          // Continue waiting
+        }
+      }
+
+      if (!pageChanged) {
+        console.log(`   ⚠️  Warning: Page content may not have changed after clicking next`);
+      }
+    } else {
+      // Fallback to simple wait
+      await this.page.waitForTimeout(5000); // Increased from 4000
+    }
 
     return true;
   }

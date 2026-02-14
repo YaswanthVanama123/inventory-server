@@ -102,6 +102,7 @@ const customerconnectRoutes = require('./routes/customerconnect.routes');
 const routestarRoutes = require('./routes/routestar.routes');
 const stockReconciliationRoutes = require('./routes/stock-reconciliation.routes');
 const modelCategoryRoutes = require('./routes/modelCategory.routes');
+const routeStarItemsRoutes = require('./routes/routeStarItems.routes');
 
 
 app.get('/health', (req, res) => {
@@ -133,6 +134,7 @@ app.use('/api/customerconnect', customerconnectRoutes);
 app.use('/api/routestar', routestarRoutes);
 app.use('/api/stock-reconciliation', stockReconciliationRoutes);
 app.use('/api/model-category', modelCategoryRoutes);
+app.use('/api/routestar-items', routeStarItemsRoutes);
 
 
 app.use(notFound);

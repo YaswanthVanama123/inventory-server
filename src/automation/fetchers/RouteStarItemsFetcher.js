@@ -19,6 +19,10 @@ class RouteStarItemsFetcher {
 
     await this.navigator.navigateToItems();
 
+    // NOTE: The "All" items option doesn't work reliably on this site - it only shows 22 items
+    // even when there are 224+ items total. We must use pagination instead.
+    // Keeping the setItemsPerPageToAll method for future reference but not using it.
+
     return await this.fetchItemsList(limit, this.selectors.itemsList);
   }
 
@@ -28,6 +32,7 @@ class RouteStarItemsFetcher {
   async fetchItemsList(limit, selectors) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     const items = [];
+    const seenItemNames = new Set();  // Track items we've already seen
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 20); // Items show 20 per page by default
@@ -39,6 +44,9 @@ class RouteStarItemsFetcher {
 
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
+
+      // Track items count before this page
+      const itemsBeforePage = items.length;
 
       // Wait for item rows with lenient strategy
       try {
@@ -91,8 +99,15 @@ class RouteStarItemsFetcher {
         try {
           const itemData = await this.extractItemData(row, selectors);
           if (itemData) {
+            // Check for duplicates
+            if (seenItemNames.has(itemData.itemName)) {
+              console.log(`  ⊘ Row ${i + 1}: Duplicate item "${itemData.itemName}" (already collected)`);
+              continue;
+            }
+
             console.log(`  ✓ Row ${i + 1}: Item "${itemData.itemName}"`);
             items.push(itemData);
+            seenItemNames.add(itemData.itemName);
           } else {
             console.log(`  ⊘ Row ${i + 1}: Skipped (no item name or empty row)`);
           }
@@ -102,6 +117,14 @@ class RouteStarItemsFetcher {
       }
 
       console.log(`   Page ${pageCount + 1} complete: ${items.length} total items collected so far`);
+
+      // Check if we got any new items on this page
+      const newItemsOnPage = items.length - itemsBeforePage;
+      if (itemRows.length > 0 && newItemsOnPage === 0) {
+        console.log(`   ⚠️  All items on this page were duplicates - pagination may be stuck`);
+        console.log(`   ✓ Stopping pagination to prevent infinite loop`);
+        break;
+      }
 
       if (fetchAll || items.length < limit) {
         console.log('   Checking for next page...');

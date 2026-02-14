@@ -114,6 +114,24 @@ const routeStarItemSchema = new mongoose.Schema({
     type: String,
     default: 'RouteStar',
     immutable: true
+  },
+
+  // Item usage flags
+  forUse: {
+    type: Boolean,
+    default: false
+  },
+
+  forSell: {
+    type: Boolean,
+    default: false
+  },
+
+  // Item category (Service or Item)
+  itemCategory: {
+    type: String,
+    enum: ['Service', 'Item'],
+    default: 'Item'
   }
 
 }, {

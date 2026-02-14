@@ -16,11 +16,19 @@ async function test() {
 
     await syncService.init();
 
-    // Fetch 20 items for testing (change to Infinity for all items)
-    const results = await syncService.syncItems(20);
+    // Fetch all items (use Infinity to fetch all pages)
+    const results = await syncService.syncItems(Infinity);
 
-    console.log('\n✅ Test completed successfully!');
-    console.log('Results:', JSON.stringify(results, null, 2));
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ ITEMS SYNC COMPLETED SUCCESSFULLY!');
+    console.log('='.repeat(80));
+    console.log('\n📊 Final Summary:');
+    console.log(`   📥 Total Items Fetched:  ${results.total}`);
+    console.log(`   ✨ New Items Created:    ${results.created}`);
+    console.log(`   🔄 Items Updated:        ${results.updated}`);
+    console.log(`   ⊘  Items Skipped:        ${results.skipped}`);
+    console.log(`   ❌ Items Failed:         ${results.failed}`);
+    console.log('\n' + '='.repeat(80) + '\n');
   } catch (error) {
     console.error('\n❌ Test failed:', error.message);
     console.error(error.stack);
