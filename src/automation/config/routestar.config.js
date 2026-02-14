@@ -14,7 +14,8 @@ module.exports = {
     login: '/web/login/',
     invoices: '/web/invoices/',
     closedInvoices: '/web/closedinvoices/',
-    invoiceDetails: '/web/invoice/'
+    invoiceDetails: '/web/invoice/',
+    items: '/web/items/'
   },
 
   pagination: {

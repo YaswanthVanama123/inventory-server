@@ -73,9 +73,8 @@ const couponSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-
-couponSchema.index({ code: 1 });
-
+// Index already defined on code field with unique: true (line 7)
+// No need for duplicate index
 
 couponSchema.methods.isValid = function() {
   const now = new Date();

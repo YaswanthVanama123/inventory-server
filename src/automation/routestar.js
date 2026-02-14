@@ -10,6 +10,7 @@ const config = require('./config/routestar.config');
 const selectors = require('./selectors/routestar.selectors');
 const RouteStarNavigator = require('./navigators/routestar.navigator');
 const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
+const RouteStarItemsFetcher = require('./fetchers/RouteStarItemsFetcher');
 const RouteStarParser = require('./parsers/routestar.parser');
 const logger = require('./utils/logger');
 const { retry } = require('./utils/retry');
@@ -23,6 +24,7 @@ class RouteStarAutomation {
     this.baseNavigator = null;
     this.navigator = null;
     this.fetcher = null;
+    this.itemsFetcher = null;
     this.page = null;
     this.isLoggedIn = false;
     this.logger = logger.child({ automation: 'RouteStar' });
@@ -42,9 +44,10 @@ class RouteStarAutomation {
       // Initialize base navigator for common operations
       this.baseNavigator = new BaseNavigator(this.page);
 
-      // Initialize custom navigator and fetcher
+      // Initialize custom navigator and fetchers
       this.navigator = new RouteStarNavigator(this.page, config, selectors);
       this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
+      this.itemsFetcher = new RouteStarItemsFetcher(this.page, this.navigator, selectors, config.baseUrl);
 
       this.logger.info('Initialization complete');
       return this;
@@ -159,6 +162,17 @@ class RouteStarAutomation {
   }
 
   /**
+   * Navigate to items page
+   */
+  async navigateToItems() {
+    if (!this.isLoggedIn) {
+      await this.login();
+    }
+
+    return await this.navigator.navigateToItems();
+  }
+
+  /**
    * Fetch list of invoices (pending) with retry logic
    * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
    * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
@@ -201,6 +215,29 @@ class RouteStarAutomation {
         backoff: true,
         onRetry: (attempt, error) => {
           this.logger.warn('Retry fetching closed invoices', { attempt, error: error.message });
+        }
+      }
+    );
+  }
+
+  /**
+   * Fetch list of items with retry logic
+   * @param {number} limit - Max items to fetch (default: Infinity = fetch all)
+   */
+  async fetchItemsList(limit = Infinity) {
+    if (!this.isLoggedIn) {
+      await this.login();
+    }
+
+    // Wrap in retry logic for resilience
+    return await retry(
+      async () => await this.itemsFetcher.fetchItems(limit),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching items', { attempt, error: error.message });
         }
       }
     );

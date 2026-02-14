@@ -2,7 +2,68 @@ const express = require('express');
 const router = express.Router();
 const RouteStarSyncService = require('../services/routeStarSync.service');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const RouteStarItem = require('../models/RouteStarItem');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+
+/**
+ * @route   POST /api/routestar/sync/items
+ * @desc    Sync items from RouteStar
+ * @access  Private
+ */
+router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    let { limit = 0 } = req.body;
+
+    // Handle unlimited/auto-detect sync
+    if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
+      limit = Infinity;
+    } else {
+      limit = parseInt(limit);
+    }
+
+    console.log(`\n========================================`);
+    console.log(`Starting items sync request`);
+    console.log(`Limit: ${limit === Infinity ? 'Infinity' : limit}`);
+    console.log(`========================================\n`);
+
+    syncService = new RouteStarSyncService();
+    console.log('Created sync service, initializing...');
+    await syncService.init();
+    console.log('Sync service initialized, starting items sync...');
+
+    const results = await syncService.syncItems(limit);
+
+    console.log(`\n========================================`);
+    console.log(`Items sync completed successfully`);
+    console.log(`========================================\n`);
+
+    res.json({
+      success: true,
+      message: `Items synced successfully (${limit === Infinity ? 'all' : limit} items requested)`,
+      data: results
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ ITEMS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync items',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
 
 /**
  * @route   POST /api/routestar/sync/pending
@@ -807,6 +868,124 @@ router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), as
     res.status(500).json({
       success: false,
       message: 'Failed to delete invoices',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   GET /api/routestar/items
+ * @desc    Get all RouteStar items with filters
+ * @access  Private
+ */
+router.get('/items', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      category,
+      department,
+      type,
+      inStock,
+      searchTerm
+    } = req.query;
+
+    const query = {};
+
+    if (category) query.category = category;
+    if (department) query.department = department;
+    if (type) query.type = type;
+    if (inStock === 'true') query.qtyOnHand = { $gt: 0 };
+    if (searchTerm) {
+      query.$or = [
+        { itemName: new RegExp(searchTerm, 'i') },
+        { description: new RegExp(searchTerm, 'i') },
+        { mfgPartNumber: new RegExp(searchTerm, 'i') }
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      RouteStarItem.find(query)
+        .sort({ itemName: 1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      RouteStarItem.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch items',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   GET /api/routestar/items/low-stock
+ * @desc    Get low stock items
+ * @access  Private
+ */
+router.get('/items/low-stock', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const { threshold = 10 } = req.query;
+    const items = await RouteStarItem.getLowStock(parseInt(threshold));
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        totalItems: items.length,
+        threshold: parseInt(threshold)
+      }
+    });
+  } catch (error) {
+    console.error('Get low stock items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch low stock items',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/routestar/items/all
+ * @desc    Delete all items
+ * @access  Private (Admin only)
+ */
+router.delete('/items/all', authenticate, requireAdmin(), async (req, res) => {
+  try {
+    const result = await RouteStarItem.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} items`,
+      data: {
+        deletedCount: result.deletedCount
+      }
+    });
+  } catch (error) {
+    console.error('Delete all items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete items',
       error: error.message
     });
   }

@@ -1,15 +1,18 @@
 const cron = require('node-cron');
 const SyncCustomerConnect = require('./sync/syncCustomerConnect');
 const SyncRouteStar = require('./sync/syncRouteStar');
+const RouteStarSyncService = require('./routeStarSync.service');
 
 class SyncScheduler {
   constructor() {
     this.customerConnectTask = null;
     this.routeStarTask = null;
+    this.routeStarItemsTask = null;
     this.isRunning = false;
     this.lastRun = {
       customerConnect: null,
-      routeStar: null
+      routeStar: null,
+      routeStarItems: null
     };
   }
 
@@ -89,6 +92,63 @@ class SyncScheduler {
     console.log('Sync scheduler started successfully');
     console.log(`CustomerConnect: Every ${intervalMinutes} minutes`);
     console.log(`RouteStar: Every ${intervalMinutes} minutes (offset by ${offsetMinutes} minutes)`);
+
+    // Add daily items sync at 3 AM
+    this.startItemsSync();
+  }
+
+  /**
+   * Start the items sync scheduler (runs daily at 3 AM)
+   */
+  startItemsSync() {
+    // Cron expression for 3 AM daily: 0 3 * * *
+    // Format: minute hour day month weekday
+    const itemsSyncCron = '0 3 * * *';
+
+    console.log('Setting up RouteStar Items sync schedule (daily at 3:00 AM)');
+
+    this.routeStarItemsTask = cron.schedule(
+      itemsSyncCron,
+      async () => {
+        console.log('\n========================================');
+        console.log('Running scheduled RouteStar Items sync (3:00 AM)...');
+        console.log('========================================\n');
+
+        let syncService = null;
+
+        try {
+          syncService = new RouteStarSyncService();
+          await syncService.init();
+
+          const result = await syncService.syncItems(Infinity); // Fetch all items
+
+          this.lastRun.routeStarItems = new Date();
+
+          console.log('\n========================================');
+          console.log('✅ Scheduled RouteStar Items sync completed successfully');
+          console.log(`   - Total: ${result.total}`);
+          console.log(`   - Created: ${result.created}`);
+          console.log(`   - Updated: ${result.updated}`);
+          console.log(`   - Failed: ${result.failed}`);
+          console.log('========================================\n');
+        } catch (error) {
+          console.error('\n========================================');
+          console.error('❌ Scheduled RouteStar Items sync failed:');
+          console.error('Error:', error.message);
+          console.error('========================================\n');
+        } finally {
+          if (syncService) {
+            await syncService.close();
+          }
+        }
+      },
+      {
+        scheduled: true,
+        timezone: process.env.TZ || 'America/New_York'
+      }
+    );
+
+    console.log('RouteStar Items sync scheduled: Daily at 3:00 AM');
   }
 
   /**
@@ -110,6 +170,11 @@ class SyncScheduler {
       this.routeStarTask = null;
     }
 
+    if (this.routeStarItemsTask) {
+      this.routeStarItemsTask.stop();
+      this.routeStarItemsTask = null;
+    }
+
     this.isRunning = false;
     console.log('Sync scheduler stopped');
   }
@@ -124,7 +189,8 @@ class SyncScheduler {
       lastRun: this.lastRun,
       tasks: {
         customerConnect: this.customerConnectTask ? 'scheduled' : 'not scheduled',
-        routeStar: this.routeStarTask ? 'scheduled' : 'not scheduled'
+        routeStar: this.routeStarTask ? 'scheduled' : 'not scheduled',
+        routeStarItems: this.routeStarItemsTask ? 'scheduled (daily 3:00 AM)' : 'not scheduled'
       }
     };
   }

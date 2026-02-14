@@ -91,5 +91,28 @@ module.exports = {
     nextButton: '.pagination li.next:not(.disabled)',
     prevButton: '.pagination li.prev:not(.disabled)',
     pageInfo: '#page-selection'
+  },
+
+  itemsList: {
+    itemsTable: 'div.ht_master table.htCore',
+    itemRows: 'table.htCore tbody tr',
+    itemParent: 'td:nth-of-type(1)',
+    itemName: 'td:nth-of-type(2) a',
+    itemNameLink: 'td:nth-of-type(2) a',
+    description: 'td:nth-of-type(3)',
+    purchaseCost: 'td:nth-of-type(4)',
+    salesPrice: 'td:nth-of-type(5)',
+    type: 'td:nth-of-type(6)',
+    qtyOnOrder: 'td:nth-of-type(7)',
+    qtyOnHand: 'td:nth-of-type(8)',
+    qtyOnWarehouse: 'td:nth-of-type(9)',
+    qtyOnWarehouseLink: 'td:nth-of-type(9) a',
+    mfgPartNumber: 'td:nth-of-type(10)',
+    uom: 'td:nth-of-type(11)',
+    category: 'td:nth-of-type(12)',
+    department: 'td:nth-of-type(13)',
+    allocated: 'td:nth-of-type(14)',
+    grouping: 'td:nth-of-type(15)',
+    taxCode: 'td:nth-of-type(16)'
   }
 };

@@ -11,15 +11,13 @@ const customerConnectOrderSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Order number is required'],
     unique: true,
-    trim: true,
-    index: true
+    trim: true
   },
 
-  
+
   poNumber: {
     type: String,
-    trim: true,
-    index: true
+    trim: true
   },
 
   
@@ -54,8 +52,7 @@ const customerConnectOrderSchema = new mongoose.Schema({
       type: String,
       required: [true, 'SKU is required'],
       uppercase: true,
-      trim: true,
-      index: true
+      trim: true
     },
     name: {
       type: String,
@@ -140,12 +137,14 @@ const customerConnectOrderSchema = new mongoose.Schema({
 });
 
 
+// Indexes already defined on fields above
+// - orderNumber has unique: true (line 13) - no need for duplicate
+// - poNumber had index: true (removed to avoid duplicate)
+// - items.sku had index: true (removed to avoid duplicate)
 customerConnectOrderSchema.index({ orderDate: -1, status: 1 });
 customerConnectOrderSchema.index({ 'vendor.name': 1, orderDate: -1 });
-customerConnectOrderSchema.index({ poNumber: 1 });
 customerConnectOrderSchema.index({ stockProcessed: 1, status: 1 });
 customerConnectOrderSchema.index({ lastSyncedAt: -1 });
-customerConnectOrderSchema.index({ 'items.sku': 1 });
 
 
 customerConnectOrderSchema.virtual('shouldProcessStock').get(function() {

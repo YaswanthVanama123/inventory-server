@@ -1,5 +1,6 @@
 const RouteStarAutomation = require('../automation/routestar');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const RouteStarItem = require('../models/RouteStarItem');
 const StockMovement = require('../models/StockMovement');
 const SyncLog = require('../models/SyncLog');
 
@@ -85,6 +86,127 @@ class RouteStarSyncService {
   async close() {
     if (this.automation) {
       await this.automation.close();
+    }
+  }
+
+  /**
+   * Sync items from RouteStar
+   * @param {number} limit - Max items to fetch (default: Infinity = fetch all)
+   */
+  async syncItems(limit = Infinity) {
+    const fetchAll = limit === Infinity || limit === null || limit === 0;
+    console.log(`\n📦 Syncing RouteStar Items to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+
+    await this.createSyncLog('routestar_items');
+
+    try {
+      // Fetch items from RouteStar
+      const items = await this.automation.fetchItemsList(limit);
+      console.log(`✓ Fetched ${items.length} items from RouteStar`);
+
+      if (items.length === 0) {
+        console.log(`ℹ️  No items found - this is normal if there are no items in the system`);
+
+        await this.updateSyncLog({
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          success: true
+        });
+
+        return {
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          items: []
+        };
+      }
+
+      // Save items to database
+      console.log(`\n💾 Saving ${items.length} items to database...`);
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+      const savedItems = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const itemData = items[i];
+
+        try {
+          // Check if item already exists
+          const existing = await RouteStarItem.findOne({
+            itemName: itemData.itemName,
+            itemParent: itemData.itemParent
+          });
+
+          if (existing) {
+            // Update existing item
+            Object.assign(existing, {
+              ...itemData,
+              lastSynced: new Date()
+            });
+
+            await existing.save();
+            updated++;
+            console.log(`  ✓ [${i + 1}/${items.length}] Updated: ${itemData.itemName}`);
+            savedItems.push(existing);
+          } else {
+            // Create new item
+            const newItem = await RouteStarItem.create({
+              ...itemData,
+              syncSource: 'RouteStar',
+              lastSynced: new Date()
+            });
+
+            created++;
+            console.log(`  ✓ [${i + 1}/${items.length}] Created: ${itemData.itemName}`);
+            savedItems.push(newItem);
+          }
+        } catch (error) {
+          failed++;
+          console.error(`  ✗ [${i + 1}/${items.length}] Failed to save item ${itemData.itemName}:`, error.message);
+        }
+      }
+
+      console.log(`\n✅ Item sync complete:`);
+      console.log(`   - Total fetched: ${items.length}`);
+      console.log(`   - Created: ${created}`);
+      console.log(`   - Updated: ${updated}`);
+      console.log(`   - Skipped: ${skipped}`);
+      console.log(`   - Failed: ${failed}`);
+
+      await this.updateSyncLog({
+        total: items.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        success: true
+      });
+
+      return {
+        total: items.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        items: savedItems
+      };
+
+    } catch (error) {
+      console.error('❌ Items sync error:', error);
+
+      await this.updateSyncLog({
+        error: error.message,
+        success: false
+      });
+
+      throw error;
     }
   }
 

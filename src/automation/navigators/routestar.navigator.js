@@ -19,73 +19,27 @@ class RouteStarNavigator {
     const invoicesUrl = `${this.config.baseUrl}${this.config.routes.invoices}`;
     console.log(`Navigating to pending invoices: ${invoicesUrl}`);
 
-    // Capture JavaScript console errors
-    const jsErrors = [];
-    this.page.on('console', msg => {
-      if (msg.type() === 'error') {
-        jsErrors.push(msg.text());
-        console.log(`  ⚠️  JavaScript Error: ${msg.text()}`);
-      }
-    });
+    // Navigate and wait for basic page structure to load
+    console.log('  Navigating to page...');
 
-    // Capture failed network requests
-    const failedRequests = [];
-    this.page.on('requestfailed', request => {
-      failedRequests.push({
-        url: request.url(),
-        failure: request.failure()?.errorText || 'Unknown error'
+    try {
+      // Use domcontentloaded - waits for HTML to parse and basic resources
+      await this.page.goto(invoicesUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
       });
-      console.log(`  ⚠️  Network Request Failed: ${request.url()} - ${request.failure()?.errorText}`);
-    });
-
-    // Try load first for proper JavaScript execution
-    // RouteStar needs JS to render Handsontable - commit returns too early
-    const strategies = [
-      { name: 'load', waitUntil: 'load', timeout: 60000 },  // Try load first (JS executes)
-      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 },  // Fallback
-      { name: 'commit', waitUntil: 'commit', timeout: 30000 }  // Last resort
-    ];
-
-    let success = false;
-    let usedStrategy = null;
-
-    for (let i = 0; i < strategies.length; i++) {
-      const strategy = strategies[i];
-      const isLastAttempt = i === strategies.length - 1;
-
-      try {
-        console.log(`  Trying strategy: ${strategy.name} (timeout: ${strategy.timeout}ms)`);
-
-        await this.page.goto(invoicesUrl, {
-          waitUntil: strategy.waitUntil,
-          timeout: strategy.timeout
-        });
-
-        success = true;
-        usedStrategy = strategy.name;
-        console.log(`  ✓ Navigation succeeded with strategy: ${strategy.name}`);
-        break;
-      } catch (error) {
-        console.log(`  ✗ Strategy '${strategy.name}' failed: ${error.message.split('\n')[0]}`);
-
-        if (isLastAttempt) {
-          // Last resort - try without waiting at all
-          console.log(`  → Last resort: Navigate without waiting for load events`);
-          try {
-            await this.page.goto(invoicesUrl, { timeout: 30000 });
-            await this.page.waitForTimeout(5000);  // Just wait 5 seconds
-            success = true;
-            usedStrategy = 'no-wait';
-            console.log(`  ✓ Navigation succeeded without waiting for events`);
-            break;
-          } catch (finalError) {
-            throw new Error(`All navigation strategies failed: ${finalError.message}`);
-          }
-        }
-      }
+      console.log('  ✓ Page HTML loaded');
+    } catch (error) {
+      // If domcontentloaded fails, try commit as fallback
+      console.log('  ⚠️  DOMContentLoaded timeout, trying commit...');
+      await this.page.goto(invoicesUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+      console.log('  ✓ Navigation committed (fallback)');
     }
 
-    // Check if we were redirected back to login
+    // Verify we're on the correct page
     const currentUrl = this.page.url();
     console.log(`Current URL: ${currentUrl}`);
 
@@ -93,214 +47,91 @@ class RouteStarNavigator {
       throw new Error('Redirected to login page - session may have expired');
     }
 
-    console.log('Waiting for page to stabilize and table to render...');
+    // Wait for page structure to render (sidebar, header, etc)
+    console.log('Waiting for page structure to render...');
+    await this.page.waitForTimeout(3000);  // Give page time to render basic structure
 
-    // If we used 'commit' or 'no-wait', wait for Handsontable library to load
-    // For 'load' and 'domcontentloaded', JavaScript already executed so table should be there
-    if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Commit/no-wait strategy used - waiting for Handsontable library to load...');
+    // Now wait for the invoice table to appear
+    console.log('Waiting for invoice table to render (max 5 minutes)...');
 
-      // Wait specifically for Handsontable library (not the whole document)
-      try {
-        await this.page.waitForFunction(
-          () => typeof window.Handsontable !== 'undefined',
-          { timeout: 180000 }  // 3 minutes max
-        );
-        console.log('✓ Handsontable library loaded');
-      } catch (e) {
-        console.log('⚠️  Handsontable library did not load - trying to proceed anyway');
-      }
-
-      // Extra wait for Handsontable to initialize
-      await this.page.waitForTimeout(10000);  // 10 seconds for initialization
-    } else {
-      // For load/domcontentloaded, just wait a bit for table to fully render
-      console.log('Load/DOMContentLoaded strategy used - table should already be rendered');
-      await this.page.waitForTimeout(3000);  // Just 3 seconds
-    }
-
-    // Wait for page to stabilize
-    await this.page.waitForTimeout(2000);
-
-    // Take screenshot after navigation
+    // Take initial screenshot
     try {
-      const screenshotPath = `./screenshots/after-navigation-${Date.now()}.png`;
+      const screenshotPath = `./screenshots/waiting-0s-${Date.now()}.png`;
       await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`📸 Screenshot after navigation: ${screenshotPath}`);
+      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
     } catch (e) {
-      console.log(`⚠️  Could not save screenshot: ${e.message}`);
+      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
     }
 
-    // If we used 'commit' or 'no-wait', actively poll for pagination as sign of data loaded
-    if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Used lenient strategy - waiting for pagination to appear (sign that data loaded)...');
+    // Poll for table with progress logging
+    let tableRendered = false;
+    const startTime = Date.now();
+    const maxWaitMs = 300000;  // 5 minutes
+    const pollIntervalMs = 2000;  // Check every 2 seconds
+    const logIntervalMs = 30000;  // Log progress every 30 seconds
+    let lastLogTime = startTime;
+    let lastScreenshotTime = startTime;
 
-      // Wait for pagination elements - this means data has loaded!
-      const paginationSelectors = [
-        '.pagination',
-        'ul.pagination',
-        '.paginationjs',
-        '[class*="pagination"]',
-        'a[href*="page"]'
-      ];
-
-      const maxWait = 90;  // 90 attempts × 2 seconds = 180 seconds (3 minutes)
-      let paginationFound = false;
-      let foundSelector = null;
-
-      for (let attempt = 1; attempt <= maxWait; attempt++) {
-        // Try all pagination selectors
-        for (const selector of paginationSelectors) {
-          const paginationEl = await this.page.$(selector);
-          if (paginationEl) {
-            // Check if it's actually visible
-            const isVisible = await paginationEl.isVisible().catch(() => false);
-            if (!isVisible) continue;
-
-            // Check if it has actual content (page numbers/links)
-            const hasContent = await paginationEl.evaluate(el => {
-              const text = el.innerText.trim();
-              const hasLinks = el.querySelectorAll('a, li').length > 0;
-              const hasPageNumbers = /\d+/.test(text);  // Contains numbers
-              return (hasLinks || hasPageNumbers) && text.length > 0;
-            }).catch(() => false);
-
-            if (hasContent) {
-              paginationFound = true;
-              foundSelector = selector;
-              console.log(`✓ Pagination found after ${attempt * 2} seconds using selector: ${selector}`);
-              break;
-            }
-          }
-        }
-
-        if (paginationFound) break;
-
-        if (attempt % 10 === 0) {  // Log every 20 seconds
-          console.log(`  Still waiting for pagination... (${attempt * 2}s elapsed)`);
-
-          // Take screenshot every 30 seconds
-          if (attempt % 15 === 0) {
-            try {
-              const screenshotPath = `./screenshots/waiting-${attempt * 2}s-${Date.now()}.png`;
-              await this.page.screenshot({ path: screenshotPath, fullPage: true });
-              console.log(`  📸 Screenshot at ${attempt * 2}s: ${screenshotPath}`);
-            } catch (e) {
-              // Ignore screenshot errors
-            }
-          }
-        }
-
-        await this.page.waitForTimeout(2000);
+    while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
+      // Check if table exists
+      const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
+      if (table) {
+        tableRendered = true;
+        break;
       }
 
-      if (!paginationFound) {
-        console.log('⚠️  Pagination did not appear - data may not have loaded');
+      const elapsed = Date.now() - startTime;
 
-        // Debug what's on the page
-        console.log('🔍 Debugging - checking page content...');
-
-        const pageInfo = await this.page.evaluate(() => {
-          // Check for JavaScript errors
-          const errors = window.__pageErrors || [];
-
-          // Check for loading indicators
-          const loadingSpinner = document.querySelector('.loader, .spinner, .loading, [class*="load"]');
-          const hasLoadingSpinner = !!loadingSpinner;
-          const spinnerVisible = loadingSpinner ? loadingSpinner.offsetParent !== null : false;
-
-          // Check Handsontable status
-          const hasHandsontableLib = typeof window.Handsontable !== 'undefined';
-          const handsontableInstances = window.Handsontable ? Object.keys(window.Handsontable).length : 0;
-
-          return {
-            title: document.title,
-            readyState: document.readyState,
-            bodyText: document.body.innerText.substring(0, 500),
-            hasPagination: !!document.querySelector('.pagination, ul.pagination, .paginationjs'),
-            hasTable: !!document.querySelector('table'),
-            hasMasterTable: !!document.querySelector('div.ht_master'),
-            hasLoadingSpinner,
-            spinnerVisible,
-            hasHandsontableLib,
-            handsontableInstances,
-            jsErrors: errors.length
-          };
-        }).catch(() => ({
-          title: 'unknown',
-          readyState: 'unknown',
-          bodyText: 'Could not get body text',
-          hasPagination: false,
-          hasTable: false,
-          hasMasterTable: false,
-          hasLoadingSpinner: false,
-          spinnerVisible: false,
-          hasHandsontableLib: false,
-          handsontableInstances: 0,
-          jsErrors: 0
-        }));
-
-        console.log(`   Page title: "${pageInfo.title}"`);
-        console.log(`   Document ready state: ${pageInfo.readyState}`);
-        console.log(`   Has pagination: ${pageInfo.hasPagination}`);
-        console.log(`   Has any table: ${pageInfo.hasTable}`);
-        console.log(`   Has div.ht_master: ${pageInfo.hasMasterTable}`);
-        console.log(`   ⚠️  LOADING SPINNER VISIBLE: ${pageInfo.spinnerVisible}`);
-        console.log(`   Handsontable library loaded: ${pageInfo.hasHandsontableLib}`);
-        console.log(`   Handsontable instances: ${pageInfo.handsontableInstances}`);
-        console.log(`   JavaScript errors: ${pageInfo.jsErrors}`);
-        console.log(`   Page body preview: ${pageInfo.bodyText.substring(0, 200)}...`);
-
-        // Take final screenshot
-        try {
-          const screenshotPath = `./screenshots/debug-no-pagination-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`   📸 Screenshot saved: ${screenshotPath}`);
-        } catch (e) {
-          console.log(`   Could not save screenshot: ${e.message}`);
-        }
-      } else {
-        console.log(`✓ Data loaded! Pagination appeared using: ${foundSelector}`);
-
-        // Take screenshot when pagination found
-        try {
-          const screenshotPath = `./screenshots/pagination-found-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`📸 Screenshot with pagination: ${screenshotPath}`);
-        } catch (e) {
-          // Ignore
-        }
-
-        // Now wait a bit more for Handsontable to fully render
-        console.log('Waiting for Handsontable to fully render...');
-        await this.page.waitForTimeout(5000);
+      // Log progress every 30 seconds
+      if (elapsed - (lastLogTime - startTime) >= logIntervalMs) {
+        console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
+        lastLogTime = Date.now();
       }
-    } else {
-      // For 'load' or 'domcontentloaded', table should already be there
+
+      // Take screenshot every 30 seconds
+      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
+        try {
+          const screenshotPath = `./screenshots/waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`  📸 Screenshot: ${screenshotPath}`);
+          lastScreenshotTime = Date.now();
+        } catch (e) {
+          console.log(`  ⚠️  Screenshot failed: ${e.message}`);
+          lastScreenshotTime = Date.now(); // Still update time to avoid spam
+        }
+      }
+
+      await this.page.waitForTimeout(pollIntervalMs);
+    }
+
+    if (!tableRendered) {
+      console.log('❌ Table did not render within 5 minutes');
+
+      // Take debug screenshot
       try {
-        await this.page.waitForSelector(this.selectors.invoicesList.invoicesTable, {
-          timeout: 30000,
-          state: 'attached'
-        });
-        console.log('✓ Table found in DOM');
-      } catch (error) {
-        console.log('⚠️  Table selector timeout - proceeding anyway');
+        const screenshotPath = `./screenshots/table-not-rendered-${Date.now()}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`  📸 Screenshot: ${screenshotPath}`);
+      } catch (e) {
+        // Ignore screenshot errors
       }
+
+      throw new Error('Invoices table did not render. Page may have failed to load properly.');
     }
 
-    // Extra stabilization wait for table to fully populate
-    console.log('Waiting for table to fully render...');
+    console.log('✓ Table rendered successfully');
+
+    // Wait a bit more for table data to populate
+    console.log('Waiting for table data to load...');
     await this.page.waitForTimeout(5000);
 
-    // Summary of errors captured
-    if (jsErrors.length > 0) {
-      console.log(`⚠️  Total JavaScript errors captured: ${jsErrors.length}`);
-    }
-    if (failedRequests.length > 0) {
-      console.log(`⚠️  Total failed network requests: ${failedRequests.length}`);
-      failedRequests.forEach(req => {
-        console.log(`     - ${req.url}: ${req.failure}`);
-      });
+    // Take screenshot after successful render
+    try {
+      const screenshotPath = `./screenshots/table-rendered-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Screenshot: ${screenshotPath}`);
+    } catch (e) {
+      // Ignore screenshot errors
     }
 
     console.log('✓ Successfully navigated to pending invoices page');
@@ -390,73 +221,27 @@ class RouteStarNavigator {
     const closedInvoicesUrl = `${this.config.baseUrl}${this.config.routes.closedInvoices}`;
     console.log(`Navigating to closed invoices: ${closedInvoicesUrl}`);
 
-    // Capture JavaScript console errors
-    const jsErrors = [];
-    this.page.on('console', msg => {
-      if (msg.type() === 'error') {
-        jsErrors.push(msg.text());
-        console.log(`  ⚠️  JavaScript Error: ${msg.text()}`);
-      }
-    });
+    // Navigate and wait for basic page structure to load
+    console.log('  Navigating to page...');
 
-    // Capture failed network requests
-    const failedRequests = [];
-    this.page.on('requestfailed', request => {
-      failedRequests.push({
-        url: request.url(),
-        failure: request.failure()?.errorText || 'Unknown error'
+    try {
+      // Use domcontentloaded - waits for HTML to parse and basic resources
+      await this.page.goto(closedInvoicesUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
       });
-      console.log(`  ⚠️  Network Request Failed: ${request.url()} - ${request.failure()?.errorText}`);
-    });
-
-    // Try load first for proper JavaScript execution
-    // RouteStar needs JS to render Handsontable - commit returns too early
-    const strategies = [
-      { name: 'load', waitUntil: 'load', timeout: 60000 },  // Try load first (JS executes)
-      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 },  // Fallback
-      { name: 'commit', waitUntil: 'commit', timeout: 30000 }  // Last resort
-    ];
-
-    let success = false;
-    let usedStrategy = null;
-
-    for (let i = 0; i < strategies.length; i++) {
-      const strategy = strategies[i];
-      const isLastAttempt = i === strategies.length - 1;
-
-      try {
-        console.log(`  Trying strategy: ${strategy.name} (timeout: ${strategy.timeout}ms)`);
-
-        await this.page.goto(closedInvoicesUrl, {
-          waitUntil: strategy.waitUntil,
-          timeout: strategy.timeout
-        });
-
-        success = true;
-        usedStrategy = strategy.name;
-        console.log(`  ✓ Navigation succeeded with strategy: ${strategy.name}`);
-        break;
-      } catch (error) {
-        console.log(`  ✗ Strategy '${strategy.name}' failed: ${error.message.split('\n')[0]}`);
-
-        if (isLastAttempt) {
-          // Last resort - try without waiting at all
-          console.log(`  → Last resort: Navigate without waiting for load events`);
-          try {
-            await this.page.goto(closedInvoicesUrl, { timeout: 30000 });
-            await this.page.waitForTimeout(5000);
-            success = true;
-            usedStrategy = 'no-wait';
-            console.log(`  ✓ Navigation succeeded without waiting for events`);
-            break;
-          } catch (finalError) {
-            throw new Error(`All navigation strategies failed: ${finalError.message}`);
-          }
-        }
-      }
+      console.log('  ✓ Page HTML loaded');
+    } catch (error) {
+      // If domcontentloaded fails, try commit as fallback
+      console.log('  ⚠️  DOMContentLoaded timeout, trying commit...');
+      await this.page.goto(closedInvoicesUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+      console.log('  ✓ Navigation committed (fallback)');
     }
 
-    // Check if we were redirected back to login
+    // Verify we're on the correct page
     const currentUrl = this.page.url();
     console.log(`Current URL: ${currentUrl}`);
 
@@ -464,217 +249,218 @@ class RouteStarNavigator {
       throw new Error('Redirected to login page - session may have expired');
     }
 
-    console.log('Waiting for page to stabilize and table to render...');
+    // Wait for page structure to render (sidebar, header, etc)
+    console.log('Waiting for page structure to render...');
+    await this.page.waitForTimeout(3000);  // Give page time to render basic structure
 
-    // If we used 'commit' or 'no-wait', wait for Handsontable library to load
-    // For 'load' and 'domcontentloaded', JavaScript already executed so table should be there
-    if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Commit/no-wait strategy used - waiting for Handsontable library to load...');
+    // Now wait for the invoice table to appear
+    console.log('Waiting for closed invoices table to render (max 5 minutes)...');
 
-      // Wait specifically for Handsontable library (not the whole document)
-      try {
-        await this.page.waitForFunction(
-          () => typeof window.Handsontable !== 'undefined',
-          { timeout: 180000 }  // 3 minutes max
-        );
-        console.log('✓ Handsontable library loaded');
-      } catch (e) {
-        console.log('⚠️  Handsontable library did not load - trying to proceed anyway');
-      }
-
-      // Extra wait for Handsontable to initialize
-      await this.page.waitForTimeout(10000);  // 10 seconds for initialization
-    } else {
-      // For load/domcontentloaded, just wait a bit for table to fully render
-      console.log('Load/DOMContentLoaded strategy used - table should already be rendered');
-      await this.page.waitForTimeout(3000);  // Just 3 seconds
-    }
-
-    // Wait for page to stabilize
-    await this.page.waitForTimeout(2000);
-
-    // Take screenshot after navigation
+    // Take initial screenshot
     try {
-      const screenshotPath = `./screenshots/closed-after-navigation-${Date.now()}.png`;
+      const screenshotPath = `./screenshots/closed-waiting-0s-${Date.now()}.png`;
       await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`📸 Screenshot after navigation: ${screenshotPath}`);
+      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
     } catch (e) {
-      console.log(`⚠️  Could not save screenshot: ${e.message}`);
+      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
     }
 
-    // If we used 'commit' or 'no-wait', actively poll for pagination as sign of data loaded
-    if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Used lenient strategy - waiting for pagination to appear (sign that data loaded)...');
+    // Poll for table with progress logging
+    let tableRendered = false;
+    const startTime = Date.now();
+    const maxWaitMs = 300000;  // 5 minutes
+    const pollIntervalMs = 2000;  // Check every 2 seconds
+    const logIntervalMs = 30000;  // Log progress every 30 seconds
+    let lastLogTime = startTime;
+    let lastScreenshotTime = startTime;
 
-      // Wait for pagination elements - this means data has loaded!
-      const paginationSelectors = [
-        '.pagination',
-        'ul.pagination',
-        '.paginationjs',
-        '[class*="pagination"]',
-        'a[href*="page"]'
-      ];
-
-      const maxWait = 90;  // 90 attempts × 2 seconds = 180 seconds (3 minutes)
-      let paginationFound = false;
-      let foundSelector = null;
-
-      for (let attempt = 1; attempt <= maxWait; attempt++) {
-        // Try all pagination selectors
-        for (const selector of paginationSelectors) {
-          const paginationEl = await this.page.$(selector);
-          if (paginationEl) {
-            // Check if it's actually visible
-            const isVisible = await paginationEl.isVisible().catch(() => false);
-            if (!isVisible) continue;
-
-            // Check if it has actual content (page numbers/links)
-            const hasContent = await paginationEl.evaluate(el => {
-              const text = el.innerText.trim();
-              const hasLinks = el.querySelectorAll('a, li').length > 0;
-              const hasPageNumbers = /\d+/.test(text);  // Contains numbers
-              return (hasLinks || hasPageNumbers) && text.length > 0;
-            }).catch(() => false);
-
-            if (hasContent) {
-              paginationFound = true;
-              foundSelector = selector;
-              console.log(`✓ Pagination found after ${attempt * 2} seconds using selector: ${selector}`);
-              break;
-            }
-          }
-        }
-
-        if (paginationFound) break;
-
-        if (attempt % 10 === 0) {  // Log every 20 seconds
-          console.log(`  Still waiting for pagination... (${attempt * 2}s elapsed)`);
-
-          // Take screenshot every 30 seconds
-          if (attempt % 15 === 0) {
-            try {
-              const screenshotPath = `./screenshots/closed-waiting-${attempt * 2}s-${Date.now()}.png`;
-              await this.page.screenshot({ path: screenshotPath, fullPage: true });
-              console.log(`  📸 Screenshot at ${attempt * 2}s: ${screenshotPath}`);
-            } catch (e) {
-              // Ignore screenshot errors
-            }
-          }
-        }
-
-        await this.page.waitForTimeout(2000);
+    while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
+      // Check if table exists
+      const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
+      if (table) {
+        tableRendered = true;
+        break;
       }
 
-      if (!paginationFound) {
-        console.log('⚠️  Pagination did not appear - data may not have loaded');
+      const elapsed = Date.now() - startTime;
 
-        // Debug what's on the page
-        console.log('🔍 Debugging - checking page content...');
-
-        const pageInfo = await this.page.evaluate(() => {
-          // Check for JavaScript errors
-          const errors = window.__pageErrors || [];
-
-          // Check for loading indicators
-          const loadingSpinner = document.querySelector('.loader, .spinner, .loading, [class*="load"]');
-          const hasLoadingSpinner = !!loadingSpinner;
-          const spinnerVisible = loadingSpinner ? loadingSpinner.offsetParent !== null : false;
-
-          // Check Handsontable status
-          const hasHandsontableLib = typeof window.Handsontable !== 'undefined';
-          const handsontableInstances = window.Handsontable ? Object.keys(window.Handsontable).length : 0;
-
-          return {
-            title: document.title,
-            readyState: document.readyState,
-            bodyText: document.body.innerText.substring(0, 500),
-            hasPagination: !!document.querySelector('.pagination, ul.pagination, .paginationjs'),
-            hasTable: !!document.querySelector('table'),
-            hasMasterTable: !!document.querySelector('div.ht_master'),
-            hasLoadingSpinner,
-            spinnerVisible,
-            hasHandsontableLib,
-            handsontableInstances,
-            jsErrors: errors.length
-          };
-        }).catch(() => ({
-          title: 'unknown',
-          readyState: 'unknown',
-          bodyText: 'Could not get body text',
-          hasPagination: false,
-          hasTable: false,
-          hasMasterTable: false,
-          hasLoadingSpinner: false,
-          spinnerVisible: false,
-          hasHandsontableLib: false,
-          handsontableInstances: 0,
-          jsErrors: 0
-        }));
-
-        console.log(`   Page title: "${pageInfo.title}"`);
-        console.log(`   Document ready state: ${pageInfo.readyState}`);
-        console.log(`   Has pagination: ${pageInfo.hasPagination}`);
-        console.log(`   Has any table: ${pageInfo.hasTable}`);
-        console.log(`   Has div.ht_master: ${pageInfo.hasMasterTable}`);
-        console.log(`   ⚠️  LOADING SPINNER VISIBLE: ${pageInfo.spinnerVisible}`);
-        console.log(`   Handsontable library loaded: ${pageInfo.hasHandsontableLib}`);
-        console.log(`   Handsontable instances: ${pageInfo.handsontableInstances}`);
-        console.log(`   JavaScript errors: ${pageInfo.jsErrors}`);
-        console.log(`   Page body preview: ${pageInfo.bodyText.substring(0, 200)}...`);
-
-        // Take final screenshot
-        try {
-          const screenshotPath = `./screenshots/closed-debug-no-pagination-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`   📸 Screenshot saved: ${screenshotPath}`);
-        } catch (e) {
-          console.log(`   Could not save screenshot: ${e.message}`);
-        }
-      } else {
-        console.log(`✓ Data loaded! Pagination appeared using: ${foundSelector}`);
-
-        // Take screenshot when pagination found
-        try {
-          const screenshotPath = `./screenshots/closed-pagination-found-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`📸 Screenshot with pagination: ${screenshotPath}`);
-        } catch (e) {
-          // Ignore
-        }
-
-        // Now wait a bit more for Handsontable to fully render
-        console.log('Waiting for Handsontable to fully render...');
-        await this.page.waitForTimeout(5000);
+      // Log progress every 30 seconds
+      if (elapsed - (lastLogTime - startTime) >= logIntervalMs) {
+        console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
+        lastLogTime = Date.now();
       }
-    } else {
-      // For 'load' or 'domcontentloaded', table should already be there
+
+      // Take screenshot every 30 seconds
+      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
+        try {
+          const screenshotPath = `./screenshots/closed-waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`  📸 Screenshot: ${screenshotPath}`);
+          lastScreenshotTime = Date.now();
+        } catch (e) {
+          // Ignore screenshot errors
+        }
+      }
+
+      await this.page.waitForTimeout(pollIntervalMs);
+    }
+
+    if (!tableRendered) {
+      console.log('❌ Table did not render within 5 minutes');
+
+      // Take debug screenshot
       try {
-        await this.page.waitForSelector(this.selectors.closedInvoicesList.invoicesTable, {
-          timeout: 30000,
-          state: 'attached'
-        });
-        console.log('✓ Table found in DOM');
-      } catch (error) {
-        console.log('⚠️  Table selector timeout - proceeding anyway');
+        const screenshotPath = `./screenshots/closed-table-not-rendered-${Date.now()}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`  📸 Screenshot: ${screenshotPath}`);
+      } catch (e) {
+        // Ignore screenshot errors
       }
+
+      throw new Error('Closed invoices table did not render.');
     }
 
-    // Extra stabilization wait for table to fully populate
-    console.log('Waiting for table to fully render...');
+    console.log('✓ Table rendered successfully');
+
+    // Wait for table data to populate
+    console.log('Waiting for table data to load...');
     await this.page.waitForTimeout(5000);
 
-    // Summary of errors captured
-    if (jsErrors.length > 0) {
-      console.log(`⚠️  Total JavaScript errors captured: ${jsErrors.length}`);
-    }
-    if (failedRequests.length > 0) {
-      console.log(`⚠️  Total failed network requests: ${failedRequests.length}`);
-      failedRequests.forEach(req => {
-        console.log(`     - ${req.url}: ${req.failure}`);
-      });
+    // Take screenshot after successful render
+    try {
+      const screenshotPath = `./screenshots/closed-table-rendered-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Screenshot: ${screenshotPath}`);
+    } catch (e) {
+      // Ignore screenshot errors
     }
 
     console.log('✓ Successfully navigated to closed invoices page');
+  }
+
+  /**
+   * Navigate to items page
+   */
+  async navigateToItems() {
+    const itemsUrl = `${this.config.baseUrl}${this.config.routes.items}`;
+    console.log(`Navigating to items list: ${itemsUrl}`);
+
+    // Navigate and wait for basic page structure to load
+    console.log('  Navigating to page...');
+
+    try {
+      // Use domcontentloaded - waits for HTML to parse and basic resources
+      await this.page.goto(itemsUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
+      console.log('  ✓ Page HTML loaded');
+    } catch (error) {
+      // If domcontentloaded fails, try commit as fallback
+      console.log('  ⚠️  DOMContentLoaded timeout, trying commit...');
+      await this.page.goto(itemsUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+      console.log('  ✓ Navigation committed (fallback)');
+    }
+
+    // Verify we're on the correct page
+    const currentUrl = this.page.url();
+    console.log(`Current URL: ${currentUrl}`);
+
+    if (currentUrl.includes('/web/login')) {
+      throw new Error('Redirected to login page - session may have expired');
+    }
+
+    // Wait for page structure to render (sidebar, header, etc)
+    console.log('Waiting for page structure to render...');
+    await this.page.waitForTimeout(3000);  // Give page time to render basic structure
+
+    // Now wait for the items table to appear
+    console.log('Waiting for items table to render (max 5 minutes)...');
+
+    // Take initial screenshot
+    try {
+      const screenshotPath = `./screenshots/items-waiting-0s-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
+    } catch (e) {
+      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
+    }
+
+    // Poll for table with progress logging
+    let tableRendered = false;
+    const startTime = Date.now();
+    const maxWaitMs = 300000;  // 5 minutes
+    const pollIntervalMs = 2000;  // Check every 2 seconds
+    const logIntervalMs = 30000;  // Log progress every 30 seconds
+    let lastLogTime = startTime;
+    let lastScreenshotTime = startTime;
+
+    while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
+      // Check if table exists
+      const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
+      if (table) {
+        tableRendered = true;
+        break;
+      }
+
+      const elapsed = Date.now() - startTime;
+
+      // Log progress every 30 seconds
+      if (elapsed - (lastLogTime - startTime) >= logIntervalMs) {
+        console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
+        lastLogTime = Date.now();
+      }
+
+      // Take screenshot every 30 seconds
+      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
+        try {
+          const screenshotPath = `./screenshots/items-waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`  📸 Screenshot: ${screenshotPath}`);
+          lastScreenshotTime = Date.now();
+        } catch (e) {
+          console.log(`  ⚠️  Screenshot failed: ${e.message}`);
+          lastScreenshotTime = Date.now(); // Still update time to avoid spam
+        }
+      }
+
+      await this.page.waitForTimeout(pollIntervalMs);
+    }
+
+    if (!tableRendered) {
+      console.log('❌ Table did not render within 5 minutes');
+
+      // Take debug screenshot
+      try {
+        const screenshotPath = `./screenshots/items-table-not-rendered-${Date.now()}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`  📸 Screenshot: ${screenshotPath}`);
+      } catch (e) {
+        // Ignore screenshot errors
+      }
+
+      throw new Error('Items table did not render. Page may have failed to load properly.');
+    }
+
+    console.log('✓ Table rendered successfully');
+
+    // Wait a bit more for table data to populate
+    console.log('Waiting for table data to load...');
+    await this.page.waitForTimeout(5000);
+
+    // Take screenshot after successful render
+    try {
+      const screenshotPath = `./screenshots/items-table-rendered-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Screenshot: ${screenshotPath}`);
+    } catch (e) {
+      // Ignore screenshot errors
+    }
+
+    console.log('✓ Successfully navigated to items page');
   }
 
   /**
@@ -682,9 +468,23 @@ class RouteStarNavigator {
    */
   async navigateToInvoiceDetails(invoiceNumber) {
     const invoiceUrl = `${this.config.baseUrl}${this.config.routes.invoiceDetails}${invoiceNumber}`;
-    await this.page.goto(invoiceUrl);
-    await this.page.waitForLoadState('networkidle');
-    await this.page.waitForTimeout(1000);
+
+    // Use domcontentloaded to ensure page structure loads
+    try {
+      await this.page.goto(invoiceUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
+    } catch (error) {
+      // Fallback to commit if timeout
+      await this.page.goto(invoiceUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+    }
+
+    // Wait for page to stabilize
+    await this.page.waitForTimeout(2000);
   }
 
   /**
@@ -693,43 +493,63 @@ class RouteStarNavigator {
   async goToNextPage() {
     console.log('Checking for next page button...');
 
-    // Try multiple selectors for the next button
-    const selectors = [
-      this.selectors.pagination.nextButton,           // Original: .pagination li.next:not(.disabled)
-      '.pagination li.next',                          // Without :not(.disabled)
-      '.pagination .next',                             // Simpler selector
-      'li.next a',                                     // Direct link
-      'a[aria-label="Next"]',                          // Aria label
-      'button:has-text("Next")',                       // Button with text
-      '.paginationjs-next'                             // Alternative pagination library
-    ];
+    // Debug: First, log ALL pagination elements to understand the structure
+    const allPaginationElements = await this.page.$$('.pagination li, .paginationjs li, [class*="pagination"] li');
+    console.log(`   Found ${allPaginationElements.length} pagination list items in total`);
 
+    for (let i = 0; i < allPaginationElements.length; i++) {
+      const element = allPaginationElements[i];
+      const className = await element.getAttribute('class');
+      const text = await element.textContent();
+      const isVisible = await element.isVisible().catch(() => false);
+      console.log(`   Pagination item ${i + 1}: class="${className}", text="${text?.trim()}", visible=${isVisible}`);
+    }
+
+    // Strategy: Find the EXACT "next page" button (increment by 1)
+    // NOT the "skip 10" or "last page" button
     let nextButton = null;
-    let usedSelector = null;
+    let usedMethod = null;
 
-    for (const selector of selectors) {
-      nextButton = await this.page.$(selector);
-      if (nextButton) {
-        usedSelector = selector;
-        console.log(`✓ Found next button using selector: ${selector}`);
-        break;
+    // Method 1: Look for pagination li with class "next" that contains ONLY single arrow or "Next" text
+    const nextCandidates = await this.page.$$('.pagination li.next, .pagination li[class*="next"]');
+    console.log(`   Found ${nextCandidates.length} elements with "next" in class name`);
+
+    for (let i = 0; i < nextCandidates.length; i++) {
+      const candidate = nextCandidates[i];
+      const className = await candidate.getAttribute('class');
+      const text = await candidate.textContent();
+      const isDisabled = className?.includes('disabled') || false;
+      const isVisible = await candidate.isVisible().catch(() => false);
+
+      console.log(`   Next candidate ${i + 1}: class="${className}", text="${text?.trim()}", disabled=${isDisabled}, visible=${isVisible}`);
+
+      // Skip if disabled or not visible
+      if (isDisabled || !isVisible) {
+        continue;
       }
+
+      // Check if this looks like a single-page increment button
+      // It should NOT contain numbers > 1, should NOT contain ">>", "Last", etc.
+      const textContent = text?.trim() || '';
+
+      // Skip if it looks like a "fast forward" or "skip many pages" button
+      if (textContent.includes('>>') ||
+          textContent.includes('Last') ||
+          textContent.includes('»') ||
+          textContent.match(/\d{2,}/)) {  // Has 2+ digit numbers (like "124")
+        console.log(`   ⚠️  Skipping candidate ${i + 1} - appears to be fast-forward button: "${textContent}"`);
+        continue;
+      }
+
+      // This looks like the correct single-page next button
+      nextButton = candidate;
+      usedMethod = `next candidate ${i + 1} (class="${className}", text="${textContent}")`;
+      console.log(`   ✓ Selected next button: ${usedMethod}`);
+      break;
     }
 
     if (!nextButton) {
-      console.log('❌ Next button not found with any selector');
-
-      // Debug: Log all pagination elements found
-      const allPaginationElements = await this.page.$$('.pagination li, .paginationjs li, [class*="pagination"] li');
-      console.log(`   Found ${allPaginationElements.length} pagination list items`);
-
-      for (let i = 0; i < allPaginationElements.length; i++) {
-        const element = allPaginationElements[i];
-        const className = await element.getAttribute('class');
-        const text = await element.textContent();
-        console.log(`   Pagination item ${i + 1}: class="${className}", text="${text?.trim()}"`);
-      }
-
+      console.log('❌ Next button not found - may be on last page');
       return false;
     }
 
@@ -757,7 +577,7 @@ class RouteStarNavigator {
       return false;
     }
 
-    console.log('✓ Next button is enabled, preparing to click');
+    console.log(`✓ Next button is enabled, preparing to click (${usedMethod})`);
 
     // Close any dialogs that might be open
     try {
@@ -779,10 +599,13 @@ class RouteStarNavigator {
     // Click the link inside the next button li element
     const nextLink = await nextButton.$('a');
     if (nextLink) {
-      console.log('Clicking next page link...');
+      const linkText = await nextLink.textContent();
+      const linkHref = await nextLink.getAttribute('href');
+      console.log(`Clicking next page link: text="${linkText?.trim()}", href="${linkHref}"`);
       await nextLink.click();
     } else {
-      console.log('Clicking next button element...');
+      const buttonText = await nextButton.textContent();
+      console.log(`Clicking next button element directly: text="${buttonText?.trim()}"`);
       await nextButton.click();
     }
 

@@ -77,6 +77,67 @@ class BaseBrowser {
       // Set default timeout
       this.page.setDefaultTimeout(this.options.timeout);
 
+      // Hide automation indicators to bypass bot detection
+      await this.page.addInitScript(() => {
+        // Override navigator.webdriver
+        try {
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => false
+          });
+        } catch (e) {
+          // Already defined, ignore
+        }
+
+        // Override Chrome detection - only if not already defined
+        try {
+          if (!window.chrome || !window.chrome.runtime) {
+            Object.defineProperty(window, 'chrome', {
+              writable: true,
+              enumerable: true,
+              configurable: false,
+              value: {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+              }
+            });
+          }
+        } catch (e) {
+          // Chrome property already exists and is not configurable, ignore
+        }
+
+        // Override permissions
+        try {
+          const originalQuery = window.navigator.permissions.query;
+          window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+              Promise.resolve({ state: Notification.permission }) :
+              originalQuery(parameters)
+          );
+        } catch (e) {
+          // Ignore
+        }
+
+        // Override plugins to look more like a real browser
+        try {
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5]
+          });
+        } catch (e) {
+          // Ignore
+        }
+
+        // Override languages to look more real
+        try {
+          Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en']
+          });
+        } catch (e) {
+          // Ignore
+        }
+      });
+
       logger.info('New page created');
       return this.page;
     } catch (error) {

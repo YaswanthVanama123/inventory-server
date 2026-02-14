@@ -6,8 +6,7 @@ const productSchema = new mongoose.Schema({
     required: [true, 'SKU is required'],
     unique: true,
     uppercase: true,
-    trim: true,
-    index: true
+    trim: true
   },
   name: {
     type: String,
@@ -60,8 +59,8 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
-productSchema.index({ sku: 1 });
+// Index already defined on sku field with unique: true (line 7)
+// No need for duplicate index
 productSchema.index({ name: 'text', aliases: 'text' });
 productSchema.index({ category: 1, isActive: 1 });
 

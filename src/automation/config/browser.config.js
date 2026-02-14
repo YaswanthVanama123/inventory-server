@@ -11,12 +11,19 @@ module.exports = {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
       '--disable-blink-features=AutomationControlled',  // Hide automation detection
       '--no-first-run',
       '--no-default-browser-check',
-      '--disable-extensions'
+      // Remove flags that make browser look automated:
+      // '--disable-gpu',
+      // '--disable-accelerated-2d-canvas',
+      // '--disable-extensions'
+      // Add flags to look more like real browser:
+      '--enable-automation=false',
+      '--disable-web-security',  // Sometimes needed for bot detection bypass
+      '--flag-switches-begin',
+      '--disable-site-isolation-trials',
+      '--flag-switches-end'
     ]
   },
   userAgent: process.env.USER_AGENT || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

@@ -6,8 +6,7 @@ const stockSummarySchema = new mongoose.Schema({
     required: [true, 'SKU is required'],
     unique: true,
     uppercase: true,
-    trim: true,
-    index: true
+    trim: true
   },
   product: {
     type: mongoose.Schema.Types.ObjectId,
@@ -53,8 +52,8 @@ const stockSummarySchema = new mongoose.Schema({
   timestamps: true
 });
 
-
-stockSummarySchema.index({ sku: 1 });
+// Index already defined on sku field with unique: true (line 7)
+// No need for duplicate index
 stockSummarySchema.index({ availableQty: 1 });
 
 

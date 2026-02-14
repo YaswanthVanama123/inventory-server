@@ -202,7 +202,8 @@ const inventorySchema = new mongoose.Schema({
 });
 
 
-inventorySchema.index({ skuCode: 1 }, { unique: true });
+// Index already defined on skuCode field with unique: true (line 13)
+// No need for duplicate index
 inventorySchema.index({ category: 1, isActive: 1 });
 inventorySchema.index({ 'quantity.current': 1 });
 inventorySchema.index({ createdAt: -1 });

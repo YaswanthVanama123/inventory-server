@@ -6,8 +6,7 @@ const invoiceSchema = new mongoose.Schema({
     required: false,
     unique: true,
     uppercase: true,
-    trim: true,
-    index: true
+    trim: true
   },
   invoiceDate: {
     type: Date,
@@ -252,7 +251,8 @@ const invoiceSchema = new mongoose.Schema({
 });
 
 
-invoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
+// Index already defined on invoiceNumber field with unique: true (line 7)
+// No need for duplicate index
 invoiceSchema.index({ 'customer.email': 1, invoiceDate: -1 });
 invoiceSchema.index({ status: 1, paymentStatus: 1 });
 invoiceSchema.index({ invoiceDate: -1, createdAt: -1 });

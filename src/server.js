@@ -6,13 +6,25 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const connectDB = require('./config/database');
+const initModels = require('./config/initModels');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 
 const app = express();
 
 
-connectDB();
+// Connect to database and initialize models
+(async () => {
+  await connectDB();
+
+  // Initialize models and create indexes
+  try {
+    await initModels();
+  } catch (error) {
+    console.error('Warning: Failed to initialize models:', error.message);
+    // Don't exit - server can still function
+  }
+})();
 
 
 app.use(cors());
