@@ -23,10 +23,11 @@ class BasePage {
       logger.info('Navigating to URL', { url });
 
       // Try progressive fallback strategies if no specific strategy requested
-      // For slow-loading sites like RouteStar, try commit first
+      // For RouteStar: Try load first (JavaScript executes), then fallback to commit
+      // For CustomerConnect: commit works fine
       const strategies = options.waitUntil
         ? [options.waitUntil]  // Use specific strategy if requested
-        : ['commit', 'load', 'domcontentloaded'];  // Try commit first (fastest), then fallback to more strict strategies
+        : ['load', 'domcontentloaded', 'commit'];  // Try load first for proper JS execution
 
       let response = null;
       let successfulStrategy = null;
@@ -65,7 +66,7 @@ class BasePage {
       // If commit strategy was used, wait longer for page to fully load
       if (successfulStrategy === 'commit') {
         logger.info('Commit strategy used - waiting extra time for page to stabilize');
-        await wait(10000);  // 10 seconds for commit strategy (increased from 5s)
+        await wait(10000);  // 10 seconds for commit strategy
       } else {
         await wait(2000);  // 2 seconds for load/domcontentloaded
       }
@@ -259,9 +260,9 @@ class BasePage {
   /**
    * Wait for page to be loaded
    */
-  async waitForPageLoad() {
+  async waitForPageLoad(timeout = 30000) {
     try {
-      await this.page.waitForLoadState('domcontentloaded');
+      await this.page.waitForLoadState('domcontentloaded', { timeout });
       await wait(1000); // Additional wait for dynamic content
       logger.debug('Page loaded');
       return true;
@@ -342,6 +343,110 @@ class BasePage {
     } catch (error) {
       logger.error('Evaluate failed', { error: error.message });
       throw error;
+    }
+  }
+
+  /**
+   * Dismiss any modal popups or error dialogs
+   */
+  async dismissModals() {
+    try {
+      logger.debug('Checking for modal popups to dismiss');
+
+      // Wait a moment for any modals to appear
+      await wait(1000);
+
+      // Try multiple times to catch modals that appear asynchronously
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        logger.debug('Modal dismissal attempt', { attempt });
+
+        // Common modal/popup selectors
+        const modalSelectors = [
+          '.jconfirm',  // jConfirm modals
+          '.modal.show',  // Bootstrap modals (active)
+          '.modal',  // Bootstrap modals (any)
+          '.swal2-container',  // SweetAlert2
+          '.alert-modal',  // Generic alert modals
+          '[role="dialog"]',  // ARIA dialogs
+          '.popup-overlay',  // Generic popups
+          '.overlay.active'  // Active overlays
+        ];
+
+        let foundAny = false;
+
+        for (const selector of modalSelectors) {
+          const modals = await this.page.$$(selector);
+
+          for (const modal of modals) {
+            // Check if modal is visible
+            const isVisible = await modal.isVisible().catch(() => false);
+            if (!isVisible) continue;
+
+            foundAny = true;
+            logger.info('Found visible modal popup, attempting to dismiss', { selector, attempt });
+
+            // Try clicking various close/cancel buttons
+            const closeSelectors = [
+              'button:has-text("CANCEL")',  // QuickBooks modal
+              'button:has-text("Cancel")',
+              'button:has-text("Close")',
+              'button:has-text("OK")',
+              'button:has-text("Dismiss")',
+              '.btn-default',
+              '.btn-cancel',
+              '.close',
+              '[aria-label="Close"]',
+              'button.cancel',
+              'button[data-dismiss="modal"]'
+            ];
+
+            let dismissed = false;
+            for (const closeSelector of closeSelectors) {
+              try {
+                const closeButton = await modal.$(closeSelector);
+                if (closeButton) {
+                  const buttonVisible = await closeButton.isVisible().catch(() => false);
+                  if (buttonVisible) {
+                    await closeButton.click({ timeout: 2000 });
+                    await wait(1000);  // Wait for modal to close
+                    logger.info('Modal dismissed successfully', { closeSelector, attempt });
+                    dismissed = true;
+                    break;
+                  }
+                }
+              } catch (e) {
+                // Try next selector
+              }
+            }
+
+            // If no button worked, try pressing Escape
+            if (!dismissed) {
+              logger.info('Trying Escape key to dismiss modal', { attempt });
+              await this.page.keyboard.press('Escape');
+              await wait(500);
+            }
+          }
+        }
+
+        if (!foundAny) {
+          logger.debug('No modal popups found', { attempt });
+
+          // If we didn't find any modals on this attempt and it's not the first attempt, we're done
+          if (attempt > 1) {
+            break;
+          }
+        }
+
+        // Wait before next attempt to give modals time to disappear/reappear
+        if (attempt < 3) {
+          await wait(1000);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      logger.warn('Error dismissing modals', { error: error.message });
+      return false;
     }
   }
 

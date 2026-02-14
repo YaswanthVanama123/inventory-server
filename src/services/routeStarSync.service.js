@@ -1,7 +1,6 @@
 const RouteStarAutomation = require('../automation/routestar');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const StockMovement = require('../models/StockMovement');
-const Inventory = require('../models/Inventory');
 const SyncLog = require('../models/SyncLog');
 
 /**
@@ -52,7 +51,9 @@ function normalizeStatus(status) {
 
 /**
  * RouteStar Sync Service
- * Handles syncing invoices from RouteStar and processing stock movements
+ * Handles syncing invoices from RouteStar portal
+ * Stores invoices in RouteStarInvoice model and creates StockMovement records
+ * Does NOT interact with Inventory model (Inventory is managed separately)
  */
 class RouteStarSyncService {
   constructor() {
@@ -144,6 +145,18 @@ class RouteStarSyncService {
 
       const invoices = await this.automation.fetchInvoicesList(limit, direction);
       console.log(`✓ Fetched ${invoices.length} pending invoices from RouteStar`);
+
+      if (invoices.length === 0) {
+        console.log(`ℹ️  No pending invoices found - this is normal if all work is complete and invoices have moved to closed`);
+        await this.updateSyncLog({
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          success: true
+        });
+        return { created: 0, updated: 0, skipped: 0, total: 0, errors: [] };
+      }
 
       let created = 0;
       let updated = 0;
@@ -249,6 +262,18 @@ class RouteStarSyncService {
 
       const invoices = await this.automation.fetchClosedInvoicesList(limit, direction);
       console.log(`✓ Fetched ${invoices.length} closed invoices from RouteStar`);
+
+      if (invoices.length === 0) {
+        console.log(`⚠️  No closed invoices found - this may indicate an issue or there truly are no closed invoices`);
+        await this.updateSyncLog({
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          success: true
+        });
+        return { created: 0, updated: 0, skipped: 0, total: 0, errors: [] };
+      }
 
       let created = 0;
       let updated = 0;
@@ -458,7 +483,7 @@ class RouteStarSyncService {
 
   /**
    * Process stock movements for completed invoices
-   * Reduces stock for sold items
+   * Creates StockMovement records only (does NOT update Inventory model)
    */
   async processStockMovements() {
     console.log(`\n📦 Processing stock movements for completed invoices...`);
@@ -499,18 +524,10 @@ class RouteStarSyncService {
               notes: `Sale: ${invoice.customer.name} - ${invoice.invoiceNumber}`
             });
 
-            
-            if (item.sku) {
-              const inventoryItem = await Inventory.findOne({ sku: item.sku });
-              if (inventoryItem) {
-                inventoryItem.quantity = Math.max(0, inventoryItem.quantity - item.quantity);
-                await inventoryItem.save();
-                console.log(`  ✓ Reduced stock for ${item.sku}: -${item.quantity}`);
-              }
-            }
+            console.log(`  ✓ Stock movement created for ${item.sku || item.name}: -${item.quantity}`);
           }
 
-          
+
           await invoice.markStockProcessed();
           processed++;
           console.log(`  ✓ Processed: ${invoice.invoiceNumber} (${invoice.lineItems.length} items)`);

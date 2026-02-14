@@ -19,12 +19,31 @@ class RouteStarNavigator {
     const invoicesUrl = `${this.config.baseUrl}${this.config.routes.invoices}`;
     console.log(`Navigating to pending invoices: ${invoicesUrl}`);
 
-    // Try commit first since RouteStar server is very slow
-    // Commit works reliably while load/domcontentloaded often timeout
+    // Capture JavaScript console errors
+    const jsErrors = [];
+    this.page.on('console', msg => {
+      if (msg.type() === 'error') {
+        jsErrors.push(msg.text());
+        console.log(`  ⚠️  JavaScript Error: ${msg.text()}`);
+      }
+    });
+
+    // Capture failed network requests
+    const failedRequests = [];
+    this.page.on('requestfailed', request => {
+      failedRequests.push({
+        url: request.url(),
+        failure: request.failure()?.errorText || 'Unknown error'
+      });
+      console.log(`  ⚠️  Network Request Failed: ${request.url()} - ${request.failure()?.errorText}`);
+    });
+
+    // Try load first for proper JavaScript execution
+    // RouteStar needs JS to render Handsontable - commit returns too early
     const strategies = [
-      { name: 'commit', waitUntil: 'commit', timeout: 60000 },  // Try lenient strategy first (works best for RouteStar)
-      { name: 'load', waitUntil: 'load', timeout: 30000 },       // Fallback to load with shorter timeout
-      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 }  // Last resort
+      { name: 'load', waitUntil: 'load', timeout: 60000 },  // Try load first (JS executes)
+      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 },  // Fallback
+      { name: 'commit', waitUntil: 'commit', timeout: 30000 }  // Last resort
     ];
 
     let success = false;
@@ -77,8 +96,9 @@ class RouteStarNavigator {
     console.log('Waiting for page to stabilize and table to render...');
 
     // If we used 'commit' or 'no-wait', wait for Handsontable library to load
+    // For 'load' and 'domcontentloaded', JavaScript already executed so table should be there
     if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Commit strategy used - waiting for Handsontable library to load...');
+      console.log('Commit/no-wait strategy used - waiting for Handsontable library to load...');
 
       // Wait specifically for Handsontable library (not the whole document)
       try {
@@ -93,143 +113,167 @@ class RouteStarNavigator {
 
       // Extra wait for Handsontable to initialize
       await this.page.waitForTimeout(10000);  // 10 seconds for initialization
+    } else {
+      // For load/domcontentloaded, just wait a bit for table to fully render
+      console.log('Load/DOMContentLoaded strategy used - table should already be rendered');
+      await this.page.waitForTimeout(3000);  // Just 3 seconds
     }
 
     // Wait for page to stabilize
-    await this.page.waitForTimeout(3000);
+    await this.page.waitForTimeout(2000);
 
-    // If we used 'commit' or 'no-wait', actively poll for the table instead of blind waiting
+    // Take screenshot after navigation
+    try {
+      const screenshotPath = `./screenshots/after-navigation-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Screenshot after navigation: ${screenshotPath}`);
+    } catch (e) {
+      console.log(`⚠️  Could not save screenshot: ${e.message}`);
+    }
+
+    // If we used 'commit' or 'no-wait', actively poll for pagination as sign of data loaded
     if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Used lenient strategy - actively polling for table container to appear...');
+      console.log('Used lenient strategy - waiting for pagination to appear (sign that data loaded)...');
 
-      // First wait for the main container (appears before Handsontable renders)
-      const containerSelector = '#open-invoice-table';
-      const maxContainerWait = 30;  // 30 attempts × 2 seconds = 60 seconds max
-      let containerFound = false;
+      // Wait for pagination elements - this means data has loaded!
+      const paginationSelectors = [
+        '.pagination',
+        'ul.pagination',
+        '.paginationjs',
+        '[class*="pagination"]',
+        'a[href*="page"]'
+      ];
 
-      for (let attempt = 1; attempt <= maxContainerWait; attempt++) {
-        const containerExists = await this.page.$(containerSelector).then(el => !!el).catch(() => false);
+      const maxWait = 90;  // 90 attempts × 2 seconds = 180 seconds (3 minutes)
+      let paginationFound = false;
+      let foundSelector = null;
 
-        if (containerExists) {
-          console.log(`✓ Invoice table container appeared after ${attempt * 2} seconds`);
-          containerFound = true;
-          break;
+      for (let attempt = 1; attempt <= maxWait; attempt++) {
+        // Try all pagination selectors
+        for (const selector of paginationSelectors) {
+          const paginationEl = await this.page.$(selector);
+          if (paginationEl) {
+            // Check if it's actually visible
+            const isVisible = await paginationEl.isVisible().catch(() => false);
+            if (!isVisible) continue;
+
+            // Check if it has actual content (page numbers/links)
+            const hasContent = await paginationEl.evaluate(el => {
+              const text = el.innerText.trim();
+              const hasLinks = el.querySelectorAll('a, li').length > 0;
+              const hasPageNumbers = /\d+/.test(text);  // Contains numbers
+              return (hasLinks || hasPageNumbers) && text.length > 0;
+            }).catch(() => false);
+
+            if (hasContent) {
+              paginationFound = true;
+              foundSelector = selector;
+              console.log(`✓ Pagination found after ${attempt * 2} seconds using selector: ${selector}`);
+              break;
+            }
+          }
         }
 
-        if (attempt % 5 === 0) {
-          console.log(`  Still waiting for table container... (${attempt * 2}s elapsed)`);
-        }
-
-        await this.page.waitForTimeout(2000);
-      }
-
-      if (!containerFound) {
-        console.log('⚠️  Table container did not appear - page may not have loaded');
-      }
-
-      // Now wait for Handsontable to render inside the container
-      console.log('Waiting for Handsontable to render...');
-      const maxTableWait = 60;  // 60 attempts × 2 seconds = 120 seconds (2 minutes)
-      let found = false;
-
-      for (let attempt = 1; attempt <= maxTableWait; attempt++) {
-        const tableExists = await this.page.$('div.ht_master table.htCore').then(el => !!el).catch(() => false);
-
-        if (tableExists) {
-          console.log(`✓ Handsontable rendered after ${attempt * 2} additional seconds`);
-          found = true;
-          break;
-        }
+        if (paginationFound) break;
 
         if (attempt % 10 === 0) {  // Log every 20 seconds
-          console.log(`  Still waiting for Handsontable to render... (${attempt * 2}s elapsed)`);
+          console.log(`  Still waiting for pagination... (${attempt * 2}s elapsed)`);
+
+          // Take screenshot every 30 seconds
+          if (attempt % 15 === 0) {
+            try {
+              const screenshotPath = `./screenshots/waiting-${attempt * 2}s-${Date.now()}.png`;
+              await this.page.screenshot({ path: screenshotPath, fullPage: true });
+              console.log(`  📸 Screenshot at ${attempt * 2}s: ${screenshotPath}`);
+            } catch (e) {
+              // Ignore screenshot errors
+            }
+          }
         }
 
         await this.page.waitForTimeout(2000);
       }
 
-      if (!found) {
-        console.log('⚠️  Handsontable did not render - checking for JavaScript errors...');
+      if (!paginationFound) {
+        console.log('⚠️  Pagination did not appear - data may not have loaded');
 
-        // Check for JavaScript errors
-        const jsErrors = await this.page.evaluate(() => {
-          // Check if Handsontable is loaded
-          const hasHandsontable = typeof window.Handsontable !== 'undefined';
+        // Debug what's on the page
+        console.log('🔍 Debugging - checking page content...');
 
-          // Check for any error elements on page
-          const errorElements = document.querySelectorAll('.alert-danger, .error, .alert');
-          const errors = Array.from(errorElements).map(el => el.textContent.trim()).filter(t => t);
+        const pageInfo = await this.page.evaluate(() => {
+          // Check for JavaScript errors
+          const errors = window.__pageErrors || [];
+
+          // Check for loading indicators
+          const loadingSpinner = document.querySelector('.loader, .spinner, .loading, [class*="load"]');
+          const hasLoadingSpinner = !!loadingSpinner;
+          const spinnerVisible = loadingSpinner ? loadingSpinner.offsetParent !== null : false;
+
+          // Check Handsontable status
+          const hasHandsontableLib = typeof window.Handsontable !== 'undefined';
+          const handsontableInstances = window.Handsontable ? Object.keys(window.Handsontable).length : 0;
 
           return {
-            hasHandsontable,
-            pageErrors: errors,
-            documentReadyState: document.readyState
+            title: document.title,
+            readyState: document.readyState,
+            bodyText: document.body.innerText.substring(0, 500),
+            hasPagination: !!document.querySelector('.pagination, ul.pagination, .paginationjs'),
+            hasTable: !!document.querySelector('table'),
+            hasMasterTable: !!document.querySelector('div.ht_master'),
+            hasLoadingSpinner,
+            spinnerVisible,
+            hasHandsontableLib,
+            handsontableInstances,
+            jsErrors: errors.length
           };
-        }).catch(() => ({ hasHandsontable: false, pageErrors: [], documentReadyState: 'unknown' }));
+        }).catch(() => ({
+          title: 'unknown',
+          readyState: 'unknown',
+          bodyText: 'Could not get body text',
+          hasPagination: false,
+          hasTable: false,
+          hasMasterTable: false,
+          hasLoadingSpinner: false,
+          spinnerVisible: false,
+          hasHandsontableLib: false,
+          handsontableInstances: 0,
+          jsErrors: 0
+        }));
 
-        console.log(`   Handsontable library loaded: ${jsErrors.hasHandsontable}`);
-        console.log(`   Document ready state: ${jsErrors.documentReadyState}`);
-        if (jsErrors.pageErrors.length > 0) {
-          console.log(`   Page errors found: ${jsErrors.pageErrors.join(', ')}`);
+        console.log(`   Page title: "${pageInfo.title}"`);
+        console.log(`   Document ready state: ${pageInfo.readyState}`);
+        console.log(`   Has pagination: ${pageInfo.hasPagination}`);
+        console.log(`   Has any table: ${pageInfo.hasTable}`);
+        console.log(`   Has div.ht_master: ${pageInfo.hasMasterTable}`);
+        console.log(`   ⚠️  LOADING SPINNER VISIBLE: ${pageInfo.spinnerVisible}`);
+        console.log(`   Handsontable library loaded: ${pageInfo.hasHandsontableLib}`);
+        console.log(`   Handsontable instances: ${pageInfo.handsontableInstances}`);
+        console.log(`   JavaScript errors: ${pageInfo.jsErrors}`);
+        console.log(`   Page body preview: ${pageInfo.bodyText.substring(0, 200)}...`);
+
+        // Take final screenshot
+        try {
+          const screenshotPath = `./screenshots/debug-no-pagination-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`   📸 Screenshot saved: ${screenshotPath}`);
+        } catch (e) {
+          console.log(`   Could not save screenshot: ${e.message}`);
+        }
+      } else {
+        console.log(`✓ Data loaded! Pagination appeared using: ${foundSelector}`);
+
+        // Take screenshot when pagination found
+        try {
+          const screenshotPath = `./screenshots/pagination-found-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`📸 Screenshot with pagination: ${screenshotPath}`);
+        } catch (e) {
+          // Ignore
         }
 
-        // Try to trigger table rendering manually if Handsontable is loaded
-        if (jsErrors.hasHandsontable) {
-          console.log('   Attempting to manually trigger table rendering...');
-          try {
-            await this.page.evaluate(() => {
-              // Try calling the function that initializes the table (if it exists)
-              if (typeof appleInvoiceFilter === 'function') {
-                appleInvoiceFilter();
-              }
-            });
-            await this.page.waitForTimeout(5000);
-
-            // Check again if table appeared
-            const tableNow = await this.page.$('div.ht_master table.htCore').then(el => !!el).catch(() => false);
-            if (tableNow) {
-              console.log('   ✓ Manual trigger worked - table appeared!');
-              found = true;
-            }
-          } catch (e) {
-            console.log(`   Manual trigger failed: ${e.message}`);
-          }
-        }
-
-        if (!found) {
-          console.log('🔍 Debugging - checking page content...');
-
-          // Check for any div.ht_master
-          const htMasterExists = await this.page.$('div.ht_master').then(el => !!el).catch(() => false);
-          console.log(`   div.ht_master exists: ${htMasterExists}`);
-
-          // Check for any table.htCore
-          const htCoreExists = await this.page.$('table.htCore').then(el => !!el).catch(() => false);
-          console.log(`   table.htCore exists: ${htCoreExists}`);
-
-          // Check for any table at all
-          const anyTableExists = await this.page.$('table').then(el => !!el).catch(() => false);
-          console.log(`   Any table exists: ${anyTableExists}`);
-
-          // Get page title
-          const pageTitle = await this.page.title();
-          console.log(`   Page title: "${pageTitle}"`);
-
-          // Check for error messages or loading indicators
-          const bodyText = await this.page.evaluate(() => {
-            return document.body.innerText.substring(0, 500);  // First 500 chars
-          }).catch(() => 'Could not get body text');
-          console.log(`   Page body preview: ${bodyText.substring(0, 200)}...`);
-
-          // Take a screenshot for debugging
-          try {
-            const screenshotPath = `./screenshots/debug-no-table-${Date.now()}.png`;
-            await this.page.screenshot({ path: screenshotPath, fullPage: false });
-            console.log(`   Screenshot saved: ${screenshotPath}`);
-          } catch (e) {
-            console.log(`   Could not save screenshot: ${e.message}`);
-          }
-        }
+        // Now wait a bit more for Handsontable to fully render
+        console.log('Waiting for Handsontable to fully render...');
+        await this.page.waitForTimeout(5000);
       }
     } else {
       // For 'load' or 'domcontentloaded', table should already be there
@@ -247,6 +291,17 @@ class RouteStarNavigator {
     // Extra stabilization wait for table to fully populate
     console.log('Waiting for table to fully render...');
     await this.page.waitForTimeout(5000);
+
+    // Summary of errors captured
+    if (jsErrors.length > 0) {
+      console.log(`⚠️  Total JavaScript errors captured: ${jsErrors.length}`);
+    }
+    if (failedRequests.length > 0) {
+      console.log(`⚠️  Total failed network requests: ${failedRequests.length}`);
+      failedRequests.forEach(req => {
+        console.log(`     - ${req.url}: ${req.failure}`);
+      });
+    }
 
     console.log('✓ Successfully navigated to pending invoices page');
   }
@@ -335,12 +390,31 @@ class RouteStarNavigator {
     const closedInvoicesUrl = `${this.config.baseUrl}${this.config.routes.closedInvoices}`;
     console.log(`Navigating to closed invoices: ${closedInvoicesUrl}`);
 
-    // Try commit first since RouteStar server is very slow
-    // Commit works reliably while load/domcontentloaded often timeout
+    // Capture JavaScript console errors
+    const jsErrors = [];
+    this.page.on('console', msg => {
+      if (msg.type() === 'error') {
+        jsErrors.push(msg.text());
+        console.log(`  ⚠️  JavaScript Error: ${msg.text()}`);
+      }
+    });
+
+    // Capture failed network requests
+    const failedRequests = [];
+    this.page.on('requestfailed', request => {
+      failedRequests.push({
+        url: request.url(),
+        failure: request.failure()?.errorText || 'Unknown error'
+      });
+      console.log(`  ⚠️  Network Request Failed: ${request.url()} - ${request.failure()?.errorText}`);
+    });
+
+    // Try load first for proper JavaScript execution
+    // RouteStar needs JS to render Handsontable - commit returns too early
     const strategies = [
-      { name: 'commit', waitUntil: 'commit', timeout: 60000 },  // Try lenient strategy first (works best for RouteStar)
-      { name: 'load', waitUntil: 'load', timeout: 30000 },       // Fallback to load with shorter timeout
-      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 }  // Last resort
+      { name: 'load', waitUntil: 'load', timeout: 60000 },  // Try load first (JS executes)
+      { name: 'domcontentloaded', waitUntil: 'domcontentloaded', timeout: 30000 },  // Fallback
+      { name: 'commit', waitUntil: 'commit', timeout: 30000 }  // Last resort
     ];
 
     let success = false;
@@ -393,8 +467,9 @@ class RouteStarNavigator {
     console.log('Waiting for page to stabilize and table to render...');
 
     // If we used 'commit' or 'no-wait', wait for Handsontable library to load
+    // For 'load' and 'domcontentloaded', JavaScript already executed so table should be there
     if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Commit strategy used - waiting for Handsontable library to load...');
+      console.log('Commit/no-wait strategy used - waiting for Handsontable library to load...');
 
       // Wait specifically for Handsontable library (not the whole document)
       try {
@@ -409,97 +484,167 @@ class RouteStarNavigator {
 
       // Extra wait for Handsontable to initialize
       await this.page.waitForTimeout(10000);  // 10 seconds for initialization
+    } else {
+      // For load/domcontentloaded, just wait a bit for table to fully render
+      console.log('Load/DOMContentLoaded strategy used - table should already be rendered');
+      await this.page.waitForTimeout(3000);  // Just 3 seconds
     }
 
     // Wait for page to stabilize
-    await this.page.waitForTimeout(3000);
+    await this.page.waitForTimeout(2000);
 
-    // If we used 'commit' or 'no-wait', actively poll for the table instead of blind waiting
+    // Take screenshot after navigation
+    try {
+      const screenshotPath = `./screenshots/closed-after-navigation-${Date.now()}.png`;
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Screenshot after navigation: ${screenshotPath}`);
+    } catch (e) {
+      console.log(`⚠️  Could not save screenshot: ${e.message}`);
+    }
+
+    // If we used 'commit' or 'no-wait', actively poll for pagination as sign of data loaded
     if (usedStrategy === 'commit' || usedStrategy === 'no-wait') {
-      console.log('Used lenient strategy - actively polling for table container to appear...');
+      console.log('Used lenient strategy - waiting for pagination to appear (sign that data loaded)...');
 
-      // First wait for the main container (appears before Handsontable renders)
-      const containerSelector = '#open-invoice-table';
-      const maxContainerWait = 30;  // 30 attempts × 2 seconds = 60 seconds max
-      let containerFound = false;
+      // Wait for pagination elements - this means data has loaded!
+      const paginationSelectors = [
+        '.pagination',
+        'ul.pagination',
+        '.paginationjs',
+        '[class*="pagination"]',
+        'a[href*="page"]'
+      ];
 
-      for (let attempt = 1; attempt <= maxContainerWait; attempt++) {
-        const containerExists = await this.page.$(containerSelector).then(el => !!el).catch(() => false);
+      const maxWait = 90;  // 90 attempts × 2 seconds = 180 seconds (3 minutes)
+      let paginationFound = false;
+      let foundSelector = null;
 
-        if (containerExists) {
-          console.log(`✓ Invoice table container appeared after ${attempt * 2} seconds`);
-          containerFound = true;
-          break;
+      for (let attempt = 1; attempt <= maxWait; attempt++) {
+        // Try all pagination selectors
+        for (const selector of paginationSelectors) {
+          const paginationEl = await this.page.$(selector);
+          if (paginationEl) {
+            // Check if it's actually visible
+            const isVisible = await paginationEl.isVisible().catch(() => false);
+            if (!isVisible) continue;
+
+            // Check if it has actual content (page numbers/links)
+            const hasContent = await paginationEl.evaluate(el => {
+              const text = el.innerText.trim();
+              const hasLinks = el.querySelectorAll('a, li').length > 0;
+              const hasPageNumbers = /\d+/.test(text);  // Contains numbers
+              return (hasLinks || hasPageNumbers) && text.length > 0;
+            }).catch(() => false);
+
+            if (hasContent) {
+              paginationFound = true;
+              foundSelector = selector;
+              console.log(`✓ Pagination found after ${attempt * 2} seconds using selector: ${selector}`);
+              break;
+            }
+          }
         }
 
-        if (attempt % 5 === 0) {
-          console.log(`  Still waiting for table container... (${attempt * 2}s elapsed)`);
-        }
-
-        await this.page.waitForTimeout(2000);
-      }
-
-      if (!containerFound) {
-        console.log('⚠️  Table container did not appear - page may not have loaded');
-      }
-
-      // Now wait for Handsontable to render inside the container
-      console.log('Waiting for Handsontable to render...');
-      const maxTableWait = 60;  // 60 attempts × 2 seconds = 120 seconds (2 minutes)
-      let found = false;
-
-      for (let attempt = 1; attempt <= maxTableWait; attempt++) {
-        const tableExists = await this.page.$('div.ht_master table.htCore').then(el => !!el).catch(() => false);
-
-        if (tableExists) {
-          console.log(`✓ Handsontable rendered after ${attempt * 2} additional seconds`);
-          found = true;
-          break;
-        }
+        if (paginationFound) break;
 
         if (attempt % 10 === 0) {  // Log every 20 seconds
-          console.log(`  Still waiting for Handsontable to render... (${attempt * 2}s elapsed)`);
+          console.log(`  Still waiting for pagination... (${attempt * 2}s elapsed)`);
+
+          // Take screenshot every 30 seconds
+          if (attempt % 15 === 0) {
+            try {
+              const screenshotPath = `./screenshots/closed-waiting-${attempt * 2}s-${Date.now()}.png`;
+              await this.page.screenshot({ path: screenshotPath, fullPage: true });
+              console.log(`  📸 Screenshot at ${attempt * 2}s: ${screenshotPath}`);
+            } catch (e) {
+              // Ignore screenshot errors
+            }
+          }
         }
 
         await this.page.waitForTimeout(2000);
       }
 
-      if (!found) {
-        console.log('⚠️  Table did not appear after 60 seconds - will try to proceed anyway');
+      if (!paginationFound) {
+        console.log('⚠️  Pagination did not appear - data may not have loaded');
 
-        // Debug: Check what's actually on the page
+        // Debug what's on the page
         console.log('🔍 Debugging - checking page content...');
 
-        // Check for any div.ht_master
-        const htMasterExists = await this.page.$('div.ht_master').then(el => !!el).catch(() => false);
-        console.log(`   div.ht_master exists: ${htMasterExists}`);
+        const pageInfo = await this.page.evaluate(() => {
+          // Check for JavaScript errors
+          const errors = window.__pageErrors || [];
 
-        // Check for any table.htCore
-        const htCoreExists = await this.page.$('table.htCore').then(el => !!el).catch(() => false);
-        console.log(`   table.htCore exists: ${htCoreExists}`);
+          // Check for loading indicators
+          const loadingSpinner = document.querySelector('.loader, .spinner, .loading, [class*="load"]');
+          const hasLoadingSpinner = !!loadingSpinner;
+          const spinnerVisible = loadingSpinner ? loadingSpinner.offsetParent !== null : false;
 
-        // Check for any table at all
-        const anyTableExists = await this.page.$('table').then(el => !!el).catch(() => false);
-        console.log(`   Any table exists: ${anyTableExists}`);
+          // Check Handsontable status
+          const hasHandsontableLib = typeof window.Handsontable !== 'undefined';
+          const handsontableInstances = window.Handsontable ? Object.keys(window.Handsontable).length : 0;
 
-        // Get page title
-        const pageTitle = await this.page.title();
-        console.log(`   Page title: "${pageTitle}"`);
+          return {
+            title: document.title,
+            readyState: document.readyState,
+            bodyText: document.body.innerText.substring(0, 500),
+            hasPagination: !!document.querySelector('.pagination, ul.pagination, .paginationjs'),
+            hasTable: !!document.querySelector('table'),
+            hasMasterTable: !!document.querySelector('div.ht_master'),
+            hasLoadingSpinner,
+            spinnerVisible,
+            hasHandsontableLib,
+            handsontableInstances,
+            jsErrors: errors.length
+          };
+        }).catch(() => ({
+          title: 'unknown',
+          readyState: 'unknown',
+          bodyText: 'Could not get body text',
+          hasPagination: false,
+          hasTable: false,
+          hasMasterTable: false,
+          hasLoadingSpinner: false,
+          spinnerVisible: false,
+          hasHandsontableLib: false,
+          handsontableInstances: 0,
+          jsErrors: 0
+        }));
 
-        // Check for error messages or loading indicators
-        const bodyText = await this.page.evaluate(() => {
-          return document.body.innerText.substring(0, 500);  // First 500 chars
-        }).catch(() => 'Could not get body text');
-        console.log(`   Page body preview: ${bodyText.substring(0, 200)}...`);
+        console.log(`   Page title: "${pageInfo.title}"`);
+        console.log(`   Document ready state: ${pageInfo.readyState}`);
+        console.log(`   Has pagination: ${pageInfo.hasPagination}`);
+        console.log(`   Has any table: ${pageInfo.hasTable}`);
+        console.log(`   Has div.ht_master: ${pageInfo.hasMasterTable}`);
+        console.log(`   ⚠️  LOADING SPINNER VISIBLE: ${pageInfo.spinnerVisible}`);
+        console.log(`   Handsontable library loaded: ${pageInfo.hasHandsontableLib}`);
+        console.log(`   Handsontable instances: ${pageInfo.handsontableInstances}`);
+        console.log(`   JavaScript errors: ${pageInfo.jsErrors}`);
+        console.log(`   Page body preview: ${pageInfo.bodyText.substring(0, 200)}...`);
 
-        // Take a screenshot for debugging
+        // Take final screenshot
         try {
-          const screenshotPath = `./screenshots/debug-no-table-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: false });
-          console.log(`   Screenshot saved: ${screenshotPath}`);
+          const screenshotPath = `./screenshots/closed-debug-no-pagination-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`   📸 Screenshot saved: ${screenshotPath}`);
         } catch (e) {
           console.log(`   Could not save screenshot: ${e.message}`);
         }
+      } else {
+        console.log(`✓ Data loaded! Pagination appeared using: ${foundSelector}`);
+
+        // Take screenshot when pagination found
+        try {
+          const screenshotPath = `./screenshots/closed-pagination-found-${Date.now()}.png`;
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`📸 Screenshot with pagination: ${screenshotPath}`);
+        } catch (e) {
+          // Ignore
+        }
+
+        // Now wait a bit more for Handsontable to fully render
+        console.log('Waiting for Handsontable to fully render...');
+        await this.page.waitForTimeout(5000);
       }
     } else {
       // For 'load' or 'domcontentloaded', table should already be there
@@ -517,6 +662,17 @@ class RouteStarNavigator {
     // Extra stabilization wait for table to fully populate
     console.log('Waiting for table to fully render...');
     await this.page.waitForTimeout(5000);
+
+    // Summary of errors captured
+    if (jsErrors.length > 0) {
+      console.log(`⚠️  Total JavaScript errors captured: ${jsErrors.length}`);
+    }
+    if (failedRequests.length > 0) {
+      console.log(`⚠️  Total failed network requests: ${failedRequests.length}`);
+      failedRequests.forEach(req => {
+        console.log(`     - ${req.url}: ${req.failure}`);
+      });
+    }
 
     console.log('✓ Successfully navigated to closed invoices page');
   }

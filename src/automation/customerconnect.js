@@ -178,10 +178,9 @@ class CustomerConnectAutomation {
     try {
       this.logger.info('Fetching order details', { orderUrl });
 
-      // Navigate using BaseNavigator
-      await this.baseNavigator.navigateTo(orderUrl, {
-        waitUntil: 'domcontentloaded'
-      });
+      // Navigate using BaseNavigator with automatic fallback strategies
+      // Don't specify waitUntil - let it use ['commit', 'load', 'domcontentloaded'] fallbacks
+      await this.baseNavigator.navigateTo(orderUrl);
       await this.baseNavigator.waitForNetwork();
       await this.baseNavigator.wait(1000);
 

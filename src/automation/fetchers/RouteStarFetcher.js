@@ -76,16 +76,32 @@ class RouteStarFetcher {
 
       await this.page.waitForTimeout(3000);
 
-
+      // Check for master table
       const masterTable = await this.page.$('div.ht_master');
       if (!masterTable) {
-        console.log('❌ Could not find main table (div.ht_master)');
-        throw new Error('Could not find main table (div.ht_master)');
+        console.log('⚠️  No master table found - likely no invoices on this page');
+        // Check if this is page 1 (no invoices at all) or just end of pagination
+        if (pageCount === 0) {
+          console.log('✓ No invoices found (table doesn\'t exist) - this is normal if there are 0 pending invoices');
+          break; // Exit loop gracefully
+        } else {
+          console.log('✓ Reached end of pagination (no more pages)');
+          break; // Exit loop gracefully
+        }
       }
       console.log('✓ Found master table');
 
       const invoiceRows = await masterTable.$$('table.htCore tbody tr');
       console.log(`   Found ${invoiceRows.length} rows in table`);
+
+      // If 0 rows, check if we should continue
+      if (invoiceRows.length === 0) {
+        console.log('⚠️  Table exists but has 0 rows - no invoices on this page');
+        if (pageCount === 0) {
+          console.log('✓ No invoices found (empty table) - this is normal if there are 0 pending invoices');
+        }
+        break; // Exit loop gracefully
+      }
 
       for (let i = 0; i < invoiceRows.length; i++) {
         const row = invoiceRows[i];
@@ -128,6 +144,10 @@ class RouteStarFetcher {
     console.log(`\n✅ Pagination complete:`);
     console.log(`   - Total pages processed: ${pageCount + 1}`);
     console.log(`   - Total invoices fetched: ${invoices.length}`);
+
+    if (invoices.length === 0) {
+      console.log(`   ℹ️  Note: 0 invoices found - this is normal if there are no ${type} invoices currently`);
+    }
 
     return invoices;
   }

@@ -218,20 +218,37 @@ class RouteStarAutomation {
     try {
       this.logger.info('Fetching invoice details', { invoiceUrl });
 
-      // Navigate using commit strategy (same as invoice list pages)
-      // RouteStar pages get stuck in 'loading' state
+      // Navigate using updated BasePage strategy (tries load first)
       await this.baseNavigator.navigateTo(invoiceUrl, {
         timeout: 90000
-        // Don't specify waitUntil - let it use default 'commit' strategy
       });
 
-      // Wait for items table to load
-      await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
-        timeout: 60000
-      });
+      // Wait a moment for any dynamic modals to appear
+      await this.baseNavigator.wait(2000);
+
+      // Dismiss any modal popups (like QuickBooks error messages)
+      await this.baseNavigator.dismissModals();
+
+      // Wait for items table to load with lenient timeout
+      try {
+        await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
+          timeout: 30000
+        });
+      } catch (error) {
+        this.logger.warn('Items table selector timeout - checking for modal again', { error: error.message });
+
+        // Modal might have reappeared - try dismissing again
+        await this.baseNavigator.dismissModals();
+
+        // Try one more time to find the table
+        const tableExists = await this.baseNavigator.exists(selectors.invoiceDetail.itemsTable);
+        if (!tableExists) {
+          this.logger.warn('Items table still not found - will try to extract anyway');
+        }
+      }
 
       // Wait for dynamic content to load
-      await this.baseNavigator.wait(5000);
+      await this.baseNavigator.wait(3000);
 
       this.logger.info('Extracting invoice details');
 
@@ -292,8 +309,8 @@ class RouteStarAutomation {
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => null);
 
-        // Skip empty rows
-        if (!itemName || itemName === 'Choose..') {
+        // Skip empty rows and placeholder rows
+        if (!itemName || itemName === 'Choose..' || itemName === '') {
           continue;
         }
 
@@ -362,6 +379,12 @@ class RouteStarAutomation {
       }
     }
 
+    if (items.length === 0 && itemRows.length > 0) {
+      this.logger.warn('No items extracted - invoice may have only placeholder rows or incomplete data', {
+        rowsFound: itemRows.length
+      });
+    }
+
     return items;
   }
 
@@ -391,7 +414,10 @@ class RouteStarAutomation {
   async extractAdditionalInfo() {
     const extractField = async (selector) => {
       try {
-        return await this.baseNavigator.getAttribute(selector, 'value') || '';
+        // Don't wait for visibility - element might be hidden
+        // Just try to get the value directly
+        const value = await this.page.$eval(selector, el => el.value || el.textContent || '').catch(() => '');
+        return value.trim();
       } catch {
         return '';
       }

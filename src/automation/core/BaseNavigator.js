@@ -52,11 +52,15 @@ class BaseNavigator extends BasePage {
       await this.wait(3000);
 
       // Wait for navigation to dashboard (but don't fail if it times out)
+      // Use shorter timeout for slow portals like RouteStar
       try {
-        await this.waitForPageLoad();
+        await this.waitForPageLoad(15000); // 15 second timeout
       } catch (e) {
-        logger.warn('Page load wait timed out after login - proceeding anyway');
+        logger.warn('Page load wait timed out after login - proceeding anyway', { error: e.message });
       }
+
+      // Additional wait to ensure page is stable
+      await this.wait(2000);
 
       // Check for error message
       if (selectors.errorMessage && await this.exists(selectors.errorMessage)) {
