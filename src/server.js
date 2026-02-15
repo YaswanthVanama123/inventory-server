@@ -103,6 +103,7 @@ const routestarRoutes = require('./routes/routestar.routes');
 const stockReconciliationRoutes = require('./routes/stock-reconciliation.routes');
 const modelCategoryRoutes = require('./routes/modelCategory.routes');
 const routeStarItemsRoutes = require('./routes/routeStarItems.routes');
+const routeStarItemAliasRoutes = require('./routes/routestarItemAlias.routes');
 const stockRoutes = require('./routes/stock.routes');
 
 
@@ -136,6 +137,7 @@ app.use('/api/routestar', routestarRoutes);
 app.use('/api/stock-reconciliation', stockReconciliationRoutes);
 app.use('/api/model-category', modelCategoryRoutes);
 app.use('/api/routestar-items', routeStarItemsRoutes);
+app.use('/api/routestar-item-alias', routeStarItemAliasRoutes);
 app.use('/api/stock', stockRoutes);
 
 

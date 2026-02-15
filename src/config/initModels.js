@@ -21,6 +21,7 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const ExternalInvoice = require('../models/ExternalInvoice');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
+const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const ModelCategory = require('../models/ModelCategory');
 
 /**
@@ -48,6 +49,7 @@ async function initModels() {
     { name: 'ExternalInvoice', model: ExternalInvoice },
     { name: 'RouteStarInvoice', model: RouteStarInvoice },
     { name: 'RouteStarItem', model: RouteStarItem },
+    { name: 'RouteStarItemAlias', model: RouteStarItemAlias },
     { name: 'ModelCategory', model: ModelCategory }
   ];
 

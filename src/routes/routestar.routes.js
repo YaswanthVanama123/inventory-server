@@ -704,12 +704,18 @@ router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, 
 
 /**
  * @route   GET /api/routestar/items/grouped
- * @desc    Get grouped items from all RouteStar invoices (pending and closed)
+ * @desc    Get grouped items from all RouteStar invoices (pending and closed) with alias merging
  * @access  Private (Admin only)
  */
 router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   try {
     console.log('[getGroupedRouteStarItems] Starting aggregation...');
+
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+
+    // Get alias lookup map
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    console.log(`[getGroupedRouteStarItems] Loaded ${Object.keys(aliasMap).length} aliases`);
 
     // Aggregate all line items across all RouteStar invoices (pending and closed)
     const groupedItems = await RouteStarInvoice.aggregate([
@@ -768,13 +774,55 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
       }
     ]);
 
-    console.log(`[getGroupedRouteStarItems] Found ${groupedItems.length} grouped items`);
+    console.log(`[getGroupedRouteStarItems] Found ${groupedItems.length} initial grouped items`);
+
+    // Apply alias merging
+    const mergedItems = {};
+
+    groupedItems.forEach(item => {
+      // Get canonical name (or use original if no alias exists)
+      const canonicalName = aliasMap[item.name] || item.name;
+
+      if (!mergedItems[canonicalName]) {
+        mergedItems[canonicalName] = {
+          sku: item.sku,
+          name: canonicalName,
+          originalNames: [item.name],
+          totalQuantity: 0,
+          totalValue: 0,
+          avgUnitPrice: 0,
+          invoiceCount: 0,
+          invoices: []
+        };
+      }
+
+      // Merge data
+      const merged = mergedItems[canonicalName];
+      if (!merged.originalNames.includes(item.name)) {
+        merged.originalNames.push(item.name);
+      }
+      merged.totalQuantity += item.totalQuantity;
+      merged.totalValue += item.totalValue;
+      merged.invoiceCount += item.invoiceCount;
+      merged.invoices.push(...item.invoices);
+
+      // Recalculate average unit price based on all merged invoices
+      const totalRate = merged.invoices.reduce((sum, inv) => sum + (inv.rate || 0), 0);
+      merged.avgUnitPrice = merged.invoices.length > 0 ? totalRate / merged.invoices.length : 0;
+    });
+
+    // Convert merged items to array and sort
+    const finalItems = Object.values(mergedItems).sort((a, b) => a.name.localeCompare(b.name));
+
+    console.log(`[getGroupedRouteStarItems] After merging: ${finalItems.length} items (merged ${groupedItems.length - finalItems.length} aliases)`);
 
     res.json({
       success: true,
       data: {
-        items: groupedItems,
-        totalItems: groupedItems.length
+        items: finalItems,
+        totalItems: finalItems.length,
+        aliasesApplied: Object.keys(aliasMap).length,
+        itemsMerged: groupedItems.length - finalItems.length
       }
     });
   } catch (error) {
