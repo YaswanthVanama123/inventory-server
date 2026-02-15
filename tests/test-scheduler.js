@@ -1,20 +1,20 @@
-/**
- * Test script for Inventory Scheduler
- *
- * This script tests the complete inventory sync scheduler
- * that runs CustomerConnect orders sync and RouteStar invoices sync
- *
- * Run with: npm run test:scheduler.js
- */
+
+
+
+
+
+
+
+
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const { getInventoryScheduler } = require('../src/services/inventoryScheduler.service');
 
-/**
- * Connect to MongoDB
- */
+
+
+
 async function connectDatabase() {
   try {
     console.log('Connecting to MongoDB...');
@@ -29,26 +29,26 @@ async function connectDatabase() {
   }
 }
 
-/**
- * Main test function
- */
+
+
+
 async function test() {
   try {
     console.log('════════════════════════════════════════');
     console.log('  Inventory Scheduler Test');
     console.log('════════════════════════════════════════\n');
 
-    // Connect to database
+    
     await connectDatabase();
 
-    // Get scheduler instance
+    
     const scheduler = getInventoryScheduler();
 
     console.log('📊 Initial Scheduler Status:');
     console.log(scheduler.getStatus());
     console.log('');
 
-    // Option 1: Run sync immediately
+    
     console.log('Choose test option:');
     console.log('1. Run sync immediately (one-time)');
     console.log('2. Start scheduler (runs at 3 AM daily)');
@@ -83,14 +83,14 @@ async function test() {
       console.log('Next sync will run at 3:00 AM.');
       console.log('Use option 1 to test sync immediately instead.\n');
 
-      // Keep process alive
+      
       process.stdin.resume();
     } else if (option === '3') {
       console.log('🕐 Starting scheduler with 1-minute interval for testing...\n');
       console.log('⚠️  WARNING: This will run sync every minute. Use only for testing!\n');
 
       scheduler.start({
-        cronExpression: '* * * * *', // Every minute
+        cronExpression: '* * * * *', 
         ordersLimit: 10,
         invoicesLimit: 10,
         processStock: true,
@@ -103,7 +103,7 @@ async function test() {
       console.log('\n⚠️  Scheduler is running. Press Ctrl+C to stop.\n');
       console.log('Sync will run every minute. Check logs for progress.\n');
 
-      // Keep process alive
+      
       process.stdin.resume();
     }
 
@@ -112,7 +112,7 @@ async function test() {
     console.error('Error:', error.message);
     console.error('Stack:', error.stack);
   } finally {
-    // Only close if option 1 (immediate sync)
+    
     if (process.argv[2] === '1' || !process.argv[2]) {
       console.log('\nClosing database connection...');
       await mongoose.connection.close();
@@ -122,7 +122,7 @@ async function test() {
   }
 }
 
-// Handle graceful shutdown
+
 process.on('SIGINT', async () => {
   console.log('\n\nStopping scheduler...');
   const scheduler = getInventoryScheduler();
@@ -134,5 +134,5 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Run the test
+
 test();

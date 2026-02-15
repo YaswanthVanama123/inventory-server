@@ -2,73 +2,73 @@ const BasePage = require('./BasePage');
 const logger = require('../utils/logger');
 const { retry } = require('../utils/retry');
 
-/**
- * BaseNavigator - Common navigation patterns
- * Provides reusable navigation flows for all automations
- */
+
+
+
+
 class BaseNavigator extends BasePage {
   constructor(page) {
     super(page);
     this.isLoggedIn = false;
   }
 
-  /**
-   * Generic login flow
-   * @param {Object} credentials - { username, password }
-   * @param {Object} selectors - { usernameInput, passwordInput, submitButton, errorMessage }
-   * @param {string} successUrl - URL to check for successful login
-   */
+  
+
+
+
+
+
   async login(credentials, selectors, successUrl) {
     try {
       logger.info('Attempting login', { username: credentials.username });
 
-      // Wait for login form to be fully interactive
-      // This is especially important when using 'commit' navigation strategy
+      
+      
       logger.debug('Waiting for login form to be interactive');
       await this.waitForElement(selectors.usernameInput, { timeout: 30000 });
-      await this.wait(2000);  // Extra wait for form to stabilize
+      await this.wait(2000);  
 
-      // Type username
+      
       await this.type(selectors.usernameInput, credentials.username);
 
-      // Type password
+      
       await this.type(selectors.passwordInput, credentials.password);
 
-      // Wait for submit button to be fully clickable
+      
       await this.waitForElement(selectors.submitButton, { timeout: 30000 });
-      await this.wait(1000);  // Short wait before clicking
+      await this.wait(1000);  
 
-      // Click submit with force: true to bypass stability checks
-      // Use noWaitAfter to not wait for navigation (we handle it separately)
-      // RouteStar has ongoing animations and stuck page loads
+      
+      
+      
       logger.debug('Clicking submit button with force option and no navigation wait');
       await this.page.click(selectors.submitButton, {
         timeout: 30000,
         force: true,
-        noWaitAfter: true  // Don't wait for navigation
+        noWaitAfter: true  
       });
 
-      // Manually wait for navigation to start
+      
       await this.wait(3000);
 
-      // Wait for navigation to dashboard (but don't fail if it times out)
-      // Use shorter timeout for slow portals like RouteStar
+      
+      
       try {
-        await this.waitForPageLoad(15000); // 15 second timeout
+        await this.waitForPageLoad(15000); 
       } catch (e) {
         logger.warn('Page load wait timed out after login - proceeding anyway', { error: e.message });
       }
 
-      // Additional wait to ensure page is stable
+      
       await this.wait(2000);
 
-      // Check for error message
+      
       if (selectors.errorMessage && await this.exists(selectors.errorMessage)) {
         const errorText = await this.getText(selectors.errorMessage);
         throw new Error(`Login failed: ${errorText}`);
       }
 
-      // Verify successful login by checking URL or success element
+      
       if (successUrl) {
         const currentUrl = this.getUrl();
         if (!currentUrl.includes(successUrl)) {
@@ -86,12 +86,12 @@ class BaseNavigator extends BasePage {
     }
   }
 
-  /**
-   * Navigate through pagination
-   * @param {Function} extractData - Function to extract data from current page
-   * @param {Object} selectors - { nextButton, pagination }
-   * @param {Object} options - Pagination options
-   */
+  
+
+
+
+
+
   async paginate(extractData, selectors, options = {}) {
     const {
       maxPages = Infinity,
@@ -105,7 +105,7 @@ class BaseNavigator extends BasePage {
       while (currentPage <= maxPages) {
         logger.info('Processing page', { page: currentPage });
 
-        // Extract data from current page
+        
         const pageData = await extractData(this.page);
 
         if (stopOnEmpty && (!pageData || pageData.length === 0)) {
@@ -115,14 +115,14 @@ class BaseNavigator extends BasePage {
 
         allData.push(...pageData);
 
-        // Check if next page exists
+        
         const hasNext = await this.exists(selectors.nextButton);
         if (!hasNext) {
           logger.info('No more pages');
           break;
         }
 
-        // Click next button
+        
         await this.click(selectors.nextButton);
         await this.waitForPageLoad();
         await this.waitForNetwork();
@@ -138,11 +138,11 @@ class BaseNavigator extends BasePage {
     }
   }
 
-  /**
-   * Handle dropdown selection with retry
-   * @param {Object} selectors - { dropdown, option }
-   * @param {string} value - Value to select
-   */
+  
+
+
+
+
   async selectDropdown(selectors, value) {
     return await retry(
       async () => {
@@ -154,11 +154,11 @@ class BaseNavigator extends BasePage {
     );
   }
 
-  /**
-   * Apply filters to page
-   * @param {Object} filters - Filter values
-   * @param {Object} selectors - Filter selectors
-   */
+  
+
+
+
+
   async applyFilters(filters, selectors) {
     try {
       logger.info('Applying filters', { filters });
@@ -168,7 +168,7 @@ class BaseNavigator extends BasePage {
 
         const selector = selectors[key];
 
-        // Handle different input types
+        
         if (selector.type === 'select') {
           await this.select(selector.element, value);
         } else if (selector.type === 'date') {
@@ -178,7 +178,7 @@ class BaseNavigator extends BasePage {
         }
       }
 
-      // Click apply/search button if provided
+      
       if (selectors.applyButton) {
         await this.click(selectors.applyButton);
         await this.waitForPageLoad();
@@ -192,9 +192,9 @@ class BaseNavigator extends BasePage {
     }
   }
 
-  /**
-   * Check if logged in
-   */
+  
+
+
   checkLoginStatus() {
     return this.isLoggedIn;
   }

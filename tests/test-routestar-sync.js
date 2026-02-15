@@ -1,28 +1,28 @@
-/**
- * Test script for RouteStar Sync Service
- *
- * This script demonstrates the full sync process:
- * 1. Sync pending invoices from RouteStar
- * 2. Sync closed invoices from RouteStar
- * 3. Process stock movements (reduce inventory for completed sales)
- *
- * Run with: npm run test:routestar-sync.js
- */
 
-// Load environment variables from .env file
+
+
+
+
+
+
+
+
+
+
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-// Database connection
+
 const mongoose = require('mongoose');
 
-// Services and Models
+
 const RouteStarSyncService = require('../src/services/routeStarSync.service');
 const RouteStarInvoice = require('../src/models/RouteStarInvoice');
 
-/**
- * Connect to MongoDB
- */
+
+
+
 async function connectDatabase() {
   try {
     console.log('Connecting to MongoDB...');
@@ -37,9 +37,9 @@ async function connectDatabase() {
   }
 }
 
-/**
- * Display sync statistics
- */
+
+
+
 function displayStats(results) {
   console.log('\n╔════════════════════════════════════════╗');
   console.log('║       SYNC STATISTICS SUMMARY          ║');
@@ -73,14 +73,14 @@ function displayStats(results) {
   console.log('╚════════════════════════════════════════╝\n');
 }
 
-/**
- * Display invoice summary from database
- */
+
+
+
 async function displayInvoiceSummary() {
   console.log('\n📊 DATABASE INVOICE SUMMARY');
   console.log('═══════════════════════════════════════');
 
-  // Count by type
+  
   const pendingCount = await RouteStarInvoice.countDocuments({ invoiceType: 'pending' });
   const closedCount = await RouteStarInvoice.countDocuments({ invoiceType: 'closed' });
 
@@ -89,7 +89,7 @@ async function displayInvoiceSummary() {
   console.log(`  - Closed:  ${closedCount}`);
   console.log(`  - Total:   ${pendingCount + closedCount}`);
 
-  // Count by status
+  
   const statusCounts = await RouteStarInvoice.aggregate([
     {
       $group: {
@@ -105,7 +105,7 @@ async function displayInvoiceSummary() {
     console.log(`  - ${item._id}: ${item.count}`);
   });
 
-  // Stock processing status
+  
   const stockProcessed = await RouteStarInvoice.countDocuments({ stockProcessed: true });
   const stockUnprocessed = await RouteStarInvoice.countDocuments({ stockProcessed: false });
 
@@ -113,7 +113,7 @@ async function displayInvoiceSummary() {
   console.log(`  - Processed:   ${stockProcessed}`);
   console.log(`  - Unprocessed: ${stockUnprocessed}`);
 
-  // Sales stats (last 30 days)
+  
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -124,7 +124,7 @@ async function displayInvoiceSummary() {
   console.log(`  - Total Invoices: ${salesStats.totalInvoices}`);
   console.log(`  - Average Value:  $${salesStats.averageInvoiceValue.toFixed(2)}`);
 
-  // Top customers
+  
   const topCustomers = await RouteStarInvoice.getTopCustomers(thirtyDaysAgo, new Date(), 5);
 
   console.log(`\n👥 Top 5 Customers (Last 30 Days):`);
@@ -136,9 +136,9 @@ async function displayInvoiceSummary() {
   console.log('\n═══════════════════════════════════════\n');
 }
 
-/**
- * Main test function
- */
+
+
+
 async function test() {
   let syncService = null;
 
@@ -147,26 +147,26 @@ async function test() {
     console.log('  RouteStar Sync Service Test');
     console.log('════════════════════════════════════════\n');
 
-    // Connect to database
+    
     await connectDatabase();
 
-    // Initialize sync service
+    
     console.log('Initializing RouteStar sync service...');
     syncService = new RouteStarSyncService();
     await syncService.init();
     console.log('✓ Sync service initialized\n');
 
-    // Run full sync
+    
     const results = await syncService.fullSync({
-      pendingLimit: 50,    // Fetch up to 50 pending invoices
-      closedLimit: 50,     // Fetch up to 50 closed invoices
-      processStock: true   // Process stock movements
+      pendingLimit: 50,    
+      closedLimit: 50,     
+      processStock: true   
     });
 
-    // Display statistics
+    
     displayStats(results);
 
-    // Display database summary
+    
     await displayInvoiceSummary();
 
     console.log('✅ TEST COMPLETED SUCCESSFULLY\n');
@@ -175,19 +175,19 @@ async function test() {
     console.error('Error:', error.message);
     console.error('Stack:', error.stack);
   } finally {
-    // Close automation
+    
     if (syncService) {
       console.log('\nClosing RouteStar automation...');
       await syncService.close();
       console.log('✓ Automation closed');
     }
 
-    // Close database connection
+    
     console.log('Closing database connection...');
     await mongoose.connection.close();
     console.log('✓ Database closed\n');
   }
 }
 
-// Run the test
+
 test();

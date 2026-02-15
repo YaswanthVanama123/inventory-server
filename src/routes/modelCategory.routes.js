@@ -5,13 +5,13 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarItem = require('../models/RouteStarItem');
 const { authenticate } = require('../middleware/auth');
 
-/**
- * @route   GET /api/model-category/unique-models
- * @desc    Get all unique model numbers (SKUs) from CustomerConnectOrders
- */
+
+
+
+
 router.get('/unique-models', authenticate, async (req, res) => {
   try {
-    // Use aggregation to get unique SKUs with their item names
+    
     const skuWithNames = await CustomerConnectOrder.aggregate([
       { $unwind: '$items' },
       {
@@ -29,15 +29,15 @@ router.get('/unique-models', authenticate, async (req, res) => {
       }
     ]);
 
-    // Extract unique SKUs
+    
     const uniqueSKUs = skuWithNames.map(item => item.sku);
 
-    // Get existing mappings
+    
     const mappings = await ModelCategory.find({
       modelNumber: { $in: uniqueSKUs }
     }).lean();
 
-    // Create a map of modelNumber -> mapping data
+    
     const mappingsMap = {};
     mappings.forEach(mapping => {
       mappingsMap[mapping.modelNumber] = {
@@ -47,13 +47,13 @@ router.get('/unique-models', authenticate, async (req, res) => {
       };
     });
 
-    // Create a map of sku -> orderItemName
+    
     const orderItemNamesMap = {};
     skuWithNames.forEach(item => {
       orderItemNamesMap[item.sku] = item.orderItemName;
     });
 
-    // Create response with model numbers, order item names, and their current mappings
+    
     const models = uniqueSKUs.map(sku => ({
       modelNumber: sku,
       orderItemName: orderItemNamesMap[sku] || null,
@@ -79,10 +79,10 @@ router.get('/unique-models', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/model-category/routestar-items
- * @desc    Get all RouteStarItem names for dropdown
- */
+
+
+
+
 router.get('/routestar-items', authenticate, async (req, res) => {
   try {
     const items = await RouteStarItem.find()
@@ -107,10 +107,10 @@ router.get('/routestar-items', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/model-category/mapping
- * @desc    Create or update a model-to-category mapping
- */
+
+
+
+
 router.post('/mapping', authenticate, async (req, res) => {
   try {
     const { modelNumber, categoryItemName, categoryItemId, notes } = req.body;
@@ -129,7 +129,7 @@ router.post('/mapping', authenticate, async (req, res) => {
       req.user._id
     );
 
-    // Update notes if provided
+    
     if (notes !== undefined) {
       mapping.notes = notes;
       await mapping.save();
@@ -150,10 +150,10 @@ router.post('/mapping', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   DELETE /api/model-category/mapping/:modelNumber
- * @desc    Delete a model-to-category mapping
- */
+
+
+
+
 router.delete('/mapping/:modelNumber', authenticate, async (req, res) => {
   try {
     const { modelNumber } = req.params;
@@ -184,10 +184,10 @@ router.delete('/mapping/:modelNumber', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/model-category/mappings
- * @desc    Get all model-category mappings
- */
+
+
+
+
 router.get('/mappings', authenticate, async (req, res) => {
   try {
     const mappings = await ModelCategory.getAllMappings();

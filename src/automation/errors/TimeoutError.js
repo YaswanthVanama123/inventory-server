@@ -1,8 +1,8 @@
 const AutomationError = require('./AutomationError');
 
-/**
- * Timeout error
- */
+
+
+
 class TimeoutError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);

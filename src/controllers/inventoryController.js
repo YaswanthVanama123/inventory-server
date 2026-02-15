@@ -285,7 +285,7 @@ const getInventoryItems = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, category, search, lowStock, includeSyncStatus } = req.query;
 
-    // Step 1: Fetch automated items from CustomerConnect
+    
     const ccOrders = await CustomerConnectOrder.find({}).lean();
     const ccItemsMap = new Map();
 
@@ -333,7 +333,7 @@ const getInventoryItems = async (req, res, next) => {
       }
     });
 
-    // Step 2: Fetch automated items from RouteStar
+    
     const rsInvoices = await RouteStarInvoice.find({}).lean();
     const rsItemsMap = new Map();
 
@@ -386,7 +386,7 @@ const getInventoryItems = async (req, res, next) => {
       }
     });
 
-    // Step 3: Enrich automated items with StockSummary data
+    
     const allAutomatedSkus = [...ccItemsMap.keys(), ...rsItemsMap.keys()];
     const stockSummaries = await StockSummary.find({
       sku: { $in: allAutomatedSkus }
@@ -397,10 +397,10 @@ const getInventoryItems = async (req, res, next) => {
       stockSummaryMap.set(summary.sku, summary);
     });
 
-    // Step 4: Merge CustomerConnect and RouteStar items (NO manual items)
+    
     const mergedItemsMap = new Map();
 
-    // Add CustomerConnect items
+    
     ccItemsMap.forEach((ccItem, sku) => {
       const stockSummary = stockSummaryMap.get(sku);
 
@@ -449,7 +449,7 @@ const getInventoryItems = async (req, res, next) => {
       });
     });
 
-    // Merge RouteStar items
+    
     rsItemsMap.forEach((rsItem, sku) => {
       const stockSummary = stockSummaryMap.get(sku);
 
@@ -539,10 +539,10 @@ const getInventoryItems = async (req, res, next) => {
       }
     });
 
-    // Step 5: Convert to array and apply filters
+    
     let mergedItems = Array.from(mergedItemsMap.values());
 
-    // Apply category filter if not already applied
+    
     if (category) {
       mergedItems = mergedItems.filter(item => {
         const itemCategory = item.category || '';
@@ -550,7 +550,7 @@ const getInventoryItems = async (req, res, next) => {
       });
     }
 
-    // Apply low stock filter
+    
     if (lowStock === 'true') {
       mergedItems = mergedItems.filter(item => {
         const currentQty = item.quantity?.current || 0;
@@ -559,21 +559,21 @@ const getInventoryItems = async (req, res, next) => {
       });
     }
 
-    // Step 6: Sort items by sync date
+    
     mergedItems.sort((a, b) => {
       const dateA = a.sync?.lastSyncedAt || new Date(0);
       const dateB = b.sync?.lastSyncedAt || new Date(0);
       return new Date(dateB) - new Date(dateA);
     });
 
-    // Step 7: Apply pagination
+    
     const total = mergedItems.length;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const paginatedItems = mergedItems.slice(skip, skip + parseInt(limit));
 
-    // Step 8: Transform items for response
+    
     const transformedItems = paginatedItems.map(item => {
-      // Transform automated items
+      
       return transformItem({
         toObject: () => item
       }, null, item.sync);

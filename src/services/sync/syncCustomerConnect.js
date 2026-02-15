@@ -4,10 +4,10 @@ const SyncLog = require('../../models/SyncLog');
 const SKUMapper = require('../skuMapper');
 const StockProcessor = require('../stockProcessor');
 
-/**
- * CustomerConnect Sync Service
- * Orchestrates the sync of purchase orders from CustomerConnect
- */
+
+
+
+
 class SyncCustomerConnect {
   constructor(userId = null) {
     this.userId = userId;
@@ -15,13 +15,13 @@ class SyncCustomerConnect {
     this.syncLog = null;
   }
 
-  /**
-   * Run full sync
-   * @param {Object} options - Sync options
-   * @param {number} options.limit - Max orders to fetch
-   * @param {boolean} options.processStock - Whether to process stock movements
-   * @returns {Promise<Object>} - Sync results
-   */
+  
+
+
+
+
+
+
   async run(options = {}) {
     const { limit = 50, processStock = true } = options;
 
@@ -127,11 +127,11 @@ class SyncCustomerConnect {
     }
   }
 
-  /**
-   * Save or update purchase order
-   * @param {Object} orderDetails - Order details from automation
-   * @returns {Promise<Object>} - { purchaseOrder, isNew }
-   */
+  
+
+
+
+
   async savePurchaseOrder(orderDetails) {
     
     let purchaseOrder = await PurchaseOrder.findBySourceOrderId('customerconnect', orderDetails.orderNumber);
@@ -197,11 +197,11 @@ class SyncCustomerConnect {
     return { purchaseOrder, isNew };
   }
 
-  /**
-   * Normalize order status
-   * @param {string} status - Status from portal
-   * @returns {string} - Normalized status
-   */
+  
+
+
+
+
   normalizeStatus(status) {
     const statusLower = (status || '').toLowerCase();
 
@@ -221,11 +221,11 @@ class SyncCustomerConnect {
     return 'pending';
   }
 
-  /**
-   * Parse date string
-   * @param {string} dateStr
-   * @returns {Date}
-   */
+  
+
+
+
+
   parseDate(dateStr) {
     if (!dateStr) return new Date();
 

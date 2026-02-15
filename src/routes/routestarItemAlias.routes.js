@@ -4,11 +4,11 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-/**
- * @route   GET /api/routestar-item-alias/mappings
- * @desc    Get all item name mappings
- * @access  Private
- */
+
+
+
+
+
 router.get('/mappings', authenticate, async (req, res) => {
   try {
     const mappings = await RouteStarItemAlias.getAllActiveMappings();
@@ -30,16 +30,16 @@ router.get('/mappings', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar-item-alias/unique-items
- * @desc    Get all unique item names from RouteStarItem collection
- * @access  Private
- */
+
+
+
+
+
 router.get('/unique-items', authenticate, async (req, res) => {
   try {
     const RouteStarItem = require('../models/RouteStarItem');
 
-    // Get all RouteStarItems
+    
     const routeStarItems = await RouteStarItem.find()
       .select('itemName itemParent description qtyOnHand')
       .sort({ itemName: 1 })
@@ -47,10 +47,10 @@ router.get('/unique-items', authenticate, async (req, res) => {
 
     console.log(`[unique-items] Found ${routeStarItems.length} RouteStarItems`);
 
-    // Get existing mappings to check which items are already mapped
+    
     const lookupMap = await RouteStarItemAlias.buildLookupMap();
 
-    // Transform to match frontend expectations
+    
     const itemsWithMappingStatus = routeStarItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
@@ -58,12 +58,12 @@ router.get('/unique-items', authenticate, async (req, res) => {
       qtyOnHand: item.qtyOnHand || 0,
       isMapped: !!lookupMap[item.itemName],
       canonicalName: lookupMap[item.itemName] || null,
-      // Add some stats for display
-      occurrences: 1, // Each RouteStarItem appears once in the master list
+      
+      occurrences: 1, 
       totalQuantity: item.qtyOnHand || 0
     }));
 
-    // Calculate statistics
+    
     const stats = {
       totalUniqueItems: routeStarItems.length,
       mappedItems: itemsWithMappingStatus.filter(i => i.isMapped).length,
@@ -89,11 +89,11 @@ router.get('/unique-items', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar-item-alias/mapping
- * @desc    Create or update an item name mapping
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/mapping', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { canonicalName, aliases, description, autoMerge = true } = req.body;
@@ -105,7 +105,7 @@ router.post('/mapping', authenticate, requireAdmin(), async (req, res) => {
       });
     }
 
-    // Check if any alias is already mapped to a different canonical name
+    
     const existingMappings = await RouteStarItemAlias.find({
       'aliases.name': { $in: aliases.map(a => typeof a === 'string' ? a : a.name) },
       canonicalName: { $ne: canonicalName },
@@ -142,11 +142,11 @@ router.post('/mapping', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   PUT /api/routestar-item-alias/mapping/:id
- * @desc    Update an existing mapping
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.put('/mapping/:id', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
@@ -161,7 +161,7 @@ router.put('/mapping/:id', authenticate, requireAdmin(), async (req, res) => {
       });
     }
 
-    // Update fields
+    
     if (canonicalName !== undefined) mapping.canonicalName = canonicalName;
     if (aliases !== undefined) {
       mapping.aliases = aliases.map(a => typeof a === 'string' ? { name: a } : a);
@@ -188,11 +188,11 @@ router.put('/mapping/:id', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar-item-alias/mapping/:id/add-alias
- * @desc    Add an alias to an existing mapping
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/mapping/:id/add-alias', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
@@ -231,11 +231,11 @@ router.post('/mapping/:id/add-alias', authenticate, requireAdmin(), async (req, 
   }
 });
 
-/**
- * @route   DELETE /api/routestar-item-alias/mapping/:id/alias/:aliasName
- * @desc    Remove an alias from a mapping
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/mapping/:id/alias/:aliasName', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id, aliasName } = req.params;
@@ -266,11 +266,11 @@ router.delete('/mapping/:id/alias/:aliasName', authenticate, requireAdmin(), asy
   }
 });
 
-/**
- * @route   DELETE /api/routestar-item-alias/mapping/:id
- * @desc    Delete a mapping
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/mapping/:id', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
@@ -299,11 +299,11 @@ router.delete('/mapping/:id', authenticate, requireAdmin(), async (req, res) => 
   }
 });
 
-/**
- * @route   GET /api/routestar-item-alias/lookup-map
- * @desc    Get alias -> canonical name lookup map
- * @access  Private
- */
+
+
+
+
+
 router.get('/lookup-map', authenticate, async (req, res) => {
   try {
     const lookupMap = await RouteStarItemAlias.buildLookupMap();
@@ -325,20 +325,20 @@ router.get('/lookup-map', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar-item-alias/suggested-mappings
- * @desc    Get suggested mappings based on similar item names from RouteStarItem
- * @access  Private
- */
+
+
+
+
+
 router.get('/suggested-mappings', authenticate, async (req, res) => {
   try {
     const suggestions = await RouteStarItemAlias.getSuggestedMappings();
 
-    // Group similar names (basic implementation - can be enhanced with fuzzy matching)
+    
     const grouped = {};
 
     suggestions.forEach(item => {
-      // Normalize name for grouping (remove spaces, hyphens, convert to uppercase)
+      
       const normalized = item.itemName.replace(/[\s\-_]/g, '').toUpperCase();
 
       if (!grouped[normalized]) {
@@ -351,8 +351,8 @@ router.get('/suggested-mappings', authenticate, async (req, res) => {
       grouped[normalized].variations.push(item);
     });
 
-    // Filter to only show groups with multiple variations
-    // For RouteStarItem, this will show items that have similar normalized names
+    
+    
     const groupsWithVariations = Object.entries(grouped)
       .filter(([_, group]) => group.variations.length > 1)
       .map(([normalized, group]) => ({
@@ -379,11 +379,11 @@ router.get('/suggested-mappings', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar-item-alias/stats
- * @desc    Get statistics about mappings
- * @access  Private
- */
+
+
+
+
+
 router.get('/stats', authenticate, async (req, res) => {
   try {
     const RouteStarItem = require('../models/RouteStarItem');

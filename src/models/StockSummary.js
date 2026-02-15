@@ -52,8 +52,8 @@ const stockSummarySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index already defined on sku field with unique: true (line 7)
-// No need for duplicate index
+
+
 stockSummarySchema.index({ availableQty: 1 });
 
 

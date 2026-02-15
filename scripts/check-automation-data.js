@@ -14,7 +14,7 @@ async function checkAutomationData() {
 
     console.log('📊 AUTOMATION DATA STATUS:\n');
 
-    // Check CustomerConnect Orders
+    
     const ccOrders = await CustomerConnectOrder.countDocuments();
     console.log(`CustomerConnect Orders: ${ccOrders}`);
     if (ccOrders > 0) {
@@ -24,7 +24,7 @@ async function checkAutomationData() {
       console.log(`  Line Items: ${sampleOrder.lineItems?.length || 0}`);
     }
 
-    // Check RouteStar Invoices
+    
     const rsInvoices = await RouteStarInvoice.countDocuments();
     console.log(`\nRouteStar Invoices: ${rsInvoices}`);
     if (rsInvoices > 0) {
@@ -34,7 +34,7 @@ async function checkAutomationData() {
       console.log(`  Line Items: ${sampleInvoice.lineItems?.length || 0}`);
     }
 
-    // Check Stock Movements
+    
     const movements = await StockMovement.countDocuments();
     console.log(`\nStock Movements: ${movements}`);
     if (movements > 0) {
@@ -46,7 +46,7 @@ async function checkAutomationData() {
       console.log(`    RefType: ${sampleMovement.refType}`);
     }
 
-    // Check Stock Summary
+    
     const summaries = await StockSummary.countDocuments();
     console.log(`\nStock Summaries: ${summaries}`);
     if (summaries > 0) {
@@ -58,7 +58,7 @@ async function checkAutomationData() {
       console.log(`    Total OUT: ${sampleSummary.totalOutQty}`);
     }
 
-    // Check Inventory items
+    
     const inventoryCount = await Inventory.countDocuments();
     console.log(`\nInventory Items: ${inventoryCount}`);
 

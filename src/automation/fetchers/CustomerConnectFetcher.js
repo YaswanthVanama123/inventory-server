@@ -1,9 +1,9 @@
 const CustomerConnectParser = require('../parsers/customerconnect.parser');
 
-/**
- * Fetcher for CustomerConnect Orders
- * Handles fetching orders and order details
- */
+
+
+
+
 class CustomerConnectFetcher {
   constructor(page, navigator, selectors) {
     this.page = page;
@@ -11,9 +11,9 @@ class CustomerConnectFetcher {
     this.selectors = selectors;
   }
 
-  /**
-   * Fetch list of orders
-   */
+  
+
+
   async fetchOrders(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching CustomerConnect Orders ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
@@ -30,7 +30,7 @@ class CustomerConnectFetcher {
     let firstOrderLogged = false;
 
     while (hasNextPage && pageCount < maxPages) {
-      // Wait for content to be ready (with retry logic)
+      
       let contentReady = false;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -61,7 +61,7 @@ class CustomerConnectFetcher {
         console.log(`\n🔍 Found ${orderDivs.length} order divs using selector: ${this.selectors.ordersList.orderRows}`);
       }
 
-      // Log first order's HTML structure for debugging
+      
       if (!firstOrderLogged && orderDivs.length > 0 && process.env.DEBUG_SCRAPER === 'true') {
         console.log('\n' + '='.repeat(80));
         console.log('🔍 FIRST ORDER HTML STRUCTURE (for debugging):');
@@ -115,24 +115,24 @@ class CustomerConnectFetcher {
     };
   }
 
-  /**
-   * Extract order data from order div
-   */
+  
+
+
   async extractOrderData(orderDiv) {
     try {
-      // Get full text content for extraction
+      
       const fullText = await orderDiv.textContent();
 
-      // Extract Order Number - try multiple patterns
+      
       let orderNumber = null;
 
-      // Pattern 1: "Order ID: #75938" or just "#75938"
+      
       let orderIdMatch = fullText.match(/Order ID:\s*#?(\d+)/i);
       if (orderIdMatch) {
         orderNumber = orderIdMatch[1];
       }
 
-      // Pattern 2: First standalone number at the beginning
+      
       if (!orderNumber) {
         orderIdMatch = fullText.match(/^\s*(\d{5,})/);
         if (orderIdMatch) orderNumber = orderIdMatch[1];
@@ -143,27 +143,27 @@ class CustomerConnectFetcher {
         return null;
       }
 
-      // Extract Status
+      
       const statusMatch = fullText.match(/Status:\s*([^\n]+)/i);
       const orderStatus = statusMatch ? statusMatch[1].trim() : null;
 
-      // Extract Date
+      
       const dateMatch = fullText.match(/Date\s*(?:Added)?:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
       const orderDate = dateMatch ? dateMatch[1] : null;
 
-      // Extract Total
+      
       const totalMatch = fullText.match(/Total:\s*\$\s*([\d,]+\.?\d*)/i);
       const orderTotal = totalMatch ? totalMatch[1].replace(/,/g, '') : null;
 
-      // Extract Vendor - FIX: capture everything after "Vendor(s):" until comma
+      
       const vendorMatch = fullText.match(/Vendor\(s\):\s*([^,\n]+)/i);
       const vendorName = vendorMatch ? vendorMatch[1].trim() : null;
 
-      // Extract PO Number
+      
       const poMatch = fullText.match(/PO\s*Number\(s\):\s*([^,\n]+)/i);
       const poNumber = poMatch ? poMatch[1].trim() : null;
 
-      // Debug logging
+      
       if (process.env.DEBUG_SCRAPER === 'true') {
         console.log(`\n📋 Extracted Order #${orderNumber}:`);
         console.log(`   Status: ${orderStatus || 'NULL'}`);
@@ -173,7 +173,7 @@ class CustomerConnectFetcher {
         console.log(`   PO: ${poNumber || 'NULL'}`);
       }
 
-      // Try to find the order detail link
+      
       let orderLink = null;
       const allLinks = await orderDiv.$$('a');
       for (const link of allLinks) {
@@ -184,7 +184,7 @@ class CustomerConnectFetcher {
         }
       }
 
-      // Construct URL from order number if no link found
+      
       if (!orderLink && orderNumber) {
         orderLink = `https://envirostore.mycustomerconnect.com/index.php?route=account/order/info&order_id=${orderNumber}`;
       }
@@ -204,9 +204,9 @@ class CustomerConnectFetcher {
     }
   }
 
-  /**
-   * Fetch order details
-   */
+  
+
+
   async fetchOrderDetails(orderUrl) {
     await this.navigator.navigateToOrderDetails(orderUrl);
 
@@ -245,9 +245,9 @@ class CustomerConnectFetcher {
     };
   }
 
-  /**
-   * Extract line items from details page
-   */
+  
+
+
   async extractLineItems() {
     const items = [];
 

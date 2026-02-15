@@ -4,13 +4,13 @@ const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const { authenticate } = require('../middleware/auth');
 
-// Sync lock to prevent multiple simultaneous syncs
+
 let isSyncing = false;
 
-/**
- * @route   GET /api/routestar-items/stats
- * @desc    Get statistics about items
- */
+
+
+
+
 router.get('/stats', authenticate, async (req, res) => {
   try {
     const total = await RouteStarItem.countDocuments();
@@ -39,10 +39,10 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar-items
- * @desc    Get all RouteStarItems with optional filters
- */
+
+
+
+
 router.get('/', authenticate, async (req, res) => {
   try {
     const {
@@ -58,10 +58,10 @@ router.get('/', authenticate, async (req, res) => {
       sortOrder = 'asc'
     } = req.query;
 
-    // Build query
+    
     const query = {};
 
-    // Search filter (item name, parent, description)
+    
     if (search) {
       query.$or = [
         { itemName: { $regex: search, $options: 'i' } },
@@ -70,49 +70,49 @@ router.get('/', authenticate, async (req, res) => {
       ];
     }
 
-    // Item parent filter
+    
     if (itemParent && itemParent !== 'all') {
       query.itemParent = itemParent;
     }
 
-    // Type filter
+    
     if (type && type !== 'all') {
       query.type = type;
     }
 
-    // For use filter
+    
     if (forUse === 'true') {
       query.forUse = true;
     }
 
-    // For sell filter
+    
     if (forSell === 'true') {
       query.forSell = true;
     }
 
-    // Item category filter
+    
     if (itemCategory && itemCategory !== 'all') {
       query.itemCategory = itemCategory;
     }
 
-    // Pagination
+    
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sortOptions = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
-    // Execute query
+    
     const items = await RouteStarItem.find(query)
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
 
-    // Get total count for pagination
+    
     const total = await RouteStarItem.countDocuments(query);
 
-    // Get unique item parents for filter dropdown
+    
     const itemParents = await RouteStarItem.distinct('itemParent');
 
-    // Get unique types for filter dropdown
+    
     const types = await RouteStarItem.distinct('type');
 
     res.json({
@@ -141,10 +141,10 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   PATCH /api/routestar-items/:id/flags
- * @desc    Update forUse and forSell flags for an item
- */
+
+
+
+
 router.patch('/:id/flags', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -159,7 +159,7 @@ router.patch('/:id/flags', authenticate, async (req, res) => {
       });
     }
 
-    // Update flags
+    
     if (forUse !== undefined) {
       item.forUse = forUse;
     }
@@ -168,7 +168,7 @@ router.patch('/:id/flags', authenticate, async (req, res) => {
       item.forSell = forSell;
     }
 
-    // Update item category
+    
     if (itemCategory !== undefined && ['Service', 'Item'].includes(itemCategory)) {
       item.itemCategory = itemCategory;
     }
@@ -190,10 +190,10 @@ router.patch('/:id/flags', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   DELETE /api/routestar-items/all
- * @desc    Delete all RouteStarItems
- */
+
+
+
+
 router.delete('/all', authenticate, async (req, res) => {
   try {
     const result = await RouteStarItem.deleteMany({});
@@ -215,12 +215,12 @@ router.delete('/all', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar-items/sync
- * @desc    Trigger a sync of items from RouteStar
- */
+
+
+
+
 router.post('/sync', authenticate, async (req, res) => {
-  // Check if sync is already in progress
+  
   if (isSyncing) {
     return res.status(409).json({
       success: false,
@@ -229,20 +229,20 @@ router.post('/sync', authenticate, async (req, res) => {
     });
   }
 
-  // Set sync lock
+  
   isSyncing = true;
 
   try {
     const RouteStarSyncService = require('../services/routeStarSync.service');
     const syncService = new RouteStarSyncService();
 
-    // Initialize the service
+    
     await syncService.init();
 
-    // Sync items (fetch all)
+    
     const result = await syncService.syncItems(Infinity);
 
-    // Close the service
+    
     await syncService.close();
 
     res.json({
@@ -258,22 +258,22 @@ router.post('/sync', authenticate, async (req, res) => {
       error: error.message
     });
   } finally {
-    // Always release the lock
+    
     isSyncing = false;
   }
 });
 
-/**
- * @route   GET /api/routestar-items/sales-report
- * @desc    Get all RouteStar items with their sales quantities from invoices
- */
+
+
+
+
 router.get('/sales-report', authenticate, async (req, res) => {
   try {
-    // Get all RouteStar items
+    
     const items = await RouteStarItem.find().sort({ itemName: 1 }).lean();
 
-    // Get all invoices (not filtering by isComplete since it's usually false)
-    // Include Closed, Completed, and Pending invoices
+    
+    
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
@@ -283,7 +283,7 @@ router.get('/sales-report', authenticate, async (req, res) => {
     console.log('Total invoices (filtered):', invoices.length);
     console.log('Sample RouteStar item names:', items.slice(0, 5).map(i => i.itemName));
 
-    // Check total invoices without filter
+    
     const allInvoices = await RouteStarInvoice.find({}).lean();
     console.log('Total invoices (unfiltered):', allInvoices.length);
     console.log('Sample invoice statuses:', allInvoices.slice(0, 5).map(inv => ({
@@ -292,7 +292,7 @@ router.get('/sales-report', authenticate, async (req, res) => {
       isComplete: inv.isComplete
     })));
 
-    // Check if NRV7840 exists
+    
     const nrv7840 = await RouteStarInvoice.findOne({ invoiceNumber: 'NRV7840' }).lean();
     if (nrv7840) {
       console.log('NRV7840 found:', {
@@ -304,10 +304,10 @@ router.get('/sales-report', authenticate, async (req, res) => {
       console.log('NRV7840 NOT found in database');
     }
 
-    // Create a map to aggregate sales by item name
+    
     const salesMap = {};
 
-    // Process all invoice line items
+    
     let totalLineItems = 0;
     const uniqueInvoiceItemNames = new Set();
 
@@ -335,13 +335,13 @@ router.get('/sales-report', authenticate, async (req, res) => {
             salesMap[itemName].totalQuantity += lineItem.quantity || 0;
             salesMap[itemName].totalAmount += lineItem.amount || 0;
 
-            // Track unique invoices
+            
             if (!salesMap[itemName].invoices.includes(invoice.invoiceNumber)) {
               salesMap[itemName].invoices.push(invoice.invoiceNumber);
               salesMap[itemName].invoiceCount += 1;
             }
 
-            // Add invoice line item details
+            
             salesMap[itemName].invoiceDetails.push({
               invoiceNumber: invoice.invoiceNumber,
               invoiceDate: invoice.invoiceDate,
@@ -362,7 +362,7 @@ router.get('/sales-report', authenticate, async (req, res) => {
     console.log('Items in salesMap:', Object.keys(salesMap).length);
     console.log('=== END DEBUG ===\n');
 
-    // Combine RouteStar items with sales data
+    
     const itemsWithSales = items.map(item => {
       const salesData = salesMap[item.itemName] || {
         totalQuantity: 0,
@@ -387,7 +387,7 @@ router.get('/sales-report', authenticate, async (req, res) => {
       };
     });
 
-    // Calculate totals
+    
     const totals = itemsWithSales.reduce((acc, item) => ({
       totalItems: acc.totalItems + 1,
       totalSoldQuantity: acc.totalSoldQuantity + item.soldQuantity,

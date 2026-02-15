@@ -1,6 +1,6 @@
-/**
- * Base automation error class
- */
+
+
+
 class AutomationError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -8,7 +8,7 @@ class AutomationError extends Error {
     this.timestamp = new Date();
     this.context = options.context || {};
 
-    // Capture stack trace
+    
     Error.captureStackTrace(this, this.constructor);
   }
 

@@ -1,6 +1,6 @@
-/**
- * CSS Selectors for RouteStar Portal
- */
+
+
+
 module.exports = {
   login: {
     username: '#username',
@@ -64,23 +64,23 @@ module.exports = {
   },
 
   invoiceDetail: {
-    // Handsontable structure
+    
     itemsTable: 'div.ht_master',
-    // Individual item fields (relative to row)
-    itemName: 'td:nth-of-type(1)',          // Item column
-    itemDescription: 'td:nth-of-type(2)',   // Description column
-    itemQuantity: 'td:nth-of-type(3)',      // Qty column
-    itemRate: 'td:nth-of-type(4)',          // Rate column
-    itemAmount: 'td:nth-of-type(5)',        // Amount column
-    itemClass: 'td:nth-of-type(6)',         // Class column
-    itemWarehouse: 'td:nth-of-type(7)',     // Warehouse column
-    itemTaxCode: 'td:nth-of-type(8)',       // Tax Code column
-    itemLocation: 'td:nth-of-type(9)',      // Item Location column
-    // Invoice totals
+    
+    itemName: 'td:nth-of-type(1)',          
+    itemDescription: 'td:nth-of-type(2)',   
+    itemQuantity: 'td:nth-of-type(3)',      
+    itemRate: 'td:nth-of-type(4)',          
+    itemAmount: 'td:nth-of-type(5)',        
+    itemClass: 'td:nth-of-type(6)',         
+    itemWarehouse: 'td:nth-of-type(7)',     
+    itemTaxCode: 'td:nth-of-type(8)',       
+    itemLocation: 'td:nth-of-type(9)',      
+    
     subtotal: '#inv_subtotal',
     tax: '#inv_taxtotal',
     total: '#inv_total',
-    // Additional info
+    
     signedBy: '#txt_signedby',
     invoiceMemo: '#txt_memo',
     serviceNotes: '#txt_service_notes',

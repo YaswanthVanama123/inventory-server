@@ -1,7 +1,7 @@
-/**
- * Test script to verify all CustomerConnect fixes
- * Tests: timeout increases, SSL redirect, networkidle wait strategy
- */
+
+
+
+
 
 require('dotenv').config();
 const { chromium } = require('playwright');
@@ -30,13 +30,13 @@ async function testFixes() {
   });
 
   const page = await context.newPage();
-  page.setDefaultTimeout(90000); // 90 second timeout
+  page.setDefaultTimeout(90000); 
 
   let testsPassed = 0;
   let testsFailed = 0;
 
   try {
-    // Test 1: Navigate with SSL parameter
+    
     console.log('Test 1: Navigation with SSL parameter...');
     let startTime = Date.now();
 
@@ -57,7 +57,7 @@ async function testFixes() {
 
     await page.waitForTimeout(2000);
 
-    // Test 2: Check login form elements
+    
     console.log('\nTest 2: Login form elements...');
 
     try {
@@ -80,7 +80,7 @@ async function testFixes() {
       testsFailed++;
     }
 
-    // Test 3: Attempt login
+    
     console.log('\nTest 3: Login attempt...');
 
     try {
@@ -109,7 +109,7 @@ async function testFixes() {
       } else {
         console.log('⚠️  Login may have failed (still on login page)');
 
-        // Check for error message
+        
         const errorMsg = await page.$('.alert-danger, .warning, .error');
         if (errorMsg) {
           const errorText = await errorMsg.textContent();
@@ -122,7 +122,7 @@ async function testFixes() {
       testsFailed++;
     }
 
-    // Test 4: Screenshot test (with increased timeout)
+    
     console.log('\nTest 4: Screenshot with increased timeout...');
 
     try {
@@ -138,7 +138,7 @@ async function testFixes() {
       testsFailed++;
     }
 
-    // Summary
+    
     console.log('\n========================================');
     console.log('Test Summary');
     console.log('========================================');
@@ -167,5 +167,5 @@ async function testFixes() {
   }
 }
 
-// Run tests
+
 testFixes().catch(console.error);

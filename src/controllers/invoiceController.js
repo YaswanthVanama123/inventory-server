@@ -1235,20 +1235,20 @@ const getStockMovementsByInvoice = async (req, res, next) => {
   }
 };
 
-/**
- * Get grouped items from all invoices
- * Groups items by SKU and item name, showing all invoice entries
- */
+
+
+
+
 const getGroupedInvoiceItems = async (req, res, next) => {
   try {
     console.log('[getGroupedInvoiceItems] Starting aggregation...');
 
-    // Aggregate all items across all invoices
+    
     const groupedItems = await Invoice.aggregate([
-      // Unwind items array to get individual items
+      
       { $unwind: '$items' },
 
-      // Group by SKU and item name
+      
       {
         $group: {
           _id: {
@@ -1277,10 +1277,10 @@ const getGroupedInvoiceItems = async (req, res, next) => {
         }
       },
 
-      // Sort by item name
+      
       { $sort: { '_id.name': 1 } },
 
-      // Project to clean format
+      
       {
         $project: {
           _id: 0,

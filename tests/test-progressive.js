@@ -1,6 +1,6 @@
-/**
- * Progressive test - tries different navigation strategies
- */
+
+
+
 
 require('dotenv').config();
 const { chromium } = require('playwright');
@@ -48,7 +48,7 @@ async function progressiveTest() {
         timeout: strategy.timeout || 90000
       });
 
-      // Extra wait for page to stabilize
+      
       if (strategy.extraWait) {
         await page.waitForTimeout(strategy.extraWait);
       }
@@ -58,7 +58,7 @@ async function progressiveTest() {
       console.log(`  Time: ${elapsed}ms`);
       console.log(`  URL: ${page.url()}`);
 
-      // Check if login form is present
+      
       const usernameInput = await page.$('input[name="email"]');
       const passwordInput = await page.$('input[name="password"]');
       const submitButton = await page.$('input[type="submit"][value="Login"]');
@@ -81,7 +81,7 @@ async function progressiveTest() {
     console.log(`✅ SUCCESS! Best strategy: ${successfulStrategy}`);
     console.log('========================================\n');
 
-    // Now test login
+    
     console.log('Testing login...\n');
 
     try {

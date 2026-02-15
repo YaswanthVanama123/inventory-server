@@ -199,7 +199,7 @@ const getDashboard = async (req, res, next) => {
       .sort({ invoiceDate: 1 })
       .lean();
 
-    // Calculate top selling items from RouteStarInvoice automation data
+    
     const itemSalesMap = {};
     routeStarInvoices.forEach(invoice => {
       if (invoice.items && Array.isArray(invoice.items)) {
@@ -221,7 +221,7 @@ const getDashboard = async (req, res, next) => {
       }
     });
 
-    // Convert to array and sort by revenue
+    
     const topSellingItems = Object.values(itemSalesMap)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5)

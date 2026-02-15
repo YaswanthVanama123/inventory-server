@@ -3,11 +3,11 @@ const router = express.Router();
 const { getInventoryScheduler } = require('../services/inventoryScheduler.service');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-/**
- * @route   GET /api/inventory-scheduler/status
- * @desc    Get scheduler status
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.get('/status', authenticate, requireAdmin(), async (req, res) => {
   try {
     const scheduler = getInventoryScheduler();
@@ -27,11 +27,11 @@ router.get('/status', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/inventory-scheduler/start
- * @desc    Start the scheduler
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/start', authenticate, requireAdmin(), async (req, res) => {
   try {
     const {
@@ -66,11 +66,11 @@ router.post('/start', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/inventory-scheduler/stop
- * @desc    Stop the scheduler
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/stop', authenticate, requireAdmin(), async (req, res) => {
   try {
     const scheduler = getInventoryScheduler();
@@ -91,11 +91,11 @@ router.post('/stop', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/inventory-scheduler/run-now
- * @desc    Run sync immediately (outside of schedule)
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/run-now', authenticate, requireAdmin(), async (req, res) => {
   try {
     const {

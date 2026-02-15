@@ -5,10 +5,10 @@ const logger = require('../utils/logger');
 const { retry } = require('../utils/retry');
 const { LoginError, NavigationError } = require('../errors');
 
-/**
- * CustomerConnect automation service
- * High-level orchestration for CustomerConnect portal automation
- */
+
+
+
+
 class CustomerConnectService {
   constructor(config = {}) {
     this.config = {
@@ -24,9 +24,9 @@ class CustomerConnectService {
     this.logger = logger.child({ service: 'CustomerConnect' });
   }
 
-  /**
-   * Initialize browser and create page instance
-   */
+  
+
+
   async initialize() {
     try {
       this.logger.info('Initializing CustomerConnect service');
@@ -35,7 +35,7 @@ class CustomerConnectService {
       this.page = await this.browser.createPage();
       this.navigator = new BaseNavigator(this.page);
 
-      // Load saved cookies if available
+      
       const savedCookies = await this.loadCookies();
       if (savedCookies) {
         await this.browser.loadCookies(savedCookies);
@@ -50,9 +50,9 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Login to CustomerConnect portal
-   */
+  
+
+
   async login() {
     try {
       this.logger.info('Attempting login to CustomerConnect');
@@ -72,13 +72,13 @@ class CustomerConnectService {
       const loginUrl = `${this.config.baseUrl}/login`;
       const successUrl = '/orders';
 
-      // Navigate to login page
+      
       await this.navigator.navigateTo(loginUrl);
 
-      // Perform login
+      
       await this.navigator.login(credentials, selectors, successUrl);
 
-      // Save cookies for future sessions
+      
       await this.browser.saveCookies();
 
       this.logger.info('Login successful');
@@ -93,10 +93,10 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Fetch orders from CustomerConnect
-   * @param {Object} options - Fetch options
-   */
+  
+
+
+
   async fetchOrders(options = {}) {
     const {
       maxPages = 10,
@@ -106,7 +106,7 @@ class CustomerConnectService {
     try {
       this.logger.info('Fetching orders', { maxPages, stopOnEmpty });
 
-      // Navigate to orders page
+      
       await this.navigator.navigateTo(`${this.config.baseUrl}/orders`);
 
       const selectors = {
@@ -115,7 +115,7 @@ class CustomerConnectService {
         nextButton: '.pagination-next'
       };
 
-      // Use pagination to fetch all orders
+      
       const orders = await this.navigator.paginate(
         async (page) => {
           return await BaseParser.parseTableWithHeaders(page, selectors);
@@ -132,10 +132,10 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Fetch order details by order number
-   * @param {string} orderNumber - Order number
-   */
+  
+
+
+
   async fetchOrderDetails(orderNumber) {
     try {
       this.logger.info('Fetching order details', { orderNumber });
@@ -147,10 +147,10 @@ class CustomerConnectService {
         items: '.order-items table'
       };
 
-      // Wait for order details to load
+      
       await this.navigator.waitForElement(selectors.orderInfo);
 
-      // Extract order information
+      
       const orderInfo = await this.navigator.getText(selectors.orderInfo);
       const items = await BaseParser.parseTableWithHeaders(this.page, selectors);
 
@@ -169,10 +169,10 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Search orders by criteria
-   * @param {Object} filters - Search filters
-   */
+  
+
+
+
   async searchOrders(filters) {
     try {
       this.logger.info('Searching orders', { filters });
@@ -187,10 +187,10 @@ class CustomerConnectService {
         applyButton: '#apply-filters'
       };
 
-      // Apply filters
+      
       await this.navigator.applyFilters(filters, filterSelectors);
 
-      // Extract filtered results
+      
       const results = await BaseParser.parseTableWithHeaders(this.page, {
         table: 'table.orders'
       });
@@ -203,9 +203,9 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Check if currently logged in
-   */
+  
+
+
   async isLoggedIn() {
     try {
       const currentUrl = this.navigator.getUrl();
@@ -215,13 +215,13 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Load saved cookies
-   */
+  
+
+
   async loadCookies() {
     try {
-      // Implement cookie loading logic from file/database
-      // This is a placeholder - implement based on your storage mechanism
+      
+      
       return null;
     } catch (error) {
       this.logger.warn('Failed to load cookies', { error: error.message });
@@ -229,9 +229,9 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Cleanup resources
-   */
+  
+
+
   async cleanup() {
     try {
       this.logger.info('Cleaning up resources');

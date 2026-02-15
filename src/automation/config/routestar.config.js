@@ -1,6 +1,3 @@
-/**
- * RouteStar Portal Configuration
- */
 module.exports = {
   name: 'RouteStar',
   baseUrl: process.env.ROUTESTAR_BASE_URL || 'https://emnrv.routestar.online',

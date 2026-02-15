@@ -19,10 +19,10 @@ const { param } = require('express-validator');
 router.use(authenticate);
 router.use(requireAdmin());
 
-// Get grouped items from all invoices
+
 router.get('/items/grouped', getGroupedInvoiceItems);
 
-// Get invoice statistics
+
 router.get('/stats', getInvoiceStats);
 
 

@@ -1,8 +1,8 @@
 const AutomationError = require('./AutomationError');
 
-/**
- * Data parsing error
- */
+
+
+
 class ParsingError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);

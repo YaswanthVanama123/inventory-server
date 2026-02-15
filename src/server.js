@@ -13,16 +13,16 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 const app = express();
 
 
-// Connect to database and initialize models
+
 (async () => {
   await connectDB();
 
-  // Initialize models and create indexes
+  
   try {
     await initModels();
   } catch (error) {
     console.error('Warning: Failed to initialize models:', error.message);
-    // Don't exit - server can still function
+    
   }
 })();
 

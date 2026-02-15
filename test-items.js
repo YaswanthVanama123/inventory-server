@@ -9,14 +9,14 @@ async function test() {
   try {
     console.log('🚀 Starting items sync test...\n');
 
-    // Connect to MongoDB first
+    
     console.log('Connecting to MongoDB...');
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✓ MongoDB connected\n');
 
     await syncService.init();
 
-    // Fetch all items (use Infinity to fetch all pages)
+    
     const results = await syncService.syncItems(Infinity);
 
     console.log('\n' + '='.repeat(80));
@@ -35,7 +35,7 @@ async function test() {
   } finally {
     await syncService.close();
 
-    // Close MongoDB connection
+    
     console.log('\nClosing MongoDB connection...');
     await mongoose.connection.close();
     console.log('✓ MongoDB closed');

@@ -1,8 +1,8 @@
 const AutomationError = require('./AutomationError');
 
-/**
- * Login-specific error
- */
+
+
+
 class LoginError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);

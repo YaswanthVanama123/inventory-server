@@ -1,8 +1,8 @@
 const AutomationError = require('./AutomationError');
 
-/**
- * Element not found error
- */
+
+
+
 class ElementNotFoundError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);

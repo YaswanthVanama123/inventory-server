@@ -59,8 +59,8 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index already defined on sku field with unique: true (line 7)
-// No need for duplicate index
+
+
 productSchema.index({ name: 'text', aliases: 'text' });
 productSchema.index({ category: 1, isActive: 1 });
 

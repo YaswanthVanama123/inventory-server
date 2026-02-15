@@ -1,23 +1,23 @@
 const logger = require('../utils/logger');
 
-/**
- * BaseParser - Common data extraction patterns
- * Provides reusable parsing methods for all automations
- */
+
+
+
+
 class BaseParser {
-  /**
-   * Parse table data
-   * @param {Page} page - Playwright page object
-   * @param {Object} selectors - { table, headers, rows, cells }
-   */
+  
+
+
+
+
   static async parseTable(page, selectors) {
     try {
       logger.debug('Parsing table', { selectors });
 
-      // Wait for table to be visible
+      
       await page.waitForSelector(selectors.table);
 
-      // Extract table data
+      
       const data = await page.evaluate((sel) => {
         const table = document.querySelector(sel.table);
         if (!table) return [];
@@ -38,22 +38,22 @@ class BaseParser {
     }
   }
 
-  /**
-   * Parse table with headers
-   * @param {Page} page - Playwright page object
-   * @param {Object} selectors - Selectors object
-   */
+  
+
+
+
+
   static async parseTableWithHeaders(page, selectors) {
     try {
       const tableData = await page.evaluate((sel) => {
         const table = document.querySelector(sel.table);
         if (!table) return { headers: [], rows: [] };
 
-        // Get headers
+        
         const headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
         const headers = headerCells.map(cell => cell.textContent.trim());
 
-        // Get rows
+        
         const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
         const rows = bodyRows.map(row => {
           const cells = Array.from(row.querySelectorAll('td'));
@@ -82,11 +82,11 @@ class BaseParser {
     }
   }
 
-  /**
-   * Parse list items
-   * @param {Page} page - Playwright page object
-   * @param {string} selector - CSS selector for list items
-   */
+  
+
+
+
+
   static async parseList(page, selector) {
     try {
       const items = await page.$$eval(selector, elements => 
@@ -101,11 +101,11 @@ class BaseParser {
     }
   }
 
-  /**
-   * Parse form data
-   * @param {Page} page - Playwright page object
-   * @param {string} formSelector - CSS selector for form
-   */
+  
+
+
+
+
   static async parseForm(page, formSelector) {
     try {
       const formData = await page.evaluate((sel) => {
@@ -137,29 +137,29 @@ class BaseParser {
     }
   }
 
-  /**
-   * Clean text (remove extra whitespace, newlines, etc.)
-   * @param {string} text - Text to clean
-   */
+  
+
+
+
   static cleanText(text) {
     if (!text) return '';
     return text.replace(/\s+/g, ' ').trim();
   }
 
-  /**
-   * Parse currency string to number
-   * @param {string} currencyStr - Currency string (e.g., "$1,234.56")
-   */
+  
+
+
+
   static parseCurrency(currencyStr) {
     if (!currencyStr) return 0;
     const cleaned = currencyStr.replace(/[^0-9.-]/g, '');
     return parseFloat(cleaned) || 0;
   }
 
-  /**
-   * Parse date string
-   * @param {string} dateStr - Date string
-   */
+  
+
+
+
   static parseDate(dateStr) {
     if (!dateStr) return null;
     try {
@@ -170,12 +170,12 @@ class BaseParser {
     }
   }
 
-  /**
-   * Extract attribute from elements
-   * @param {Page} page - Playwright page object
-   * @param {string} selector - CSS selector
-   * @param {string} attribute - Attribute name
-   */
+  
+
+
+
+
+
   static async extractAttribute(page, selector, attribute) {
     try {
       const values = await page.$$eval(

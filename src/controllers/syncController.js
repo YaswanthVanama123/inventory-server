@@ -7,11 +7,11 @@ const ExternalInvoice = require('../models/ExternalInvoice');
 const StockProcessor = require('../services/stockProcessor');
 const Inventory = require('../models/Inventory');
 
-/**
- * Trigger CustomerConnect sync
- * @route POST /api/sync/customerconnect
- * @access Admin only
- */
+
+
+
+
+
 const syncCustomerConnect = async (req, res, next) => {
   try {
     const { limit = 50, processStock = true } = req.body;
@@ -30,11 +30,11 @@ const syncCustomerConnect = async (req, res, next) => {
   }
 };
 
-/**
- * Trigger RouteStar sync
- * @route POST /api/sync/routestar
- * @access Admin only
- */
+
+
+
+
+
 const syncRouteStar = async (req, res, next) => {
   try {
     const { limit = 50, processStock = true } = req.body;
@@ -53,11 +53,11 @@ const syncRouteStar = async (req, res, next) => {
   }
 };
 
-/**
- * Get sync logs
- * @route GET /api/sync/logs
- * @access Admin only
- */
+
+
+
+
+
 const getSyncLogs = async (req, res, next) => {
   try {
     const {
@@ -99,11 +99,11 @@ const getSyncLogs = async (req, res, next) => {
   }
 };
 
-/**
- * Get latest sync status for both sources
- * @route GET /api/sync/status
- * @access Admin only
- */
+
+
+
+
+
 const getSyncStatus = async (req, res, next) => {
   try {
     const customerConnectSync = await SyncLog.getLatestSync('customerconnect');
@@ -122,11 +122,11 @@ const getSyncStatus = async (req, res, next) => {
   }
 };
 
-/**
- * Get sync statistics
- * @route GET /api/sync/stats
- * @access Admin only
- */
+
+
+
+
+
 const getSyncStats = async (req, res, next) => {
   try {
     const { source, days = 30 } = req.query;
@@ -153,11 +153,11 @@ const getSyncStats = async (req, res, next) => {
   }
 };
 
-/**
- * Get detailed sync health status
- * @route GET /api/sync/health
- * @access Admin only
- */
+
+
+
+
+
 const getSyncHealth = async (req, res, next) => {
   try {
     const { days = 7 } = req.query;
@@ -235,9 +235,9 @@ const getSyncHealth = async (req, res, next) => {
   }
 };
 
-/**
- * Helper function to calculate health metrics
- */
+
+
+
 const calculateHealthMetrics = (syncs) => {
   if (syncs.length === 0) {
     return {
@@ -282,9 +282,9 @@ const calculateHealthMetrics = (syncs) => {
   };
 };
 
-/**
- * Helper function to determine overall health
- */
+
+
+
 const determineOverallHealth = (ccHealth, rsHealth, unprocessedPOs, unprocessedInvoices) => {
   const ccScore = calculateHealthScore(ccHealth);
   const rsScore = calculateHealthScore(rsHealth);
@@ -302,9 +302,9 @@ const determineOverallHealth = (ccHealth, rsHealth, unprocessedPOs, unprocessedI
   };
 };
 
-/**
- * Helper function to calculate health score
- */
+
+
+
 const calculateHealthScore = (health) => {
   if (health.status === 'no_data') return 50;
 
@@ -319,11 +319,11 @@ const calculateHealthScore = (health) => {
   return (successScore * successRateWeight) + (performanceScore * performanceWeight);
 };
 
-/**
- * Retry failed syncs
- * @route POST /api/sync/retry-failed
- * @access Admin only
- */
+
+
+
+
+
 const retryFailedSyncs = async (req, res, next) => {
   try {
     const { source, syncLogId, hours = 24 } = req.body;
@@ -413,9 +413,9 @@ const retryFailedSyncs = async (req, res, next) => {
   }
 };
 
-/**
- * Helper function to retry a single sync
- */
+
+
+
 const retrySingleSync = async (syncLog, userId) => {
   try {
     let syncService;
@@ -455,11 +455,11 @@ const retrySingleSync = async (syncLog, userId) => {
   }
 };
 
-/**
- * Reprocess failed stock movements
- * @route POST /api/sync/reprocess-stock
- * @access Admin only
- */
+
+
+
+
+
 const reprocessFailedStock = async (req, res, next) => {
   try {
     const { source, type, recordIds, all = false } = req.body;
@@ -575,11 +575,11 @@ const reprocessFailedStock = async (req, res, next) => {
   }
 };
 
-/**
- * Get sync performance metrics
- * @route GET /api/sync/performance
- * @access Admin only
- */
+
+
+
+
+
 const getSyncPerformanceMetrics = async (req, res, next) => {
   try {
     const { source, days = 30 } = req.query;
@@ -702,9 +702,9 @@ const getSyncPerformanceMetrics = async (req, res, next) => {
   }
 };
 
-/**
- * Helper function to calculate daily breakdown
- */
+
+
+
 const calculateDailyBreakdown = (syncs) => {
   const breakdown = {};
 
@@ -731,9 +731,9 @@ const calculateDailyBreakdown = (syncs) => {
   return Object.values(breakdown).sort((a, b) => a.date.localeCompare(b.date));
 };
 
-/**
- * Helper function to calculate hourly performance
- */
+
+
+
 const calculateHourlyPerformance = (syncs) => {
   const hourlyStats = {};
 
@@ -770,9 +770,9 @@ const calculateHourlyPerformance = (syncs) => {
   return Object.values(hourlyStats).sort((a, b) => a.hour - b.hour);
 };
 
-/**
- * Helper function to calculate MTBF (Mean Time Between Failures)
- */
+
+
+
 const calculateMTBF = (syncs) => {
   const failures = syncs.filter(s => s.status === 'FAILED');
   if (failures.length <= 1) return Infinity;
@@ -786,9 +786,9 @@ const calculateMTBF = (syncs) => {
   return Math.round(avgInterval / 1000 / 60); 
 };
 
-/**
- * Helper function to calculate consistency score
- */
+
+
+
 const calculateConsistency = (syncs) => {
   if (syncs.length < 2) return 100;
 
@@ -811,9 +811,9 @@ const calculateConsistency = (syncs) => {
   return Math.round(consistencyScore * 100) / 100;
 };
 
-/**
- * Helper function to calculate recent trend
- */
+
+
+
 const calculateRecentTrend = (syncs) => {
   if (syncs.length < 4) return 'stable';
 
@@ -831,11 +831,11 @@ const calculateRecentTrend = (syncs) => {
   return 'stable';
 };
 
-/**
- * Get inventory analytics integration
- * @route GET /api/sync/inventory-analytics
- * @access Admin only
- */
+
+
+
+
+
 const getInventoryAnalytics = async (req, res, next) => {
   try {
     const { days = 30 } = req.query;
@@ -974,9 +974,9 @@ const getInventoryAnalytics = async (req, res, next) => {
   }
 };
 
-/**
- * Helper function to calculate inventory turnover
- */
+
+
+
 const calculateInventoryTurnover = async (startDate) => {
   try {
     const totalOut = await StockMovement.aggregate([

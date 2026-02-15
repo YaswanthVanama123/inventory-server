@@ -3,17 +3,17 @@ const fs = require('fs');
 const logger = require('./logger');
 const timeoutConfig = require('../config/timeout.config');
 
-// Create screenshots directory
+
 const screenshotsDir = path.join(__dirname, '../../../screenshots');
 if (!fs.existsSync(screenshotsDir)) {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-/**
- * Capture screenshot
- * @param {Page} page - Playwright page object
- * @param {string} name - Screenshot name
- */
+
+
+
+
+
 async function captureScreenshot(page, name) {
   try {
     const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
@@ -23,7 +23,7 @@ async function captureScreenshot(page, name) {
     await page.screenshot({
       path: filepath,
       fullPage: true,
-      timeout: timeoutConfig.screenshot  // Add explicit timeout
+      timeout: timeoutConfig.screenshot  
     });
 
     logger.debug('Screenshot captured', { filename });
@@ -34,12 +34,12 @@ async function captureScreenshot(page, name) {
   }
 }
 
-/**
- * Capture element screenshot
- * @param {Page} page - Playwright page object
- * @param {string} selector - CSS selector
- * @param {string} name - Screenshot name
- */
+
+
+
+
+
+
 async function captureElementScreenshot(page, selector, name) {
   try {
     const element = await page.$(selector);
@@ -54,7 +54,7 @@ async function captureElementScreenshot(page, selector, name) {
 
     await element.screenshot({
       path: filepath,
-      timeout: timeoutConfig.screenshot  // Add explicit timeout
+      timeout: timeoutConfig.screenshot  
     });
 
     logger.debug('Element screenshot captured', { filename, selector });

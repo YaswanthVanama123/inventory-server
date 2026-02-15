@@ -1,9 +1,9 @@
-/**
- * Configuration Verification Script
- * Run this to verify your .env and config are set up correctly
- *
- * Usage: node tests/verify-config.js
- */
+
+
+
+
+
+
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
@@ -14,7 +14,7 @@ console.log('========================================\n');
 
 let hasErrors = false;
 
-// Check CustomerConnect
+
 console.log('📋 CustomerConnect Configuration:');
 if (process.env.CUSTOMERCONNECT_BASE_URL) {
   console.log(`   ✓ BASE_URL: ${process.env.CUSTOMERCONNECT_BASE_URL}`);
@@ -37,7 +37,7 @@ if (process.env.CUSTOMERCONNECT_PASSWORD) {
   hasErrors = true;
 }
 
-// Check RouteStar
+
 console.log('\n📋 RouteStar Configuration:');
 if (process.env.ROUTESTAR_BASE_URL) {
   console.log(`   ✓ BASE_URL: ${process.env.ROUTESTAR_BASE_URL}`);
@@ -60,11 +60,11 @@ if (process.env.ROUTESTAR_PASSWORD) {
   hasErrors = true;
 }
 
-// Check Browser settings
+
 console.log('\n⚙️  Browser Settings:');
 console.log(`   HEADLESS: ${process.env.HEADLESS || 'true (default)'}`);
 
-// Load and verify configs
+
 console.log('\n🔧 Loading Automation Configs:');
 try {
   const ccConfig = require('../src/automation/config/customerconnect.config');
@@ -82,7 +82,7 @@ try {
   hasErrors = true;
 }
 
-// Load and verify selectors
+
 console.log('\n🎯 Loading Selectors:');
 try {
   const ccSelectors = require('../src/automation/selectors/customerconnect.selectors');
@@ -102,7 +102,7 @@ try {
   hasErrors = true;
 }
 
-// Final result
+
 console.log('\n========================================');
 if (hasErrors) {
   console.log('❌ Configuration has errors!');

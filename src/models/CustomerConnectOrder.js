@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 
-/**
- * CustomerConnect Order Model
- * Stores purchase orders from MyCustomerConnect portal
- * Orders represent INCOMING inventory (purchases)
- */
+
+
+
+
+
 const customerConnectOrderSchema = new mongoose.Schema({
   
   orderNumber: {
@@ -137,10 +137,10 @@ const customerConnectOrderSchema = new mongoose.Schema({
 });
 
 
-// Indexes already defined on fields above
-// - orderNumber has unique: true (line 13) - no need for duplicate
-// - poNumber had index: true (removed to avoid duplicate)
-// - items.sku had index: true (removed to avoid duplicate)
+
+
+
+
 customerConnectOrderSchema.index({ orderDate: -1, status: 1 });
 customerConnectOrderSchema.index({ 'vendor.name': 1, orderDate: -1 });
 customerConnectOrderSchema.index({ stockProcessed: 1, status: 1 });

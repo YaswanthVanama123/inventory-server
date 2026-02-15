@@ -1,27 +1,27 @@
-/**
- * Example usage of the automation framework
- * This file demonstrates how to use the CustomerConnect and RouteStar services
- */
+
+
+
+
 
 const CustomerConnectService = require('./services/CustomerConnectService');
 const RouteStarService = require('./services/RouteStarService');
 const { retry } = require('./utils/retry');
 const logger = require('./utils/logger');
 
-/**
- * Example 1: Basic usage - Fetch CustomerConnect orders
- */
+
+
+
 async function fetchCustomerConnectOrders() {
   const service = new CustomerConnectService();
 
   try {
-    // Initialize browser
+    
     await service.initialize();
 
-    // Login
+    
     await service.login();
 
-    // Fetch orders
+    
     const orders = await service.fetchOrders({
       maxPages: 5,
       stopOnEmpty: true
@@ -35,14 +35,14 @@ async function fetchCustomerConnectOrders() {
     logger.error('Failed to fetch orders', { error: error.message });
     throw error;
   } finally {
-    // Always cleanup
+    
     await service.cleanup();
   }
 }
 
-/**
- * Example 2: Using retry logic
- */
+
+
+
 async function fetchOrdersWithRetry() {
   const service = new CustomerConnectService();
 
@@ -50,7 +50,7 @@ async function fetchOrdersWithRetry() {
     await service.initialize();
     await service.login();
 
-    // Wrap the fetch operation in retry logic
+    
     const orders = await retry(
       async () => await service.fetchOrders(),
       {
@@ -72,9 +72,9 @@ async function fetchOrdersWithRetry() {
   }
 }
 
-/**
- * Example 3: Fetch RouteStar invoices with date filter
- */
+
+
+
 async function fetchRouteStarInvoices() {
   const service = new RouteStarService();
 
@@ -82,7 +82,7 @@ async function fetchRouteStarInvoices() {
     await service.initialize();
     await service.login();
 
-    // Fetch invoices with date range
+    
     const invoices = await service.fetchInvoices({
       maxPages: 10,
       stopOnEmpty: true,
@@ -100,9 +100,9 @@ async function fetchRouteStarInvoices() {
   }
 }
 
-/**
- * Example 4: Fetch specific order details
- */
+
+
+
 async function fetchOrderDetails(orderNumber) {
   const service = new CustomerConnectService();
 
@@ -127,9 +127,9 @@ async function fetchOrderDetails(orderNumber) {
   }
 }
 
-/**
- * Example 5: Search orders with filters
- */
+
+
+
 async function searchOrders() {
   const service = new CustomerConnectService();
 
@@ -153,9 +153,9 @@ async function searchOrders() {
   }
 }
 
-/**
- * Example 6: Parallel execution - Fetch from both portals simultaneously
- */
+
+
+
 async function fetchFromBothPortals() {
   try {
     const [orders, invoices] = await Promise.all([
@@ -175,9 +175,9 @@ async function fetchFromBothPortals() {
   }
 }
 
-/**
- * Example 7: Error handling with custom errors
- */
+
+
+
 async function fetchWithErrorHandling() {
   const { LoginError, NavigationError } = require('./errors');
   const service = new CustomerConnectService();
@@ -194,14 +194,14 @@ async function fetchWithErrorHandling() {
         url: error.url,
         message: error.errorMessage
       });
-      // Handle login failure specifically
+      
     } else if (error instanceof NavigationError) {
       logger.error('Navigation failed', {
         url: error.url,
         expectedUrl: error.expectedUrl,
         actualUrl: error.actualUrl
       });
-      // Handle navigation failure specifically
+      
     } else {
       logger.error('Unknown error', { error: error.message });
     }
@@ -211,9 +211,9 @@ async function fetchWithErrorHandling() {
   }
 }
 
-/**
- * Example 8: Using core components directly
- */
+
+
+
 async function useCoreDirect() {
   const BaseBrowser = require('./core/BaseBrowser');
   const BaseNavigator = require('./core/BaseNavigator');
@@ -222,12 +222,12 @@ async function useCoreDirect() {
   const browser = new BaseBrowser();
 
   try {
-    // Initialize browser
+    
     await browser.launch('chromium');
     const page = await browser.createPage();
     const navigator = new BaseNavigator(page);
 
-    // Navigate and login
+    
     await navigator.navigateTo('https://example.com/login');
     await navigator.login(
       { username: 'user', password: 'pass' },
@@ -239,7 +239,7 @@ async function useCoreDirect() {
       '/dashboard'
     );
 
-    // Extract data
+    
     const data = await BaseParser.parseTableWithHeaders(page, {
       table: 'table.data'
     });
@@ -254,7 +254,7 @@ async function useCoreDirect() {
   }
 }
 
-// Export examples
+
 module.exports = {
   fetchCustomerConnectOrders,
   fetchOrdersWithRetry,
@@ -266,11 +266,11 @@ module.exports = {
   useCoreDirect
 };
 
-// Run example if executed directly
+
 if (require.main === module) {
   (async () => {
     try {
-      // Run any example here
+      
       await fetchCustomerConnectOrders();
     } catch (error) {
       console.error('Example failed:', error.message);

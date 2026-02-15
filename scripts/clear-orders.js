@@ -1,10 +1,10 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-/**
- * Clear all CustomerConnect orders from database
- * Run this to delete old data before testing the fixed scraper
- */
+
+
+
+
 
 async function clearOrders() {
   try {
@@ -14,7 +14,7 @@ async function clearOrders() {
 
     const CustomerConnectOrder = require('./src/models/CustomerConnectOrder');
 
-    // Count current orders
+    
     const count = await CustomerConnectOrder.countDocuments();
     console.log(`📊 Current orders in database: ${count}\n`);
 
@@ -23,15 +23,15 @@ async function clearOrders() {
       process.exit(0);
     }
 
-    // Ask for confirmation
+    
     console.log('⚠️  WARNING: This will delete ALL CustomerConnect orders!');
     console.log('   You will need to re-sync from CustomerConnect portal.\n');
 
-    // Delete all orders
+    
     const result = await CustomerConnectOrder.deleteMany({});
     console.log(`✅ Deleted ${result.deletedCount} orders\n`);
 
-    // Verify deletion
+    
     const remaining = await CustomerConnectOrder.countDocuments();
     console.log(`📊 Remaining orders: ${remaining}\n`);
 

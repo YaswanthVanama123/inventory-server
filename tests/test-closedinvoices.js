@@ -1,13 +1,13 @@
-/**
- * Test script for RouteStar Closed Invoices automation
- *
- * This script tests fetching closed/completed invoices from:
- * https://emnrv.routestar.online/web/closedinvoices/
- *
- * Run with: npm run test:closedinvoices.js
- */
 
-// Load environment variables from .env file
+
+
+
+
+
+
+
+
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -21,22 +21,22 @@ async function test() {
     console.log('RouteStar Closed Invoices Extraction');
     console.log('========================================\n');
 
-    // Step 1: Initialize browser
+    
     console.log('Step 1: Initializing browser...');
     await automation.init();
     console.log('✓ Browser initialized\n');
 
-    // Step 2: Login
+    
     console.log('Step 2: Logging in to RouteStar...');
     console.log(`   URL: ${automation.baseUrl}/web/login/`);
     console.log(`   Username: ${automation.username}`);
     await automation.login();
     console.log('✓ Login successful\n');
 
-    // Wait a bit to see the logged-in page
+    
     await automation.page.waitForTimeout(2000);
 
-    // Step 3: Fetch closed invoices from first 3 pages (up to 30 invoices)
+    
     console.log('Step 3: Fetching closed invoices from first 3 pages (up to 30 invoices)...');
     const startTime = Date.now();
     const closedInvoices = await automation.fetchClosedInvoicesList(30);
@@ -44,7 +44,7 @@ async function test() {
 
     console.log(`✓ Fetched ${closedInvoices.length} closed invoices in ${duration} seconds\n`);
 
-    // Display comprehensive statistics
+    
     console.log('========================================');
     console.log('📊 EXTRACTION STATISTICS');
     console.log('========================================');
@@ -53,7 +53,7 @@ async function test() {
     console.log(`⚡ Average per invoice: ${(duration / closedInvoices.length).toFixed(2)} seconds`);
     console.log('========================================\n');
 
-    // Calculate totals
+    
     const completedInvoices = closedInvoices.filter(inv =>
       inv.status && inv.status.toLowerCase().includes('completed')
     );
@@ -72,7 +72,7 @@ async function test() {
     console.log(`📊 Grand Total: $${(completedTotal + cancelledTotal).toFixed(2)}`);
     console.log('========================================\n');
 
-    // Display all closed invoices in structured format
+    
     console.log('========================================');
     console.log(`🏁 CLOSED INVOICES (${closedInvoices.length} total)`);
     console.log('========================================\n');
@@ -104,13 +104,13 @@ async function test() {
       });
     }
 
-    // Step 4: Fetch details for a non-zero closed invoice
+    
     if (closedInvoices.length > 1) {
       console.log('========================================');
       console.log('📋 FETCHING DETAILED INVOICE INFORMATION');
       console.log('========================================\n');
 
-      // Find the first non-zero invoice
+      
       const nonZeroInvoice = closedInvoices.find(inv => parseFloat(inv.total) > 0) || closedInvoices[0];
 
       console.log(`Fetching details for closed invoice: ${nonZeroInvoice.invoiceNumber} ($${nonZeroInvoice.total})...`);
@@ -181,7 +181,7 @@ async function test() {
     }
     console.log('');
 
-    // Keep browser open for 10 seconds so you can see it
+    
     console.log('Keeping browser open for 10 seconds...');
     await automation.page.waitForTimeout(10000);
 
@@ -196,5 +196,5 @@ async function test() {
   }
 }
 
-// Run the test
+
 test();

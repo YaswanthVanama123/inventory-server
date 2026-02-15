@@ -1,6 +1,6 @@
-/**
- * CSS Selectors for CustomerConnect Portal
- */
+
+
+
 module.exports = {
   login: {
     username: 'input[name="email"]',

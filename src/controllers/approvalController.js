@@ -2,11 +2,11 @@ const Purchase = require('../models/Purchase');
 const Inventory = require('../models/Inventory');
 const AuditLog = require('../models/AuditLog');
 
-/**
- * Get all purchases with deletion status 'pending'
- * @route GET /api/approvals/purchases/pending
- * @access Admin only
- */
+
+
+
+
+
 const getPendingPurchaseDeletions = async (req, res, next) => {
   try {
     const {
@@ -54,12 +54,12 @@ const getPendingPurchaseDeletions = async (req, res, next) => {
   }
 };
 
-/**
- * Approve purchase deletion
- * Restores inventory quantity and permanently deletes the purchase
- * @route POST /api/approvals/purchases/:purchaseId/approve
- * @access Admin only
- */
+
+
+
+
+
+
 const approvePurchaseDeletion = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
@@ -150,12 +150,12 @@ const approvePurchaseDeletion = async (req, res, next) => {
   }
 };
 
-/**
- * Reject purchase deletion
- * Sets deletion status to 'rejected' and keeps the purchase
- * @route POST /api/approvals/purchases/:purchaseId/reject
- * @access Admin only
- */
+
+
+
+
+
+
 const rejectPurchaseDeletion = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;

@@ -4,16 +4,16 @@ const Product = require('../models/Product');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const ExternalInvoice = require('../models/ExternalInvoice');
 
-/**
- * Stock Processor Service
- * Handles stock movements and summary updates
- */
+
+
+
+
 class StockProcessor {
-  /**
-   * Process purchase order - creates IN movements
-   * @param {PurchaseOrder} purchaseOrder
-   * @param {Object} userId - User ID for tracking
-   */
+  
+
+
+
+
   static async processPurchaseOrder(purchaseOrder, userId = null) {
     if (purchaseOrder.stockProcessed) {
       console.log(`Purchase order ${purchaseOrder.orderNumber} already processed`);
@@ -56,11 +56,11 @@ class StockProcessor {
     return movements;
   }
 
-  /**
-   * Process invoice - creates OUT movements
-   * @param {ExternalInvoice} invoice
-   * @param {Object} userId - User ID for tracking
-   */
+  
+
+
+
+
   static async processInvoice(invoice, userId = null) {
     if (invoice.stockProcessed) {
       console.log(`Invoice ${invoice.invoiceNumber} already processed`);
@@ -113,13 +113,13 @@ class StockProcessor {
     return movements;
   }
 
-  /**
-   * Update stock summary for a SKU
-   * @param {string} sku
-   * @param {number} qty
-   * @param {string} type - 'IN' or 'OUT' or 'ADJUST'
-   * @param {Object} userId
-   */
+  
+
+
+
+
+
+
   static async updateStockSummary(sku, qty, type, userId = null) {
     let stockSummary = await StockSummary.findOne({ sku });
 
@@ -156,11 +156,11 @@ class StockProcessor {
     return stockSummary;
   }
 
-  /**
-   * Process all unprocessed purchase orders
-   * @param {Object} userId
-   * @returns {Promise<number>} - Count of processed orders
-   */
+  
+
+
+
+
   static async processUnprocessedPurchaseOrders(userId = null) {
     const unprocessedOrders = await PurchaseOrder.getUnprocessedOrders();
 
@@ -179,11 +179,11 @@ class StockProcessor {
     return processedCount;
   }
 
-  /**
-   * Process all unprocessed invoices
-   * @param {Object} userId
-   * @returns {Promise<number>} - Count of processed invoices
-   */
+  
+
+
+
+
   static async processUnprocessedInvoices(userId = null) {
     const unprocessedInvoices = await ExternalInvoice.getUnprocessedInvoices();
 
@@ -202,14 +202,14 @@ class StockProcessor {
     return processedCount;
   }
 
-  /**
-   * Create manual stock adjustment
-   * @param {string} sku
-   * @param {number} qty - Positive to add, negative to remove
-   * @param {string} reason
-   * @param {Object} userId
-   * @returns {Promise<StockMovement>}
-   */
+  
+
+
+
+
+
+
+
   static async createAdjustment(sku, qty, reason, userId = null) {
     
     const movement = await StockMovement.create({
@@ -230,12 +230,12 @@ class StockProcessor {
     return movement;
   }
 
-  /**
-   * Recalculate stock summary from all movements
-   * Useful for fixing inconsistencies
-   * @param {string} sku
-   * @returns {Promise<StockSummary>}
-   */
+  
+
+
+
+
+
   static async recalculateStockSummary(sku) {
     const summary = await StockMovement.getStockSummaryBySKU(sku);
 
@@ -261,21 +261,21 @@ class StockProcessor {
     return stockSummary;
   }
 
-  /**
-   * Get current stock level for a SKU
-   * @param {string} sku
-   * @returns {Promise<number>}
-   */
+  
+
+
+
+
   static async getCurrentStock(sku) {
     const stockSummary = await StockSummary.findOne({ sku });
     return stockSummary ? stockSummary.availableQty : 0;
   }
 
-  /**
-   * Check if SKU is low on stock
-   * @param {string} sku
-   * @returns {Promise<boolean>}
-   */
+  
+
+
+
+
   static async isLowStock(sku) {
     const stockSummary = await StockSummary.findOne({ sku }).populate('product');
 

@@ -16,14 +16,14 @@ class SyncScheduler {
     };
   }
 
-  /**
-   * Start the scheduler
-   * @param {Object} options - Configuration options
-   * @param {number} options.intervalMinutes - Sync interval in minutes
-   * @param {number} options.limit - Number of records to fetch per sync
-   * @param {boolean} options.processStock - Whether to process stock movements
-   * @param {string} options.systemUserId - User ID for system-triggered syncs
-   */
+  
+
+
+
+
+
+
+
   start(options = {}) {
     const {
       intervalMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
@@ -93,16 +93,16 @@ class SyncScheduler {
     console.log(`CustomerConnect: Every ${intervalMinutes} minutes`);
     console.log(`RouteStar: Every ${intervalMinutes} minutes (offset by ${offsetMinutes} minutes)`);
 
-    // Add daily items sync at 3 AM
+    
     this.startItemsSync();
   }
 
-  /**
-   * Start the items sync scheduler (runs daily at 3 AM)
-   */
+  
+
+
   startItemsSync() {
-    // Cron expression for 3 AM daily: 0 3 * * *
-    // Format: minute hour day month weekday
+    
+    
     const itemsSyncCron = '0 3 * * *';
 
     console.log('Setting up RouteStar Items sync schedule (daily at 3:00 AM)');
@@ -120,7 +120,7 @@ class SyncScheduler {
           syncService = new RouteStarSyncService();
           await syncService.init();
 
-          const result = await syncService.syncItems(Infinity); // Fetch all items
+          const result = await syncService.syncItems(Infinity); 
 
           this.lastRun.routeStarItems = new Date();
 
@@ -151,9 +151,9 @@ class SyncScheduler {
     console.log('RouteStar Items sync scheduled: Daily at 3:00 AM');
   }
 
-  /**
-   * Stop the scheduler
-   */
+  
+
+
   stop() {
     if (!this.isRunning) {
       console.log('Scheduler is not running');
@@ -179,10 +179,10 @@ class SyncScheduler {
     console.log('Sync scheduler stopped');
   }
 
-  /**
-   * Get scheduler status
-   * @returns {Object} Status information
-   */
+  
+
+
+
   getStatus() {
     return {
       isRunning: this.isRunning,
@@ -195,11 +195,11 @@ class SyncScheduler {
     };
   }
 
-  /**
-   * Run sync immediately (outside of schedule)
-   * @param {string} source - 'customerconnect' or 'routestar' or 'both'
-   * @param {Object} options - Sync options
-   */
+  
+
+
+
+
   async runNow(source = 'both', options = {}) {
     const {
       limit = 50,
@@ -235,10 +235,10 @@ class SyncScheduler {
 
 let schedulerInstance = null;
 
-/**
- * Get scheduler instance
- * @returns {SyncScheduler}
- */
+
+
+
+
 function getScheduler() {
   if (!schedulerInstance) {
     schedulerInstance = new SyncScheduler();

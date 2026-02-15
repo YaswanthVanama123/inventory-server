@@ -1,15 +1,15 @@
 const Product = require('../models/Product');
 
-/**
- * SKU Mapper Service
- * Resolves portal item names to internal SKUs using product aliases
- */
+
+
+
+
 class SKUMapper {
-  /**
-   * Find product by SKU or alias
-   * @param {string} searchTerm - SKU or product name/alias
-   * @returns {Promise<Product|null>}
-   */
+  
+
+
+
+
   static async findProduct(searchTerm) {
     if (!searchTerm) return null;
 
@@ -40,14 +40,14 @@ class SKUMapper {
     return product;
   }
 
-  /**
-   * Map external item to internal SKU
-   * @param {Object} externalItem - Item from external portal
-   * @param {string} externalItem.name - Item name
-   * @param {string} externalItem.sku - Item SKU (might be different from internal)
-   * @param {string} source - Source portal ('customerconnect' or 'routestar')
-   * @returns {Promise<Object>} - { sku, product, isNew }
-   */
+  
+
+
+
+
+
+
+
   static async mapItem(externalItem, source) {
     const { name, sku } = externalItem;
 
@@ -85,12 +85,12 @@ class SKUMapper {
     };
   }
 
-  /**
-   * Map multiple items at once
-   * @param {Array} items - Array of external items
-   * @param {string} source - Source portal
-   * @returns {Promise<Array>} - Mapped items with SKU info
-   */
+  
+
+
+
+
+
   static async mapItems(items, source) {
     const mappedItems = [];
     const unmappedItems = [];
@@ -112,13 +112,13 @@ class SKUMapper {
     return mappedItems;
   }
 
-  /**
-   * Create or update product from external data
-   * @param {Object} externalItem - Item from external portal
-   * @param {string} source - Source portal
-   * @param {Object} userId - User ID for tracking
-   * @returns {Promise<Product>}
-   */
+  
+
+
+
+
+
+
   static async createOrUpdateProduct(externalItem, source, userId = null) {
     const { name, sku, unitPrice } = externalItem;
 
@@ -163,11 +163,11 @@ class SKUMapper {
     return product;
   }
 
-  /**
-   * Generate temporary SKU for unmapped items
-   * @param {string} name - Item name
-   * @returns {string} - Generated SKU
-   */
+  
+
+
+
+
   static generateTempSKU(name) {
     const prefix = 'TEMP';
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -178,10 +178,10 @@ class SKUMapper {
     return `${prefix}-${namePart}-${timestamp}`;
   }
 
-  /**
-   * Get unmapped items that need manual SKU assignment
-   * @returns {Promise<Array>}
-   */
+  
+
+
+
   static async getUnmappedItems() {
     return Product.find({
       sku: { $regex: /^TEMP-/ },
@@ -189,13 +189,13 @@ class SKUMapper {
     }).sort({ createdAt: -1 });
   }
 
-  /**
-   * Manually map an unmapped item to a real SKU
-   * @param {string} tempSKU - Temporary SKU
-   * @param {string} realSKU - Real SKU to map to
-   * @param {Object} userId - User ID
-   * @returns {Promise<Product>}
-   */
+  
+
+
+
+
+
+
   static async manuallyMapSKU(tempSKU, realSKU, userId = null) {
     const tempProduct = await Product.findOne({ sku: tempSKU });
 

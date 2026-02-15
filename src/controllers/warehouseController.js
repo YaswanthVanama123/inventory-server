@@ -8,11 +8,11 @@ const Product = require('../models/Product');
 const StockProcessor = require('../services/stockProcessor');
 const SKUMapper = require('../services/skuMapper');
 
-/**
- * Get all purchase orders (including CustomerConnect orders)
- * @route GET /api/warehouse/purchase-orders
- * @access Authenticated
- */
+
+
+
+
+
 const getPurchaseOrders = async (req, res, next) => {
   try {
     const {
@@ -123,11 +123,11 @@ const getPurchaseOrders = async (req, res, next) => {
   }
 };
 
-/**
- * Get single purchase order
- * @route GET /api/warehouse/purchase-orders/:id
- * @access Authenticated
- */
+
+
+
+
+
 const getPurchaseOrder = async (req, res, next) => {
   try {
     const purchaseOrder = await PurchaseOrder.findById(req.params.id)
@@ -165,11 +165,11 @@ const getPurchaseOrder = async (req, res, next) => {
   }
 };
 
-/**
- * Get all external invoices (including RouteStar invoices)
- * @route GET /api/warehouse/invoices
- * @access Authenticated
- */
+
+
+
+
+
 const getExternalInvoices = async (req, res, next) => {
   try {
     const {
@@ -290,11 +290,11 @@ const getExternalInvoices = async (req, res, next) => {
   }
 };
 
-/**
- * Get single external invoice
- * @route GET /api/warehouse/invoices/:id
- * @access Authenticated
- */
+
+
+
+
+
 const getExternalInvoice = async (req, res, next) => {
   try {
     const invoice = await ExternalInvoice.findById(req.params.id)
@@ -332,11 +332,11 @@ const getExternalInvoice = async (req, res, next) => {
   }
 };
 
-/**
- * Get stock summary
- * @route GET /api/warehouse/stock
- * @access Authenticated
- */
+
+
+
+
+
 const getStockSummary = async (req, res, next) => {
   try {
     const {
@@ -385,11 +385,11 @@ const getStockSummary = async (req, res, next) => {
   }
 };
 
-/**
- * Get stock movements for a SKU (including movements from sync sources)
- * @route GET /api/warehouse/stock/:sku/movements
- * @access Authenticated
- */
+
+
+
+
+
 const getStockMovements = async (req, res, next) => {
   try {
     const { sku } = req.params;
@@ -498,11 +498,11 @@ const getStockMovements = async (req, res, next) => {
   }
 };
 
-/**
- * Create stock adjustment
- * @route POST /api/warehouse/stock/:sku/adjust
- * @access Admin only
- */
+
+
+
+
+
 const createStockAdjustment = async (req, res, next) => {
   try {
     const { sku } = req.params;
@@ -548,11 +548,11 @@ const createStockAdjustment = async (req, res, next) => {
   }
 };
 
-/**
- * Get sales summary/statistics (including RouteStar data)
- * @route GET /api/warehouse/sales/summary
- * @access Authenticated
- */
+
+
+
+
+
 const getSalesSummary = async (req, res, next) => {
   try {
     const {
@@ -649,11 +649,11 @@ const getSalesSummary = async (req, res, next) => {
   }
 };
 
-/**
- * Get unmapped products that need SKU assignment
- * @route GET /api/warehouse/unmapped-products
- * @access Admin only
- */
+
+
+
+
+
 const getUnmappedProducts = async (req, res, next) => {
   try {
     const unmappedProducts = await SKUMapper.getUnmappedItems();
@@ -668,11 +668,11 @@ const getUnmappedProducts = async (req, res, next) => {
   }
 };
 
-/**
- * Map temporary SKU to real SKU
- * @route POST /api/warehouse/map-sku
- * @access Admin only
- */
+
+
+
+
+
 const mapSKU = async (req, res, next) => {
   try {
     const { tempSKU, realSKU } = req.body;
@@ -700,11 +700,11 @@ const mapSKU = async (req, res, next) => {
   }
 };
 
-/**
- * Get warehouse sync health status
- * @route GET /api/warehouse/sync/health
- * @access Authenticated
- */
+
+
+
+
+
 const getSyncHealth = async (req, res, next) => {
   try {
     const now = new Date();
@@ -825,11 +825,11 @@ const getSyncHealth = async (req, res, next) => {
   }
 };
 
-/**
- * Get sync statistics for a date range
- * @route GET /api/warehouse/sync/stats
- * @access Authenticated
- */
+
+
+
+
+
 const getSyncStats = async (req, res, next) => {
   try {
     const {
@@ -930,11 +930,11 @@ const getSyncStats = async (req, res, next) => {
   }
 };
 
-/**
- * Get unprocessed sync items that need stock processing
- * @route GET /api/warehouse/sync/unprocessed
- * @access Authenticated
- */
+
+
+
+
+
 const getUnprocessedSyncItems = async (req, res, next) => {
   try {
     const { limit = 50, source } = req.query;
@@ -991,11 +991,11 @@ const getUnprocessedSyncItems = async (req, res, next) => {
   }
 };
 
-/**
- * Retry failed stock processing for sync items
- * @route POST /api/warehouse/sync/retry-processing
- * @access Admin only
- */
+
+
+
+
+
 const retrySyncProcessing = async (req, res, next) => {
   try {
     const { source, id } = req.body;

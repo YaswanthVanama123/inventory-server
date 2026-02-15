@@ -2,10 +2,10 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-/**
- * Base Automation Class
- * Provides common functionality for all automation classes
- */
+
+
+
+
 class BaseAutomation {
   constructor(config) {
     this.config = config;
@@ -17,9 +17,9 @@ class BaseAutomation {
     this.selectors = null; 
   }
 
-  /**
-   * Initialize browser and create page
-   */
+  
+
+
   async init() {
     if (this.isInitialized) {
       console.log('⚠️  Automation already initialized');
@@ -27,7 +27,7 @@ class BaseAutomation {
     }
 
     try {
-      // Get timeout from environment or use default
+      
       const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
       console.log(`Browser timeout set to: ${browserTimeout}ms`);
 
@@ -46,7 +46,7 @@ class BaseAutomation {
 
       this.page = await this.context.newPage();
 
-      // Set default timeout from environment variable
+      
       this.page.setDefaultTimeout(browserTimeout);
 
       this.isInitialized = true;
@@ -56,9 +56,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Login to the portal
-   */
+  
+
+
   async login() {
 
     if (!this.config.baseUrl || !this.config.routes || !this.config.credentials) {
@@ -74,7 +74,7 @@ class BaseAutomation {
     }
 
     const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
-    const loginTimeout = browserTimeout * 1.5; // Give extra time for login
+    const loginTimeout = browserTimeout * 1.5; 
 
     try {
 
@@ -133,14 +133,14 @@ class BaseAutomation {
 
       console.log('Waiting for navigation after login...');
 
-      // Wait a bit for the page to start navigating
+      
       await this.page.waitForTimeout(3000);
 
-      // Check current URL
+      
       const currentUrl = this.page.url();
       console.log(`Current URL after 3 seconds: ${currentUrl}`);
 
-      // Check for error messages
+      
       try {
         const errorElement = await this.page.$(this.selectors.login.errorMessage);
         if (errorElement) {
@@ -153,15 +153,15 @@ class BaseAutomation {
         if (error.message.includes('Login error:')) {
           throw error;
         }
-        // No error message found, continue
+        
       }
 
-      // If still on login page, login failed
+      
       if (currentUrl.includes('/web/login')) {
         console.log('❌ Still on login page after submit');
         await this.takeScreenshot('still-on-login-after-submit');
 
-        // Get page title for debugging
+        
         const title = await this.page.title();
         console.log(`Page title: ${title}`);
 
@@ -170,7 +170,7 @@ class BaseAutomation {
 
       console.log('✓ Successfully navigated away from login page');
 
-      // Give a moment for page to stabilize
+      
       console.log('Waiting 2 seconds for page stabilization...');
       await this.page.waitForTimeout(2000);
 
@@ -182,7 +182,7 @@ class BaseAutomation {
           throw new Error(`Login failed: ${errorText}`);
         }
       } catch (error) {
-        // If we can't find error selector, that's fine
+        
         if (error.message.includes('Login failed:')) {
           throw error;
         }
@@ -204,17 +204,17 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Verify login was successful
-   */
+  
+
+
   async verifyLoginSuccess() {
     
     throw new Error('verifyLoginSuccess must be implemented by child class');
   }
 
-  /**
-   * Navigate to a specific URL
-   */
+  
+
+
   async navigateTo(url, waitForSelector = null) {
     const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
 
@@ -241,9 +241,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Wait for element with retry logic
-   */
+  
+
+
   async waitForElement(selector, options = {}) {
     const { timeout = 10000, retries = 3 } = options;
 
@@ -260,9 +260,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Extract text content safely
-   */
+  
+
+
   async extractText(element, selector, defaultValue = null) {
     try {
       return await element.$eval(selector, el => el.textContent.trim());
@@ -271,9 +271,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Extract attribute safely
-   */
+  
+
+
   async extractAttribute(element, selector, attribute, defaultValue = null) {
     try {
       return await element.$eval(selector, (el, attr) => el.getAttribute(attr), attribute);
@@ -282,9 +282,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Click element with retry
-   */
+  
+
+
   async clickWithRetry(selector, options = {}) {
     const { retries = 3, delay = 1000 } = options;
 
@@ -301,9 +301,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Handle pagination
-   */
+  
+
+
   async handlePagination(callback, options = {}) {
     const {
       nextButtonSelector,
@@ -344,9 +344,9 @@ class BaseAutomation {
     return results;
   }
 
-  /**
-   * Take screenshot for debugging
-   */
+  
+
+
   async takeScreenshot(name) {
     try {
       const screenshotsDir = path.join(__dirname, '../../screenshots');
@@ -365,9 +365,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Execute with retry logic
-   */
+  
+
+
   async executeWithRetry(fn, options = {}) {
     const { retries = 3, delay = 2000, onRetry = null } = options;
 
@@ -388,9 +388,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Close browser and cleanup
-   */
+  
+
+
   async close() {
     try {
       if (this.page) {
@@ -414,9 +414,9 @@ class BaseAutomation {
     }
   }
 
-  /**
-   * Check if automation is initialized
-   */
+  
+
+
   ensureInitialized() {
     if (!this.isInitialized) {
       throw new Error('Automation not initialized. Call init() first.');

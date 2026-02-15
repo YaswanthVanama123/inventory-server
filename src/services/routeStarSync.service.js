@@ -4,22 +4,22 @@ const RouteStarItem = require('../models/RouteStarItem');
 const StockMovement = require('../models/StockMovement');
 const SyncLog = require('../models/SyncLog');
 
-/**
- * Parse date from MM/DD/YYYY format to Date object
- */
+
+
+
 function parseRouteStarDate(dateString) {
   if (!dateString) return null;
 
-  // Handle MM/DD/YYYY format
+  
   const parts = dateString.trim().split('/');
   if (parts.length === 3) {
-    const month = parseInt(parts[0]) - 1; // Month is 0-indexed
+    const month = parseInt(parts[0]) - 1; 
     const day = parseInt(parts[1]);
     const year = parseInt(parts[2]);
 
     const date = new Date(year, month, day);
 
-    // Validate the date
+    
     if (isNaN(date.getTime())) {
       return null;
     }
@@ -27,14 +27,14 @@ function parseRouteStarDate(dateString) {
     return date;
   }
 
-  // Try standard Date parsing as fallback
+  
   const date = new Date(dateString);
   return isNaN(date.getTime()) ? null : date;
 }
 
-/**
- * Normalize status from RouteStar to match model enum
- */
+
+
+
 function normalizeStatus(status) {
   if (!status) return 'Pending';
 
@@ -50,21 +50,21 @@ function normalizeStatus(status) {
   return normalized || 'Pending';
 }
 
-/**
- * RouteStar Sync Service
- * Handles syncing invoices from RouteStar portal
- * Stores invoices in RouteStarInvoice model and creates StockMovement records
- * Does NOT interact with Inventory model (Inventory is managed separately)
- */
+
+
+
+
+
+
 class RouteStarSyncService {
   constructor() {
     this.automation = null;
     this.syncLog = null;
   }
 
-  /**
-   * Initialize the automation
-   */
+  
+
+
   async init() {
     console.log('Initializing RouteStarSyncService...');
     console.log('Creating new RouteStarAutomation instance...');
@@ -80,19 +80,19 @@ class RouteStarSyncService {
     return this;
   }
 
-  /**
-   * Close the automation
-   */
+  
+
+
   async close() {
     if (this.automation) {
       await this.automation.close();
     }
   }
 
-  /**
-   * Sync items from RouteStar
-   * @param {number} limit - Max items to fetch (default: Infinity = fetch all)
-   */
+  
+
+
+
   async syncItems(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Items to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
@@ -100,7 +100,7 @@ class RouteStarSyncService {
     await this.createSyncLog('routestar_items');
 
     try {
-      // Fetch items from RouteStar
+      
       const items = await this.automation.fetchItemsList(limit);
       console.log(`✓ Fetched ${items.length} items from RouteStar`);
 
@@ -125,7 +125,7 @@ class RouteStarSyncService {
         };
       }
 
-      // Save items to database
+      
       console.log(`\n💾 Saving ${items.length} items to database...`);
 
       let created = 0;
@@ -138,14 +138,14 @@ class RouteStarSyncService {
         const itemData = items[i];
 
         try {
-          // Check if item already exists
+          
           const existing = await RouteStarItem.findOne({
             itemName: itemData.itemName,
             itemParent: itemData.itemParent
           });
 
           if (existing) {
-            // Update existing item
+            
             Object.assign(existing, {
               ...itemData,
               lastSynced: new Date()
@@ -156,7 +156,7 @@ class RouteStarSyncService {
             console.log(`  ✓ [${i + 1}/${items.length}] Updated: ${itemData.itemName}`);
             savedItems.push(existing);
           } else {
-            // Create new item
+            
             const newItem = await RouteStarItem.create({
               ...itemData,
               syncSource: 'RouteStar',
@@ -210,9 +210,9 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Create a sync log entry
-   */
+  
+
+
   async createSyncLog(source = 'routestar') {
     this.syncLog = await SyncLog.create({
       source,
@@ -222,9 +222,9 @@ class RouteStarSyncService {
     return this.syncLog;
   }
 
-  /**
-   * Update sync log
-   */
+  
+
+
   async updateSyncLog(updates) {
     if (this.syncLog) {
       if (updates.created !== undefined) {
@@ -252,11 +252,11 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Sync pending invoices from RouteStar
-   * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
-   * @param {string} direction - 'new' for newest first, 'old' for oldest first
-   */
+  
+
+
+
+
   async syncPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Pending Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
@@ -313,7 +313,7 @@ class RouteStarSyncService {
             rawData: invoice
           };
 
-          // Use findOneAndUpdate with upsert to prevent race conditions
+          
           const result = await RouteStarInvoice.findOneAndUpdate(
             { invoiceNumber: invoice.invoiceNumber },
             invoiceData,
@@ -325,7 +325,7 @@ class RouteStarSyncService {
             }
           );
 
-          // Check if it was created or updated by checking if it existed before
+          
           const wasCreated = !result.createdAt ||
                             (new Date() - result.createdAt < 1000);
 
@@ -369,11 +369,11 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Sync closed invoices from RouteStar
-   * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
-   * @param {string} direction - 'new' for newest first, 'old' for oldest first
-   */
+  
+
+
+
+
   async syncClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
@@ -431,7 +431,7 @@ class RouteStarSyncService {
             rawData: invoice
           };
 
-          // Use findOneAndUpdate with upsert to prevent race conditions
+          
           const result = await RouteStarInvoice.findOneAndUpdate(
             { invoiceNumber: invoice.invoiceNumber },
             invoiceData,
@@ -443,7 +443,7 @@ class RouteStarSyncService {
             }
           );
 
-          // Check if it was created or updated by checking if it existed before
+          
           const wasCreated = !result.createdAt ||
                             (new Date() - result.createdAt < 1000);
 
@@ -487,9 +487,9 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Fetch and store invoice line items
-   */
+  
+
+
   async syncInvoiceDetails(invoiceNumber) {
     try {
       
@@ -536,10 +536,10 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Sync all invoice details for invoices without line items
-   * @param {number} limit - Max invoices to process (default: Infinity = fetch all)
-   */
+  
+
+
+
   async syncAllInvoiceDetails(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Syncing missing invoice details${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
@@ -603,10 +603,10 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Process stock movements for completed invoices
-   * Creates StockMovement records only (does NOT update Inventory model)
-   */
+  
+
+
+
   async processStockMovements() {
     console.log(`\n📦 Processing stock movements for completed invoices...`);
 
@@ -685,14 +685,14 @@ class RouteStarSyncService {
     }
   }
 
-  /**
-   * Full sync: pending + closed invoices + invoice details + stock movements
-   * @param {Object} options - Sync options
-   * @param {number} options.pendingLimit - Max pending invoices to fetch (default: Infinity = fetch all)
-   * @param {number} options.closedLimit - Max closed invoices to fetch (default: Infinity = fetch all)
-   * @param {number} options.detailsLimit - Max invoice details to fetch (default: Infinity = fetch all)
-   * @param {boolean} options.processStock - Whether to process stock movements
-   */
+  
+
+
+
+
+
+
+
   async fullSync(options = {}) {
     const {
       pendingLimit = Infinity,

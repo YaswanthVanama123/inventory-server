@@ -4,10 +4,10 @@ const SyncLog = require('../../models/SyncLog');
 const SKUMapper = require('../skuMapper');
 const StockProcessor = require('../stockProcessor');
 
-/**
- * RouteStar Sync Service
- * Orchestrates the sync of invoices/sales from RouteStar
- */
+
+
+
+
 class SyncRouteStar {
   constructor(userId = null) {
     this.userId = userId;
@@ -15,13 +15,13 @@ class SyncRouteStar {
     this.syncLog = null;
   }
 
-  /**
-   * Run full sync
-   * @param {Object} options - Sync options
-   * @param {number} options.limit - Max invoices to fetch
-   * @param {boolean} options.processStock - Whether to process stock movements
-   * @returns {Promise<Object>} - Sync results
-   */
+  
+
+
+
+
+
+
   async run(options = {}) {
     const { limit = 50, processStock = true } = options;
 
@@ -127,11 +127,11 @@ class SyncRouteStar {
     }
   }
 
-  /**
-   * Save or update invoice
-   * @param {Object} invoiceDetails - Invoice details from automation
-   * @returns {Promise<Object>} - { invoice, isNew }
-   */
+  
+
+
+
+
   async saveInvoice(invoiceDetails) {
     
     let invoice = await ExternalInvoice.findBySourceInvoiceId('routestar', invoiceDetails.invoiceNumber);
@@ -197,11 +197,11 @@ class SyncRouteStar {
     return { invoice, isNew };
   }
 
-  /**
-   * Normalize invoice status
-   * @param {string} status - Status from portal
-   * @returns {string} - Normalized status
-   */
+  
+
+
+
+
   normalizeStatus(status) {
     const statusLower = (status || '').toLowerCase();
 
@@ -224,11 +224,11 @@ class SyncRouteStar {
     return 'issued';
   }
 
-  /**
-   * Parse date string
-   * @param {string} dateStr
-   * @returns {Date}
-   */
+  
+
+
+
+
   parseDate(dateStr) {
     if (!dateStr) return new Date();
 

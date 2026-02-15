@@ -3,31 +3,31 @@ const { wait, waitForNetworkIdle } = require('../utils/wait');
 const { captureScreenshot } = require('../utils/screenshot');
 const timeoutConfig = require('../config/timeout.config');
 
-/**
- * BasePage - Common page interactions and wait strategies
- * Provides reusable page interaction methods
- */
+
+
+
+
 class BasePage {
   constructor(page) {
     this.page = page;
     this.timeouts = timeoutConfig;
   }
 
-  /**
-   * Navigate to URL with validation
-   * @param {string} url - Target URL
-   * @param {Object} options - Navigation options
-   */
+  
+
+
+
+
   async navigateTo(url, options = {}) {
     try {
       logger.info('Navigating to URL', { url });
 
-      // Try progressive fallback strategies if no specific strategy requested
-      // For RouteStar: Try load first (JavaScript executes), then fallback to commit
-      // For CustomerConnect: commit works fine
+      
+      
+      
       const strategies = options.waitUntil
-        ? [options.waitUntil]  // Use specific strategy if requested
-        : ['load', 'domcontentloaded', 'commit'];  // Try load first for proper JS execution
+        ? [options.waitUntil]  
+        : ['load', 'domcontentloaded', 'commit'];  
 
       let response = null;
       let successfulStrategy = null;
@@ -46,7 +46,7 @@ class BasePage {
 
           successfulStrategy = strategy;
           logger.info('Navigation strategy succeeded', { strategy, status: response?.status() });
-          break;  // Success! Exit loop
+          break;  
         } catch (error) {
           logger.warn('Navigation strategy failed', {
             strategy,
@@ -54,21 +54,21 @@ class BasePage {
             error: error.message.split('\n')[0]
           });
 
-          // If last strategy, throw error
+          
           if (isLastAttempt) {
             throw error;
           }
-          // Otherwise continue to next strategy
+          
         }
       }
 
-      // Wait for page to stabilize
-      // If commit strategy was used, wait longer for page to fully load
+      
+      
       if (successfulStrategy === 'commit') {
         logger.info('Commit strategy used - waiting extra time for page to stabilize');
-        await wait(10000);  // 10 seconds for commit strategy
+        await wait(10000);  
       } else {
-        await wait(2000);  // 2 seconds for load/domcontentloaded
+        await wait(2000);  
       }
 
       const finalUrl = this.page.url();
@@ -89,7 +89,7 @@ class BasePage {
     } catch (error) {
       logger.error('Navigation failed', { url, error: error.message });
 
-      // Try to capture screenshot but don't fail if it times out
+      
       try {
         await captureScreenshot(this.page, 'navigation-error');
       } catch (screenshotError) {
@@ -100,11 +100,11 @@ class BasePage {
     }
   }
 
-  /**
-   * Wait for element to be visible
-   * @param {string} selector - CSS selector
-   * @param {Object} options - Wait options
-   */
+  
+
+
+
+
   async waitForElement(selector, options = {}) {
     try {
       await this.page.waitForSelector(selector, {
@@ -121,25 +121,25 @@ class BasePage {
     }
   }
 
-  /**
-   * Click element with retry
-   * @param {string} selector - CSS selector
-   * @param {Object} options - Click options
-   */
+  
+
+
+
+
   async click(selector, options = {}) {
     try {
       logger.debug('Clicking element', { selector });
 
       await this.waitForElement(selector, options);
 
-      // Use force: true to bypass actionability checks if specified
-      // This is useful for elements that exist but may have ongoing animations
+      
+      
       await this.page.click(selector, {
         timeout: options.timeout || this.timeouts.element,
         force: options.force || false
       });
 
-      // Wait a bit after click for any page transitions
+      
       await wait(options.delay || 500);
 
       logger.debug('Clicked successfully', { selector });
@@ -151,19 +151,19 @@ class BasePage {
     }
   }
 
-  /**
-   * Type text into input field
-   * @param {string} selector - CSS selector
-   * @param {string} text - Text to type
-   * @param {Object} options - Type options
-   */
+  
+
+
+
+
+
   async type(selector, text, options = {}) {
     try {
       logger.debug('Typing into element', { selector, textLength: text.length });
 
       await this.waitForElement(selector, options);
 
-      // Clear existing text first if specified
+      
       if (options.clear !== false) {
         await this.page.fill(selector, '');
       }
@@ -181,11 +181,11 @@ class BasePage {
     }
   }
 
-  /**
-   * Select option from dropdown
-   * @param {string} selector - CSS selector
-   * @param {string|Object} value - Value to select
-   */
+  
+
+
+
+
   async select(selector, value, options = {}) {
     try {
       logger.debug('Selecting option', { selector, value });
@@ -207,10 +207,10 @@ class BasePage {
     }
   }
 
-  /**
-   * Get text content of element
-   * @param {string} selector - CSS selector
-   */
+  
+
+
+
   async getText(selector, options = {}) {
     try {
       await this.waitForElement(selector, options);
@@ -225,11 +225,11 @@ class BasePage {
     }
   }
 
-  /**
-   * Get attribute value
-   * @param {string} selector - CSS selector
-   * @param {string} attribute - Attribute name
-   */
+  
+
+
+
+
   async getAttribute(selector, attribute, options = {}) {
     try {
       await this.waitForElement(selector, options);
@@ -244,10 +244,10 @@ class BasePage {
     }
   }
 
-  /**
-   * Check if element exists
-   * @param {string} selector - CSS selector
-   */
+  
+
+
+
   async exists(selector) {
     try {
       const element = await this.page.$(selector);
@@ -257,13 +257,13 @@ class BasePage {
     }
   }
 
-  /**
-   * Wait for page to be loaded
-   */
+  
+
+
   async waitForPageLoad(timeout = 30000) {
     try {
       await this.page.waitForLoadState('domcontentloaded', { timeout });
-      await wait(1000); // Additional wait for dynamic content
+      await wait(1000); 
       logger.debug('Page loaded');
       return true;
     } catch (error) {
@@ -272,9 +272,9 @@ class BasePage {
     }
   }
 
-  /**
-   * Wait for network to be idle
-   */
+  
+
+
   async waitForNetwork() {
     try {
       await waitForNetworkIdle(this.page, this.timeouts.network);
@@ -286,19 +286,19 @@ class BasePage {
     }
   }
 
-  /**
-   * Simple wait/sleep for specified milliseconds
-   * @param {number} ms - Milliseconds to wait
-   */
+  
+
+
+
   async wait(ms) {
     await wait(ms);
     logger.debug('Waited', { ms });
   }
 
-  /**
-   * Scroll to element
-   * @param {string} selector - CSS selector
-   */
+  
+
+
+
   async scrollToElement(selector) {
     try {
       await this.page.evaluate((sel) => {
@@ -308,7 +308,7 @@ class BasePage {
         }
       }, selector);
 
-      await wait(500); // Wait for scroll animation
+      await wait(500); 
       logger.debug('Scrolled to element', { selector });
       return true;
     } catch (error) {
@@ -317,10 +317,10 @@ class BasePage {
     }
   }
 
-  /**
-   * Get all elements matching selector
-   * @param {string} selector - CSS selector
-   */
+  
+
+
+
   async getElements(selector) {
     try {
       const elements = await this.page.$$(selector);
@@ -332,11 +332,11 @@ class BasePage {
     }
   }
 
-  /**
-   * Evaluate JavaScript in page context
-   * @param {Function} pageFunction - Function to evaluate
-   * @param {*} args - Arguments to pass
-   */
+  
+
+
+
+
   async evaluate(pageFunction, ...args) {
     try {
       return await this.page.evaluate(pageFunction, ...args);
@@ -346,30 +346,30 @@ class BasePage {
     }
   }
 
-  /**
-   * Dismiss any modal popups or error dialogs
-   */
+  
+
+
   async dismissModals() {
     try {
       logger.debug('Checking for modal popups to dismiss');
 
-      // Wait a moment for any modals to appear
+      
       await wait(1000);
 
-      // Try multiple times to catch modals that appear asynchronously
+      
       for (let attempt = 1; attempt <= 3; attempt++) {
         logger.debug('Modal dismissal attempt', { attempt });
 
-        // Common modal/popup selectors
+        
         const modalSelectors = [
-          '.jconfirm',  // jConfirm modals
-          '.modal.show',  // Bootstrap modals (active)
-          '.modal',  // Bootstrap modals (any)
-          '.swal2-container',  // SweetAlert2
-          '.alert-modal',  // Generic alert modals
-          '[role="dialog"]',  // ARIA dialogs
-          '.popup-overlay',  // Generic popups
-          '.overlay.active'  // Active overlays
+          '.jconfirm',  
+          '.modal.show',  
+          '.modal',  
+          '.swal2-container',  
+          '.alert-modal',  
+          '[role="dialog"]',  
+          '.popup-overlay',  
+          '.overlay.active'  
         ];
 
         let foundAny = false;
@@ -378,16 +378,16 @@ class BasePage {
           const modals = await this.page.$$(selector);
 
           for (const modal of modals) {
-            // Check if modal is visible
+            
             const isVisible = await modal.isVisible().catch(() => false);
             if (!isVisible) continue;
 
             foundAny = true;
             logger.info('Found visible modal popup, attempting to dismiss', { selector, attempt });
 
-            // Try clicking various close/cancel buttons
+            
             const closeSelectors = [
-              'button:has-text("CANCEL")',  // QuickBooks modal
+              'button:has-text("CANCEL")',  
               'button:has-text("Cancel")',
               'button:has-text("Close")',
               'button:has-text("OK")',
@@ -408,18 +408,18 @@ class BasePage {
                   const buttonVisible = await closeButton.isVisible().catch(() => false);
                   if (buttonVisible) {
                     await closeButton.click({ timeout: 2000 });
-                    await wait(1000);  // Wait for modal to close
+                    await wait(1000);  
                     logger.info('Modal dismissed successfully', { closeSelector, attempt });
                     dismissed = true;
                     break;
                   }
                 }
               } catch (e) {
-                // Try next selector
+                
               }
             }
 
-            // If no button worked, try pressing Escape
+            
             if (!dismissed) {
               logger.info('Trying Escape key to dismiss modal', { attempt });
               await this.page.keyboard.press('Escape');
@@ -431,13 +431,13 @@ class BasePage {
         if (!foundAny) {
           logger.debug('No modal popups found', { attempt });
 
-          // If we didn't find any modals on this attempt and it's not the first attempt, we're done
+          
           if (attempt > 1) {
             break;
           }
         }
 
-        // Wait before next attempt to give modals time to disappear/reappear
+        
         if (attempt < 3) {
           await wait(1000);
         }
@@ -450,31 +450,31 @@ class BasePage {
     }
   }
 
-  /**
-   * Take screenshot
-   * @param {string} name - Screenshot name
-   */
+  
+
+
+
   async screenshot(name) {
     return await captureScreenshot(this.page, name);
   }
 
-  /**
-   * Get page URL
-   */
+  
+
+
   getUrl() {
     return this.page.url();
   }
 
-  /**
-   * Get page title
-   */
+  
+
+
   async getTitle() {
     return await this.page.title();
   }
 
-  /**
-   * Reload page
-   */
+  
+
+
   async reload(options = {}) {
     try {
       await this.page.reload({

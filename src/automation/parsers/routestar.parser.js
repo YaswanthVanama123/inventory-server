@@ -1,11 +1,11 @@
-/**
- * Data Parser for RouteStar
- * Extracts and formats data from portal pages
- */
+
+
+
+
 class RouteStarParser {
-  /**
-   * Parse invoice from table row
-   */
+  
+
+
   static async parseInvoiceRow(row, baseUrl) {
     try {
       
@@ -53,9 +53,9 @@ class RouteStarParser {
     }
   }
 
-  /**
-   * Extract text from element
-   */
+  
+
+
   static async extractText(row, selector) {
     try {
       return await row.$eval(selector, el => el.textContent.trim());
@@ -64,9 +64,9 @@ class RouteStarParser {
     }
   }
 
-  /**
-   * Extract link href
-   */
+  
+
+
   static async extractLink(row, selector) {
     try {
       return await row.$eval(selector, el => el.getAttribute('href'));
@@ -75,9 +75,9 @@ class RouteStarParser {
     }
   }
 
-  /**
-   * Extract checkbox state
-   */
+  
+
+
   static async extractCheckbox(row, selector) {
     try {
       return await row.$eval(selector + ' input[type="checkbox"]', el => el.checked);
@@ -86,9 +86,9 @@ class RouteStarParser {
     }
   }
 
-  /**
-   * Extract and parse status
-   */
+  
+
+
   static async extractStatus(row) {
     try {
       const statusData = await row.$eval(
@@ -124,17 +124,17 @@ class RouteStarParser {
     }
   }
 
-  /**
-   * Parse price from text
-   */
+  
+
+
   static parsePrice(text) {
     if (!text) return '0.00';
     return text.replace(/[$,]/g, '').trim();
   }
 
-  /**
-   * Parse line item
-   */
+  
+
+
   static parseLineItem(data) {
     return {
       description: data.description || '',
@@ -145,9 +145,9 @@ class RouteStarParser {
     };
   }
 
-  /**
-   * Parse number
-   */
+  
+
+
   static parseNumber(value) {
     if (typeof value === 'number') return value;
     if (!value) return 0;

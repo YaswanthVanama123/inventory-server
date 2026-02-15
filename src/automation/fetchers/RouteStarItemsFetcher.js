@@ -1,7 +1,7 @@
-/**
- * Fetcher for RouteStar Items
- * Handles fetching items from the items list
- */
+
+
+
+
 class RouteStarItemsFetcher {
   constructor(page, navigator, selectors, baseUrl) {
     this.page = page;
@@ -10,32 +10,32 @@ class RouteStarItemsFetcher {
     this.baseUrl = baseUrl;
   }
 
-  /**
-   * Fetch all items
-   */
+  
+
+
   async fetchItems(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Items ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToItems();
 
-    // NOTE: The "All" items option doesn't work reliably on this site - it only shows 22 items
-    // even when there are 224+ items total. We must use pagination instead.
-    // Keeping the setItemsPerPageToAll method for future reference but not using it.
+    
+    
+    
 
     return await this.fetchItemsList(limit, this.selectors.itemsList);
   }
 
-  /**
-   * Generic items list fetcher
-   */
+  
+
+
   async fetchItemsList(limit, selectors) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     const items = [];
-    const seenItemNames = new Set();  // Track items we've already seen
+    const seenItemNames = new Set();  
     let hasNextPage = true;
     let pageCount = 0;
-    const maxPages = fetchAll ? Infinity : Math.ceil(limit / 20); // Items show 20 per page by default
+    const maxPages = fetchAll ? Infinity : Math.ceil(limit / 20); 
 
     console.log(`📊 Pagination settings:`);
     console.log(`   - Fetch all: ${fetchAll}`);
@@ -45,34 +45,34 @@ class RouteStarItemsFetcher {
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
 
-      // Track items count before this page
+      
       const itemsBeforePage = items.length;
 
-      // Wait for item rows with lenient strategy
+      
       try {
         await this.page.waitForSelector(selectors.itemRows, {
-          timeout: 30000,  // 30 seconds
-          state: 'attached'  // More lenient than 'visible'
+          timeout: 30000,  
+          state: 'attached'  
         });
         console.log('✓ Item rows found in DOM');
       } catch (error) {
         console.log('⚠️  Item rows selector timeout - trying to proceed anyway');
-        // Don't throw - table might still be loading dynamically
+        
       }
 
       await this.page.waitForTimeout(3000);
 
-      // Check for master table
+      
       const masterTable = await this.page.$('div.ht_master');
       if (!masterTable) {
         console.log('⚠️  No master table found - likely no items on this page');
-        // Check if this is page 1 (no items at all) or just end of pagination
+        
         if (pageCount === 0) {
           console.log('✓ No items found (table doesn\'t exist) - this is normal if there are 0 items');
-          break; // Exit loop gracefully
+          break; 
         } else {
           console.log('✓ Reached end of pagination (no more pages)');
-          break; // Exit loop gracefully
+          break; 
         }
       }
       console.log('✓ Found master table');
@@ -80,13 +80,13 @@ class RouteStarItemsFetcher {
       const itemRows = await masterTable.$$('table.htCore tbody tr');
       console.log(`   Found ${itemRows.length} rows in table`);
 
-      // If 0 rows, check if we should continue
+      
       if (itemRows.length === 0) {
         console.log('⚠️  Table exists but has 0 rows - no items on this page');
         if (pageCount === 0) {
           console.log('✓ No items found (empty table) - this is normal if there are 0 items');
         }
-        break; // Exit loop gracefully
+        break; 
       }
 
       for (let i = 0; i < itemRows.length; i++) {
@@ -99,7 +99,7 @@ class RouteStarItemsFetcher {
         try {
           const itemData = await this.extractItemData(row, selectors);
           if (itemData) {
-            // Check for duplicates
+            
             if (seenItemNames.has(itemData.itemName)) {
               console.log(`  ⊘ Row ${i + 1}: Duplicate item "${itemData.itemName}" (already collected)`);
               continue;
@@ -118,7 +118,7 @@ class RouteStarItemsFetcher {
 
       console.log(`   Page ${pageCount + 1} complete: ${items.length} total items collected so far`);
 
-      // Check if we got any new items on this page
+      
       const newItemsOnPage = items.length - itemsBeforePage;
       if (itemRows.length > 0 && newItemsOnPage === 0) {
         console.log(`   ⚠️  All items on this page were duplicates - pagination may be stuck`);
@@ -152,12 +152,12 @@ class RouteStarItemsFetcher {
     return items;
   }
 
-  /**
-   * Extract item data from row
-   */
+  
+
+
   async extractItemData(row, selectors) {
     try {
-      // Extract item name (required field)
+      
       let itemName = null;
       try {
         itemName = await row.$eval(
@@ -165,71 +165,71 @@ class RouteStarItemsFetcher {
           el => el.textContent.trim()
         );
       } catch (err) {
-        // Try fallback selector
+        
         try {
           itemName = await row.$eval(
             'td:nth-of-type(2)',
             el => el.textContent.trim()
           );
         } catch (err2) {
-          // Could not extract item name
+          
         }
       }
 
-      // If no item name, skip this row
+      
       if (!itemName) {
         return null;
       }
 
-      // Extract item link
+      
       const itemLink = await row.$eval(
         selectors.itemNameLink,
         el => el.getAttribute('href')
       ).catch(() => null);
 
-      // Extract item parent
+      
       const itemParent = await row.$eval(
         selectors.itemParent,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract description
+      
       const description = await row.$eval(
         selectors.description,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract purchase cost
+      
       const purchaseCost = await row.$eval(
         selectors.purchaseCost,
         el => el.textContent.replace(/[$,]/g, '').trim()
       ).catch(() => '0.00');
 
-      // Extract sales price
+      
       const salesPrice = await row.$eval(
         selectors.salesPrice,
         el => el.textContent.replace(/[$,]/g, '').trim()
       ).catch(() => '0.00');
 
-      // Extract type
+      
       const type = await row.$eval(
         selectors.type,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract quantity on order
+      
       const qtyOnOrder = await row.$eval(
         selectors.qtyOnOrder,
         el => el.textContent.trim()
       ).catch(() => '0');
 
-      // Extract quantity on hand
+      
       const qtyOnHand = await row.$eval(
         selectors.qtyOnHand,
         el => el.textContent.trim()
       ).catch(() => '0');
 
-      // Extract quantity on warehouse
+      
       const qtyOnWarehouse = await row.$eval(
         selectors.qtyOnWarehouse,
         el => {
@@ -238,49 +238,49 @@ class RouteStarItemsFetcher {
         }
       ).catch(() => '0');
 
-      // Extract warehouse link
+      
       const warehouseLink = await row.$eval(
         selectors.qtyOnWarehouseLink,
         el => el.getAttribute('href')
       ).catch(() => null);
 
-      // Extract MFG Part Number
+      
       const mfgPartNumber = await row.$eval(
         selectors.mfgPartNumber,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract UOM (Unit of Measure)
+      
       const uom = await row.$eval(
         selectors.uom,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract category
+      
       const category = await row.$eval(
         selectors.category,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract department
+      
       const department = await row.$eval(
         selectors.department,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract allocated quantity
+      
       const allocated = await row.$eval(
         selectors.allocated,
         el => el.textContent.trim()
       ).catch(() => '0');
 
-      // Extract grouping
+      
       const grouping = await row.$eval(
         selectors.grouping,
         el => el.textContent.trim()
       ).catch(() => null);
 
-      // Extract tax code
+      
       const taxCode = await row.$eval(
         selectors.taxCode,
         el => el.textContent.trim()

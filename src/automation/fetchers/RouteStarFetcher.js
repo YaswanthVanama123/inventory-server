@@ -1,9 +1,9 @@
 const RouteStarParser = require('../parsers/routestar.parser');
 
-/**
- * Fetcher for RouteStar Invoices
- * Handles fetching invoices from pending and closed lists
- */
+
+
+
+
 class RouteStarFetcher {
   constructor(page, navigator, selectors, baseUrl) {
     this.page = page;
@@ -12,41 +12,41 @@ class RouteStarFetcher {
     this.baseUrl = baseUrl;
   }
 
-  /**
-   * Fetch pending invoices
-   */
+  
+
+
   async fetchPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Pending Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToInvoices();
 
-    // Sort by invoice number based on direction
+    
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
 
     return await this.fetchInvoicesList(limit, this.selectors.invoicesList, 'pending');
   }
 
-  /**
-   * Fetch closed invoices
-   */
+  
+
+
   async fetchClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Closed Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToClosedInvoices();
 
-    // Sort by invoice number based on direction
+    
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
 
     return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed');
   }
 
-  /**
-   * Generic invoice list fetcher
-   */
+  
+
+
   async fetchInvoicesList(limit, selectors, type) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     const invoices = [];
@@ -62,31 +62,31 @@ class RouteStarFetcher {
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
 
-      // Wait for invoice rows with lenient strategy
+      
       try {
         await this.page.waitForSelector(selectors.invoiceRows, {
-          timeout: 30000,  // Increased from 10s to 30s
-          state: 'attached'  // Changed from 'visible' to 'attached' (more lenient)
+          timeout: 30000,  
+          state: 'attached'  
         });
         console.log('✓ Invoice rows found in DOM');
       } catch (error) {
         console.log('⚠️  Invoice rows selector timeout - trying to proceed anyway');
-        // Don't throw - table might still be loading dynamically
+        
       }
 
       await this.page.waitForTimeout(3000);
 
-      // Check for master table
+      
       const masterTable = await this.page.$('div.ht_master');
       if (!masterTable) {
         console.log('⚠️  No master table found - likely no invoices on this page');
-        // Check if this is page 1 (no invoices at all) or just end of pagination
+        
         if (pageCount === 0) {
           console.log('✓ No invoices found (table doesn\'t exist) - this is normal if there are 0 pending invoices');
-          break; // Exit loop gracefully
+          break; 
         } else {
           console.log('✓ Reached end of pagination (no more pages)');
-          break; // Exit loop gracefully
+          break; 
         }
       }
       console.log('✓ Found master table');
@@ -94,13 +94,13 @@ class RouteStarFetcher {
       const invoiceRows = await masterTable.$$('table.htCore tbody tr');
       console.log(`   Found ${invoiceRows.length} rows in table`);
 
-      // If 0 rows, check if we should continue
+      
       if (invoiceRows.length === 0) {
         console.log('⚠️  Table exists but has 0 rows - no invoices on this page');
         if (pageCount === 0) {
           console.log('✓ No invoices found (empty table) - this is normal if there are 0 pending invoices');
         }
-        break; // Exit loop gracefully
+        break; 
       }
 
       for (let i = 0; i < invoiceRows.length; i++) {
@@ -152,9 +152,9 @@ class RouteStarFetcher {
     return invoices;
   }
 
-  /**
-   * Extract invoice data from row
-   */
+  
+
+
   async extractInvoiceData(row, selectors) {
     try {
       let invoiceNumber = null;
@@ -170,7 +170,7 @@ class RouteStarFetcher {
             el => el.textContent.trim()
           );
         } catch (err2) {
-          // Could not extract invoice number
+          
         }
       }
 

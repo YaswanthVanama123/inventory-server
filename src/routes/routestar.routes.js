@@ -5,18 +5,18 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-/**
- * @route   POST /api/routestar/sync/items
- * @desc    Sync items from RouteStar
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
     let { limit = 0 } = req.body;
 
-    // Handle unlimited/auto-detect sync
+    
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -65,18 +65,18 @@ router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/pending
- * @desc    Sync pending invoices from RouteStar
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    // Handle unlimited/auto-detect sync
+    
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -127,11 +127,11 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar/invoice-range
- * @desc    Get the highest and lowest invoice numbers in the database
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.get('/invoice-range', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { invoiceType } = req.query;
@@ -171,18 +171,18 @@ router.get('/invoice-range', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/closed
- * @desc    Sync closed invoices from RouteStar
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    // Handle unlimited/auto-detect sync
+    
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -215,11 +215,11 @@ router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/details/:invoiceNumber
- * @desc    Sync detailed line items for a specific invoice
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/details/:invoiceNumber', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -250,11 +250,11 @@ router.post('/sync/details/:invoiceNumber', authenticate, requireAdmin(), async 
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/all-details
- * @desc    Sync detailed line items for all invoices without details
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -303,11 +303,11 @@ router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) 
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/pending-with-details
- * @desc    Sync pending invoices with their details (keeps browser open)
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -325,11 +325,11 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
 
     console.log('Sync service initialized, starting sync...');
 
-    // Step 1: Sync pending invoices
+    
     const invoiceResults = await syncService.syncPendingInvoices(limit, direction);
     console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
 
-    // Step 2: Sync invoice details (reusing same browser session)
+    
     const detailsResults = await syncService.syncAllInvoiceDetails(0);
     console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
 
@@ -366,11 +366,11 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/closed-with-details
- * @desc    Sync closed invoices with their details (keeps browser open)
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -388,11 +388,11 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
 
     console.log('Sync service initialized, starting sync...');
 
-    // Step 1: Sync closed invoices
+    
     const invoiceResults = await syncService.syncClosedInvoices(limit, direction);
     console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
 
-    // Step 2: Sync invoice details (reusing same browser session)
+    
     const detailsResults = await syncService.syncAllInvoiceDetails(0);
     console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
 
@@ -429,11 +429,11 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/stock
- * @desc    Process stock movements for completed invoices
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/stock', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -462,11 +462,11 @@ router.post('/sync/stock', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar/sync/full
- * @desc    Full sync: pending + closed invoices + stock movements
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/full', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -505,11 +505,11 @@ router.post('/sync/full', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar/invoices
- * @desc    Get all RouteStar invoices with filters
- * @access  Private
- */
+
+
+
+
+
 router.get('/invoices', authenticate, requireAdmin(), async (req, res) => {
   try {
     const {
@@ -569,11 +569,11 @@ router.get('/invoices', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar/invoices/:invoiceNumber
- * @desc    Get a specific invoice by invoice number
- * @access  Private
- */
+
+
+
+
+
 router.get('/invoices/:invoiceNumber', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { invoiceNumber } = req.params;
@@ -601,11 +601,11 @@ router.get('/invoices/:invoiceNumber', authenticate, requireAdmin(), async (req,
   }
 });
 
-/**
- * @route   GET /api/routestar/stats
- * @desc    Get sales statistics
- * @access  Private
- */
+
+
+
+
+
 router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { startDate, endDate, customer, assignedTo } = req.query;
@@ -650,11 +650,11 @@ router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   DELETE /api/routestar/invoices/pending/all
- * @desc    Delete all pending invoices
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/invoices/pending/all', authenticate, requireAdmin(), async (req, res) => {
   try {
     const result = await RouteStarInvoice.deleteMany({ invoiceType: 'pending' });
@@ -676,11 +676,11 @@ router.delete('/invoices/pending/all', authenticate, requireAdmin(), async (req,
   }
 });
 
-/**
- * @route   DELETE /api/routestar/invoices/closed/all
- * @desc    Delete all closed invoices
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, res) => {
   try {
     const result = await RouteStarInvoice.deleteMany({ invoiceType: 'closed' });
@@ -702,38 +702,38 @@ router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, 
   }
 });
 
-/**
- * @route   GET /api/routestar/items/grouped
- * @desc    Get grouped items from all RouteStar invoices (pending and closed) with alias merging
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   try {
     console.log('[getGroupedRouteStarItems] Starting aggregation...');
 
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
-    // Get alias lookup map
+    
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     console.log(`[getGroupedRouteStarItems] Loaded ${Object.keys(aliasMap).length} aliases`);
 
-    // Aggregate all line items across all RouteStar invoices (pending and closed)
+    
     const groupedItems = await RouteStarInvoice.aggregate([
-      // Only include invoices with line items
+      
       { $match: { 'lineItems.0': { $exists: true } } },
 
-      // Unwind line items array to get individual items
+      
       { $unwind: '$lineItems' },
 
-      // Filter out items without name
+      
       { $match: { 'lineItems.name': { $exists: true, $ne: null, $ne: '' } } },
 
-      // Group by name (and SKU if available)
+      
       {
         $group: {
           _id: {
             name: '$lineItems.name',
-            sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } // Use name as fallback if no SKU
+            sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } 
           },
           totalQuantity: { $sum: '$lineItems.quantity' },
           totalValue: { $sum: '$lineItems.amount' },
@@ -756,10 +756,10 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
         }
       },
 
-      // Sort by item name
+      
       { $sort: { '_id.name': 1 } },
 
-      // Project to clean format
+      
       {
         $project: {
           _id: 0,
@@ -776,11 +776,11 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
 
     console.log(`[getGroupedRouteStarItems] Found ${groupedItems.length} initial grouped items`);
 
-    // Apply alias merging
+    
     const mergedItems = {};
 
     groupedItems.forEach(item => {
-      // Get canonical name (or use original if no alias exists)
+      
       const canonicalName = aliasMap[item.name] || item.name;
 
       if (!mergedItems[canonicalName]) {
@@ -796,7 +796,7 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
         };
       }
 
-      // Merge data
+      
       const merged = mergedItems[canonicalName];
       if (!merged.originalNames.includes(item.name)) {
         merged.originalNames.push(item.name);
@@ -806,12 +806,12 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
       merged.invoiceCount += item.invoiceCount;
       merged.invoices.push(...item.invoices);
 
-      // Recalculate average unit price based on all merged invoices
+      
       const totalRate = merged.invoices.reduce((sum, inv) => sum + (inv.rate || 0), 0);
       merged.avgUnitPrice = merged.invoices.length > 0 ? totalRate / merged.invoices.length : 0;
     });
 
-    // Convert merged items to array and sort
+    
     const finalItems = Object.values(mergedItems).sort((a, b) => a.name.localeCompare(b.name));
 
     console.log(`[getGroupedRouteStarItems] After merging: ${finalItems.length} items (merged ${groupedItems.length - finalItems.length} aliases)`);
@@ -835,11 +835,11 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/routestar/invoices/bulk-delete
- * @desc    Delete all invoices containing the specified SKUs
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/invoices/bulk-delete', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { skus } = req.body;
@@ -853,7 +853,7 @@ router.post('/invoices/bulk-delete', authenticate, requireAdmin(), async (req, r
 
     console.log(`[Bulk Delete Invoices] Deleting invoices with SKUs: ${skus.join(', ')}`);
 
-    // Delete all invoices that contain any of the specified SKUs in their line items
+    
     const result = await RouteStarInvoice.deleteMany({
       'lineItems.sku': { $in: skus }
     });
@@ -878,11 +878,11 @@ router.post('/invoices/bulk-delete', authenticate, requireAdmin(), async (req, r
   }
 });
 
-/**
- * @route   POST /api/routestar/invoices/bulk-delete-by-numbers
- * @desc    Delete invoices by their invoice numbers
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { invoiceNumbers } = req.body;
@@ -896,7 +896,7 @@ router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), as
 
     console.log(`[Bulk Delete Invoices] Deleting invoices with numbers: ${invoiceNumbers.join(', ')}`);
 
-    // Delete all invoices with the specified invoice numbers
+    
     const result = await RouteStarInvoice.deleteMany({
       invoiceNumber: { $in: invoiceNumbers }
     });
@@ -921,11 +921,11 @@ router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), as
   }
 });
 
-/**
- * @route   GET /api/routestar/items
- * @desc    Get all RouteStar items with filters
- * @access  Private
- */
+
+
+
+
+
 router.get('/items', authenticate, requireAdmin(), async (req, res) => {
   try {
     const {
@@ -985,11 +985,11 @@ router.get('/items', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/routestar/items/low-stock
- * @desc    Get low stock items
- * @access  Private
- */
+
+
+
+
+
 router.get('/items/low-stock', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { threshold = 10 } = req.query;
@@ -1013,11 +1013,11 @@ router.get('/items/low-stock', authenticate, requireAdmin(), async (req, res) =>
   }
 });
 
-/**
- * @route   DELETE /api/routestar/items/all
- * @desc    Delete all items
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/items/all', authenticate, requireAdmin(), async (req, res) => {
   try {
     const result = await RouteStarItem.deleteMany({});

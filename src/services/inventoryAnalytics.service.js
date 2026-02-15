@@ -1,14 +1,14 @@
 const db = require('../config/database');
 
-/**
- * Inventory Analytics Service
- * Provides analytics and insights for inventory management and sync operations
- */
 
-/**
- * Get overall sync health status
- * @returns {Promise<Object>} Sync health metrics
- */
+
+
+
+
+
+
+
+
 async function getSyncHealthStatus() {
   try {
     const [healthMetrics] = await db.query(`
@@ -75,14 +75,14 @@ async function getSyncHealthStatus() {
   }
 }
 
-/**
- * Get stock movement analytics
- * @param {Object} options - Query options
- * @param {Date} options.start_date - Start date for analysis
- * @param {Date} options.end_date - End date for analysis
- * @param {string} options.item_id - Optional item ID filter
- * @returns {Promise<Object>} Stock movement statistics
- */
+
+
+
+
+
+
+
+
 async function getStockMovementAnalytics(options = {}) {
   try {
     const { start_date, end_date, item_id } = options;
@@ -183,13 +183,13 @@ async function getStockMovementAnalytics(options = {}) {
   }
 }
 
-/**
- * Get sync performance trends over time
- * @param {Object} options - Query options
- * @param {number} options.days - Number of days to analyze (default: 30)
- * @param {string} options.granularity - 'hour', 'day', or 'week' (default: 'day')
- * @returns {Promise<Object>} Sync trends data
- */
+
+
+
+
+
+
+
 async function getSyncTrends(options = {}) {
   try {
     const { days = 30, granularity = 'day' } = options;
@@ -276,15 +276,15 @@ async function getSyncTrends(options = {}) {
   }
 }
 
-/**
- * Get unprocessed records (pending stock movements)
- * @param {Object} options - Query options
- * @param {number} options.limit - Maximum records to return (default: 100)
- * @param {number} options.offset - Offset for pagination (default: 0)
- * @param {string} options.order_by - Sort field (default: 'movement_date')
- * @param {string} options.order_direction - 'ASC' or 'DESC' (default: 'DESC')
- * @returns {Promise<Object>} Unprocessed records
- */
+
+
+
+
+
+
+
+
+
 async function getUnprocessedRecords(options = {}) {
   try {
     const {
@@ -383,12 +383,12 @@ async function getUnprocessedRecords(options = {}) {
   }
 }
 
-/**
- * Get inventory source breakdown (CustomerConnect vs RouteStar vs Manual)
- * @param {Object} options - Query options
- * @param {boolean} options.include_details - Include detailed item lists (default: false)
- * @returns {Promise<Object>} Inventory breakdown by source
- */
+
+
+
+
+
+
 async function getInventorySourceBreakdown(options = {}) {
   try {
     const { include_details = false } = options;
@@ -498,13 +498,13 @@ async function getInventorySourceBreakdown(options = {}) {
   }
 }
 
-/**
- * Get sync error analysis
- * @param {Object} options - Query options
- * @param {number} options.days - Number of days to analyze (default: 7)
- * @param {number} options.limit - Maximum error records to return (default: 50)
- * @returns {Promise<Object>} Sync error analysis
- */
+
+
+
+
+
+
+
 async function getSyncErrorAnalysis(options = {}) {
   try {
     const { days = 7, limit = 50 } = options;

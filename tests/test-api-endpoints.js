@@ -1,16 +1,16 @@
-/**
- * Test API Endpoints - Verify sync buttons work
- * Run this to test that all API endpoints are working correctly
- */
+
+
+
+
 
 require('dotenv').config();
 const axios = require('axios');
 
 const BASE_URL = process.env.API_URL || 'http://localhost:3000';
 
-// You'll need to get a real auth token from logging into the webapp
-// For testing, you can temporarily disable auth in the routes
-// or login first and copy the token
+
+
+
 const AUTH_TOKEN = process.env.TEST_AUTH_TOKEN || '';
 
 const api = axios.create({
@@ -28,7 +28,7 @@ async function testEndpoints() {
   let testsPassed = 0;
   let testsFailed = 0;
 
-  // Test 1: Get CustomerConnect order range
+  
   console.log('Test 1: Get CustomerConnect Order Range');
   console.log('─'.repeat(50));
   try {
@@ -53,7 +53,7 @@ async function testEndpoints() {
 
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Test 2: Get RouteStar invoice range
+  
   console.log('\nTest 2: Get RouteStar Invoice Range');
   console.log('─'.repeat(50));
   try {
@@ -75,7 +75,7 @@ async function testEndpoints() {
 
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Test 3: Get scheduler status
+  
   console.log('\nTest 3: Get Scheduler Status');
   console.log('─'.repeat(50));
   try {
@@ -99,7 +99,7 @@ async function testEndpoints() {
 
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Test 4: Small CustomerConnect sync (if auth provided)
+  
   if (AUTH_TOKEN) {
     console.log('\nTest 4: CustomerConnect Orders Sync (limit: 5)');
     console.log('─'.repeat(50));
@@ -132,7 +132,7 @@ async function testEndpoints() {
     console.log('⚠️  Set TEST_AUTH_TOKEN to test actual sync');
   }
 
-  // Summary
+  
   console.log('\n========================================');
   console.log('Test Summary');
   console.log('========================================');
@@ -156,7 +156,7 @@ async function testEndpoints() {
   }
 }
 
-// Check if server is running first
+
 async function checkServer() {
   try {
     await axios.get(`${BASE_URL}/api/health`);

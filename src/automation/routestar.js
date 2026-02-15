@@ -1,7 +1,7 @@
-/**
- * RouteStar Automation
- * Refactored to use NEW core architecture with reusable base classes
- */
+
+
+
+
 
 const BaseBrowser = require('./core/BaseBrowser');
 const BaseNavigator = require('./core/BaseNavigator');
@@ -30,21 +30,21 @@ class RouteStarAutomation {
     this.logger = logger.child({ automation: 'RouteStar' });
   }
 
-  /**
-   * Initialize browser and components
-   */
+  
+
+
   async init() {
     try {
       this.logger.info('Initializing RouteStar automation');
 
-      // Launch browser using new BaseBrowser
+      
       await this.browser.launch('chromium');
       this.page = await this.browser.createPage();
 
-      // Initialize base navigator for common operations
+      
       this.baseNavigator = new BaseNavigator(this.page);
 
-      // Initialize custom navigator and fetchers
+      
       this.navigator = new RouteStarNavigator(this.page, config, selectors);
       this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
       this.itemsFetcher = new RouteStarItemsFetcher(this.page, this.navigator, selectors, config.baseUrl);
@@ -57,18 +57,18 @@ class RouteStarAutomation {
     }
   }
 
-  /**
-   * Login to RouteStar portal
-   */
+  
+
+
   async login() {
     try {
       this.logger.info('Attempting login', { username: config.credentials.username });
 
-      // Navigate to login page with retry logic
+      
       await retry(
         async () => {
           await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
-          // Extra wait after navigation for page to stabilize
+          
           await this.baseNavigator.wait(2000);
         },
         {
@@ -84,17 +84,17 @@ class RouteStarAutomation {
         }
       );
 
-      // Use BaseNavigator's generic login method
+      
       await this.baseNavigator.login(
         config.credentials,
         selectors.login,
-        config.routes.dashboard // Success URL check
+        config.routes.dashboard 
       );
 
-      // Verify login success
+      
       await this.verifyLoginSuccess();
 
-      // Save cookies for session persistence
+      
       await this.browser.saveCookies();
 
       this.isLoggedIn = true;
@@ -111,16 +111,16 @@ class RouteStarAutomation {
     }
   }
 
-  /**
-   * Verify login success by checking that login form is gone
-   */
+  
+
+
   async verifyLoginSuccess() {
     this.logger.info('Verifying login success');
 
-    // Wait a bit for redirect after login
+    
     await this.baseNavigator.wait(2000);
 
-    // Check current URL - should not be on login page
+    
     const currentUrl = this.baseNavigator.getUrl();
     this.logger.info('Current URL after login', { currentUrl });
 
@@ -129,7 +129,7 @@ class RouteStarAutomation {
       throw new LoginError('Login appears to have failed - still on login page URL');
     }
 
-    // Check if login form is still visible
+    
     const stillOnLoginPage = await this.baseNavigator.exists(selectors.login.usernameInput);
     if (stillOnLoginPage) {
       await this.takeScreenshot('login-form-still-visible');
@@ -139,9 +139,9 @@ class RouteStarAutomation {
     this.logger.info('Login verification passed');
   }
 
-  /**
-   * Navigate to invoices page (pending invoices)
-   */
+  
+
+
   async navigateToInvoices() {
     if (!this.isLoggedIn) {
       await this.login();
@@ -150,9 +150,9 @@ class RouteStarAutomation {
     return await this.navigator.navigateToInvoices();
   }
 
-  /**
-   * Navigate to closed invoices page
-   */
+  
+
+
   async navigateToClosedInvoices() {
     if (!this.isLoggedIn) {
       await this.login();
@@ -161,9 +161,9 @@ class RouteStarAutomation {
     return await this.navigator.navigateToClosedInvoices();
   }
 
-  /**
-   * Navigate to items page
-   */
+  
+
+
   async navigateToItems() {
     if (!this.isLoggedIn) {
       await this.login();
@@ -172,17 +172,17 @@ class RouteStarAutomation {
     return await this.navigator.navigateToItems();
   }
 
-  /**
-   * Fetch list of invoices (pending) with retry logic
-   * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
-   * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
-   */
+  
+
+
+
+
   async fetchInvoicesList(limit = Infinity, direction = 'new') {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    // Wrap in retry logic for resilience
+    
     return await retry(
       async () => await this.fetcher.fetchPendingInvoices(limit, direction),
       {
@@ -196,17 +196,17 @@ class RouteStarAutomation {
     );
   }
 
-  /**
-   * Fetch list of closed invoices with retry logic
-   * @param {number} limit - Max invoices to fetch (default: Infinity = fetch all)
-   * @param {string} direction - 'new' for newest first (descending), 'old' for oldest first (ascending)
-   */
+  
+
+
+
+
   async fetchClosedInvoicesList(limit = Infinity, direction = 'new') {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    // Wrap in retry logic for resilience
+    
     return await retry(
       async () => await this.fetcher.fetchClosedInvoices(limit, direction),
       {
@@ -220,16 +220,16 @@ class RouteStarAutomation {
     );
   }
 
-  /**
-   * Fetch list of items with retry logic
-   * @param {number} limit - Max items to fetch (default: Infinity = fetch all)
-   */
+  
+
+
+
   async fetchItemsList(limit = Infinity) {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    // Wrap in retry logic for resilience
+    
     return await retry(
       async () => await this.itemsFetcher.fetchItems(limit),
       {
@@ -243,10 +243,10 @@ class RouteStarAutomation {
     );
   }
 
-  /**
-   * Fetch invoice details
-   * @param {string} invoiceUrl - URL of the invoice detail page
-   */
+  
+
+
+
   async fetchInvoiceDetails(invoiceUrl) {
     if (!this.isLoggedIn) {
       await this.login();
@@ -255,18 +255,18 @@ class RouteStarAutomation {
     try {
       this.logger.info('Fetching invoice details', { invoiceUrl });
 
-      // Navigate using updated BasePage strategy (tries load first)
+      
       await this.baseNavigator.navigateTo(invoiceUrl, {
         timeout: 90000
       });
 
-      // Wait a moment for any dynamic modals to appear
+      
       await this.baseNavigator.wait(2000);
 
-      // Dismiss any modal popups (like QuickBooks error messages)
+      
       await this.baseNavigator.dismissModals();
 
-      // Wait for items table to load with lenient timeout
+      
       try {
         await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
           timeout: 30000
@@ -274,28 +274,28 @@ class RouteStarAutomation {
       } catch (error) {
         this.logger.warn('Items table selector timeout - checking for modal again', { error: error.message });
 
-        // Modal might have reappeared - try dismissing again
+        
         await this.baseNavigator.dismissModals();
 
-        // Try one more time to find the table
+        
         const tableExists = await this.baseNavigator.exists(selectors.invoiceDetail.itemsTable);
         if (!tableExists) {
           this.logger.warn('Items table still not found - will try to extract anyway');
         }
       }
 
-      // Wait for dynamic content to load
+      
       await this.baseNavigator.wait(3000);
 
       this.logger.info('Extracting invoice details');
 
-      // Extract line items
+      
       const items = await this.extractLineItems();
 
-      // Extract totals
+      
       const totals = await this.extractTotals();
 
-      // Extract additional info
+      
       const additionalInfo = await this.extractAdditionalInfo();
 
       this.logger.info('Invoice details extracted', {
@@ -322,9 +322,9 @@ class RouteStarAutomation {
     }
   }
 
-  /**
-   * Extract line items from invoice detail page
-   */
+  
+
+
   async extractLineItems() {
     const items = [];
     const masterTable = await this.page.$('div.ht_master');
@@ -340,13 +340,13 @@ class RouteStarAutomation {
       const row = itemRows[i];
 
       try {
-        // Extract item name
+        
         const itemName = await row.$eval(
           selectors.invoiceDetail.itemName,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => null);
 
-        // Skip empty rows and placeholder rows
+        
         if (!itemName || itemName === 'Choose..' || itemName === '') {
           continue;
         }
@@ -425,9 +425,9 @@ class RouteStarAutomation {
     return items;
   }
 
-  /**
-   * Extract totals from invoice detail page using BaseParser
-   */
+  
+
+
   async extractTotals() {
     const extractValue = async (selector) => {
       try {
@@ -445,14 +445,14 @@ class RouteStarAutomation {
     return { subtotal, tax, total };
   }
 
-  /**
-   * Extract additional invoice information
-   */
+  
+
+
   async extractAdditionalInfo() {
     const extractField = async (selector) => {
       try {
-        // Don't wait for visibility - element might be hidden
-        // Just try to get the value directly
+        
+        
         const value = await this.page.$eval(selector, el => el.value || el.textContent || '').catch(() => '');
         return value.trim();
       } catch {
@@ -464,7 +464,7 @@ class RouteStarAutomation {
     const invoiceMemo = await extractField(selectors.invoiceDetail.invoiceMemo);
     const serviceNotes = await extractField(selectors.invoiceDetail.serviceNotes);
 
-    // Get sales tax rate from dropdown
+    
     const salesTaxRate = await this.page.$eval(
       selectors.invoiceDetail.salesTaxRate,
       el => {
@@ -481,9 +481,9 @@ class RouteStarAutomation {
     };
   }
 
-  /**
-   * Take screenshot for debugging
-   */
+  
+
+
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
@@ -494,9 +494,9 @@ class RouteStarAutomation {
     }
   }
 
-  /**
-   * Close browser and cleanup
-   */
+  
+
+
   async close() {
     try {
       this.logger.info('Closing browser');

@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 
-/**
- * RouteStar Invoice Model
- * Stores sales/invoice data from RouteStar portal
- * Invoices represent OUTGOING inventory (sales)
- */
+
+
+
+
+
 const routeStarInvoiceSchema = new mongoose.Schema({
   
   invoiceNumber: {

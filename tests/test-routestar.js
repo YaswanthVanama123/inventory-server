@@ -1,18 +1,18 @@
-/**
- * RouteStar Full Sync Test
- *
- * This script performs a complete sync using the existing sync service:
- * 1. Login to RouteStar
- * 2. Fetch ALL pending invoices from ALL pages
- * 3. Fetch ALL closed invoices from ALL pages
- * 4. Fetch details for EACH invoice
- * 5. Save/Update to database
- * 6. Process stock movements
- *
- * Run with: npm run test:routestar
- */
 
-// Load environment variables from .env file
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -36,16 +36,16 @@ async function test() {
     console.log('RouteStar Full Sync Test');
     console.log('========================================\n');
 
-    // Step 1: Connect to Database
+    
     console.log('Step 1: Connecting to database...');
     await connectDatabase();
 
-    // Step 2: Initialize automation
+    
     console.log('Step 2: Initializing automation (browser + login)...');
     await syncService.init();
     console.log('✓ Automation initialized\n');
 
-    // Step 3: Run full sync (fetches ALL invoices, details, and updates stock)
+    
     console.log('Step 3: Running full sync...');
     console.log('   - Fetching ALL pending invoices');
     console.log('   - Fetching ALL closed invoices');
@@ -57,15 +57,15 @@ async function test() {
     const startTime = Date.now();
 
     const results = await syncService.fullSync({
-      pendingLimit: Infinity,     // Fetch ALL pending invoices
-      closedLimit: Infinity,      // Fetch ALL closed invoices
-      detailsLimit: Infinity,     // Fetch details for ALL invoices
-      processStock: true          // Update inventory stock
+      pendingLimit: Infinity,     
+      closedLimit: Infinity,      
+      detailsLimit: Infinity,     
+      processStock: true          
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    // Display results
+    
     console.log('\n========================================');
     console.log('✅ FULL SYNC COMPLETED');
     console.log('========================================\n');
@@ -123,5 +123,5 @@ async function test() {
   }
 }
 
-// Run the test
+
 test();

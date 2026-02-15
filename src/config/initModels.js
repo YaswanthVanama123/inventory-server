@@ -1,9 +1,9 @@
-/**
- * Initialize all models and create indexes
- * This ensures all indexes are created when the server starts
- */
 
-// Import all models to register them with Mongoose
+
+
+
+
+
 const User = require('../models/User');
 const Inventory = require('../models/Inventory');
 const Invoice = require('../models/Invoice');
@@ -24,10 +24,10 @@ const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const ModelCategory = require('../models/ModelCategory');
 
-/**
- * Create indexes for all models
- * @returns {Promise<void>}
- */
+
+
+
+
 async function initModels() {
   console.log('Initializing models and creating indexes...');
 

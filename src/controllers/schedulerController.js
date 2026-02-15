@@ -1,10 +1,10 @@
 const { getScheduler } = require('../services/scheduler');
 
-/**
- * Get scheduler status
- * @route GET /api/scheduler/status
- * @access Admin only
- */
+
+
+
+
+
 const getSchedulerStatus = async (req, res, next) => {
   try {
     const scheduler = getScheduler();
@@ -20,11 +20,11 @@ const getSchedulerStatus = async (req, res, next) => {
   }
 };
 
-/**
- * Start the scheduler
- * @route POST /api/scheduler/start
- * @access Admin only
- */
+
+
+
+
+
 const startScheduler = async (req, res, next) => {
   try {
     const {
@@ -54,11 +54,11 @@ const startScheduler = async (req, res, next) => {
   }
 };
 
-/**
- * Stop the scheduler
- * @route POST /api/scheduler/stop
- * @access Admin only
- */
+
+
+
+
+
 const stopScheduler = async (req, res, next) => {
   try {
     const scheduler = getScheduler();
@@ -77,11 +77,11 @@ const stopScheduler = async (req, res, next) => {
   }
 };
 
-/**
- * Run sync immediately
- * @route POST /api/scheduler/run-now
- * @access Admin only
- */
+
+
+
+
+
 const runNow = async (req, res, next) => {
   try {
     const {

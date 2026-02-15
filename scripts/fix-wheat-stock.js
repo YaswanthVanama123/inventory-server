@@ -3,11 +3,11 @@ const Inventory = require('./src/models/Inventory');
 
 async function fixWheatStock() {
   try {
-    // Connect to MongoDB
+    
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/inventory-management');
     console.log('Connected to MongoDB');
 
-    // Find Wheat item
+    
     const wheat = await Inventory.findOne({ itemName: 'Wheat' });
 
     if (!wheat) {
@@ -18,9 +18,9 @@ async function fixWheatStock() {
     console.log('Current wheat quantity:', wheat.quantity);
     console.log('Stock history:', wheat.stockHistory);
 
-    // Fix the quantity structure
+    
     wheat.quantity = {
-      current: 200,  // From the stock history
+      current: 200,  
       minimum: 0,
       unit: 'kg'
     };

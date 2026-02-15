@@ -1,17 +1,17 @@
-/**
- * CustomerConnect Full Sync Test
- *
- * This script performs a complete sync using the existing sync service:
- * 1. Login to CustomerConnect
- * 2. Fetch ALL orders from ALL pages
- * 3. Fetch details for EACH order
- * 4. Save/Update to database
- * 5. Process stock movements
- *
- * Run with: npm run test:customerconnect
- */
 
-// Load environment variables from .env file
+
+
+
+
+
+
+
+
+
+
+
+
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -35,16 +35,16 @@ async function test() {
     console.log('CustomerConnect Full Sync Test');
     console.log('========================================\n');
 
-    // Step 1: Connect to Database
+    
     console.log('Step 1: Connecting to database...');
     await connectDatabase();
 
-    // Step 2: Initialize automation
+    
     console.log('Step 2: Initializing automation (browser + login)...');
     await syncService.init();
     console.log('✓ Automation initialized\n');
 
-    // Step 3: Run full sync (fetches ALL orders, details, and updates stock)
+    
     console.log('Step 3: Running full sync...');
     console.log('   - Fetching ALL orders');
     console.log('   - Fetching details for each order');
@@ -55,15 +55,15 @@ async function test() {
     const startTime = Date.now();
 
     const results = await syncService.fullSync({
-      ordersLimit: Infinity,          // Fetch ALL orders
-      detailsLimit: Infinity,         // Fetch details for ALL orders without details
-      forceRefetchDetails: true,      // Set to TRUE to re-fetch details for orders that already have them
-      processStock: true              // Update inventory stock
+      ordersLimit: Infinity,          
+      detailsLimit: Infinity,         
+      forceRefetchDetails: true,      
+      processStock: true              
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    // Display results
+    
     console.log('\n========================================');
     console.log('✅ FULL SYNC COMPLETED');
     console.log('========================================\n');
@@ -113,5 +113,5 @@ async function test() {
   }
 }
 
-// Run the test
+
 test();

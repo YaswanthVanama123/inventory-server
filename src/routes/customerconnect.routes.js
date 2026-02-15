@@ -4,20 +4,20 @@ const CustomerConnectSyncService = require('../services/customerConnectSync.serv
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-/**
- * @route   POST /api/customerconnect/sync/orders
- * @desc    Sync orders from CustomerConnect
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    // If limit is 0, auto-detect based on existing orders
+    
     if (limit === 0 || limit === null || limit === 'auto') {
-      // Get the highest order number in the database
+      
       const highestOrder = await CustomerConnectOrder.findOne()
         .sort({ orderNumber: -1 })
         .select('orderNumber')
@@ -30,7 +30,7 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
         console.log(`📊 No orders in database. Starting fresh sync...`);
       }
 
-      // Set to unlimited to get all new orders
+      
       limit = Infinity;
     } else if (limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
@@ -64,11 +64,11 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/customerconnect/order-range
- * @desc    Get the highest and lowest order numbers in the database
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.get('/order-range', authenticate, requireAdmin(), async (req, res) => {
   try {
     const highestOrder = await CustomerConnectOrder.findOne()
@@ -103,11 +103,11 @@ router.get('/order-range', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/customerconnect/sync/details/:orderNumber
- * @desc    Sync detailed line items for a specific order
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/details/:orderNumber', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -138,11 +138,11 @@ router.post('/sync/details/:orderNumber', authenticate, requireAdmin(), async (r
   }
 });
 
-/**
- * @route   POST /api/customerconnect/sync/all-details
- * @desc    Sync details for all orders missing line items
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -173,11 +173,11 @@ router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) 
   }
 });
 
-/**
- * @route   POST /api/customerconnect/sync/stock
- * @desc    Process stock movements for completed orders (ADD to inventory)
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/stock', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -206,11 +206,11 @@ router.post('/sync/stock', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/customerconnect/sync/full
- * @desc    Full sync: orders + order details + stock movements
- * @access  Private
- */
+
+
+
+
+
 router.post('/sync/full', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
 
@@ -249,11 +249,11 @@ router.post('/sync/full', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/customerconnect/orders
- * @desc    Get all CustomerConnect orders with filters
- * @access  Private
- */
+
+
+
+
+
 router.get('/orders', authenticate, requireAdmin(), async (req, res) => {
   try {
     const {
@@ -311,11 +311,11 @@ router.get('/orders', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/customerconnect/orders/:orderNumber
- * @desc    Get a specific order by order number
- * @access  Private
- */
+
+
+
+
+
 router.get('/orders/:orderNumber', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { orderNumber } = req.params;
@@ -343,11 +343,11 @@ router.get('/orders/:orderNumber', authenticate, requireAdmin(), async (req, res
   }
 });
 
-/**
- * @route   GET /api/customerconnect/stats
- * @desc    Get purchase statistics
- * @access  Private
- */
+
+
+
+
+
 router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { startDate, endDate, vendor } = req.query;
@@ -394,19 +394,19 @@ router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/customerconnect/items/grouped
- * @desc    Get all items from orders grouped by SKU with all order entries
- * @access  Private
- */
+
+
+
+
+
 router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   try {
-    // Aggregate all items across all orders
+    
     const groupedItems = await CustomerConnectOrder.aggregate([
-      // Unwind items array to get individual items
+      
       { $unwind: '$items' },
 
-      // Group by SKU and item name
+      
       {
         $group: {
           _id: {
@@ -433,10 +433,10 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
         }
       },
 
-      // Sort by item name
+      
       { $sort: { '_id.name': 1 } },
 
-      // Project to clean format
+      
       {
         $project: {
           _id: 0,
@@ -468,11 +468,11 @@ router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/customerconnect/orders/bulk-delete
- * @desc    Delete all orders containing the specified SKUs
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/orders/bulk-delete', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { skus } = req.body;
@@ -486,7 +486,7 @@ router.post('/orders/bulk-delete', authenticate, requireAdmin(), async (req, res
 
     console.log(`[Bulk Delete] Deleting orders with SKUs: ${skus.join(', ')}`);
 
-    // Delete all orders that contain any of the specified SKUs
+    
     const result = await CustomerConnectOrder.deleteMany({
       'items.sku': { $in: skus }
     });
@@ -511,11 +511,11 @@ router.post('/orders/bulk-delete', authenticate, requireAdmin(), async (req, res
   }
 });
 
-/**
- * @route   POST /api/customerconnect/orders/bulk-delete-by-numbers
- * @desc    Delete orders by their order numbers
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.post('/orders/bulk-delete-by-numbers', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { orderNumbers } = req.body;
@@ -529,7 +529,7 @@ router.post('/orders/bulk-delete-by-numbers', authenticate, requireAdmin(), asyn
 
     console.log(`[Bulk Delete Orders] Deleting orders with numbers: ${orderNumbers.join(', ')}`);
 
-    // Delete all orders with the specified order numbers
+    
     const result = await CustomerConnectOrder.deleteMany({
       orderNumber: { $in: orderNumbers }
     });
@@ -554,25 +554,25 @@ router.post('/orders/bulk-delete-by-numbers', authenticate, requireAdmin(), asyn
   }
 });
 
-/**
- * @route   GET /api/customerconnect/items/:sku/orders
- * @desc    Get all orders containing a specific SKU
- * @access  Private
- */
+
+
+
+
+
 router.get('/items/:sku/orders', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { sku } = req.params;
 
     console.log(`[getOrdersBySKU] Looking for SKU: ${sku}`);
 
-    // Find all orders that contain this SKU
+    
     const orders = await CustomerConnectOrder.find({
       'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
     }).sort({ orderNumber: -1 }).lean();
 
     console.log(`[getOrdersBySKU] Found ${orders.length} orders`);
 
-    // Extract only the matching items from each order
+    
     const orderEntries = orders.map(order => {
       const matchingItems = order.items.filter(item =>
         item.sku.toLowerCase() === sku.toLowerCase()
@@ -614,11 +614,11 @@ router.get('/items/:sku/orders', authenticate, requireAdmin(), async (req, res) 
   }
 });
 
-/**
- * @route   DELETE /api/customerconnect/orders/all
- * @desc    Delete ALL CustomerConnect orders (for testing/cleanup)
- * @access  Private (Admin only)
- */
+
+
+
+
+
 router.delete('/orders/all', authenticate, requireAdmin(), async (req, res) => {
   try {
     const count = await CustomerConnectOrder.countDocuments();

@@ -5,10 +5,10 @@ const logger = require('../utils/logger');
 const { retry } = require('../utils/retry');
 const { LoginError, NavigationError } = require('../errors');
 
-/**
- * RouteStar automation service
- * High-level orchestration for RouteStar portal automation
- */
+
+
+
+
 class RouteStarService {
   constructor(config = {}) {
     this.config = {
@@ -24,9 +24,9 @@ class RouteStarService {
     this.logger = logger.child({ service: 'RouteStar' });
   }
 
-  /**
-   * Initialize browser and create page instance
-   */
+  
+
+
   async initialize() {
     try {
       this.logger.info('Initializing RouteStar service');
@@ -35,7 +35,7 @@ class RouteStarService {
       this.page = await this.browser.createPage();
       this.navigator = new BaseNavigator(this.page);
 
-      // Load saved cookies if available
+      
       const savedCookies = await this.loadCookies();
       if (savedCookies) {
         await this.browser.loadCookies(savedCookies);
@@ -50,9 +50,9 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Login to RouteStar portal
-   */
+  
+
+
   async login() {
     try {
       this.logger.info('Attempting login to RouteStar');
@@ -72,13 +72,13 @@ class RouteStarService {
       const loginUrl = `${this.config.baseUrl}/login`;
       const successUrl = '/dashboard';
 
-      // Navigate to login page
+      
       await this.navigator.navigateTo(loginUrl);
 
-      // Perform login
+      
       await this.navigator.login(credentials, selectors, successUrl);
 
-      // Save cookies for future sessions
+      
       await this.browser.saveCookies();
 
       this.logger.info('Login successful');
@@ -93,10 +93,10 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Fetch invoices from RouteStar
-   * @param {Object} options - Fetch options
-   */
+  
+
+
+
   async fetchInvoices(options = {}) {
     const {
       maxPages = 10,
@@ -108,10 +108,10 @@ class RouteStarService {
     try {
       this.logger.info('Fetching invoices', { maxPages, stopOnEmpty, dateFrom, dateTo });
 
-      // Navigate to invoices page
+      
       await this.navigator.navigateTo(`${this.config.baseUrl}/invoices`);
 
-      // Apply date filters if provided
+      
       if (dateFrom || dateTo) {
         await this.applyDateFilter({ dateFrom, dateTo });
       }
@@ -122,7 +122,7 @@ class RouteStarService {
         nextButton: '.pagination-next'
       };
 
-      // Use pagination to fetch all invoices
+      
       const invoices = await this.navigator.paginate(
         async (page) => {
           return await BaseParser.parseTableWithHeaders(page, selectors);
@@ -139,10 +139,10 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Fetch invoice details by invoice number
-   * @param {string} invoiceNumber - Invoice number
-   */
+  
+
+
+
   async fetchInvoiceDetails(invoiceNumber) {
     try {
       this.logger.info('Fetching invoice details', { invoiceNumber });
@@ -155,10 +155,10 @@ class RouteStarService {
         totals: '.invoice-totals'
       };
 
-      // Wait for invoice details to load
+      
       await this.navigator.waitForElement(selectors.invoiceInfo);
 
-      // Extract invoice information
+      
       const invoiceInfo = await this.navigator.getText(selectors.invoiceInfo);
       const lineItems = await BaseParser.parseTableWithHeaders(this.page, selectors.lineItems);
       const totals = await this.navigator.getText(selectors.totals);
@@ -179,10 +179,10 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Apply date filter to invoice search
-   * @param {Object} dateFilter - Date filter options
-   */
+  
+
+
+
   async applyDateFilter(dateFilter) {
     try {
       const filterSelectors = {
@@ -199,10 +199,10 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Download invoice PDF
-   * @param {string} invoiceNumber - Invoice number
-   */
+  
+
+
+
   async downloadInvoicePdf(invoiceNumber) {
     try {
       this.logger.info('Downloading invoice PDF', { invoiceNumber });
@@ -210,7 +210,7 @@ class RouteStarService {
       await this.navigator.navigateTo(`${this.config.baseUrl}/invoices/${invoiceNumber}`);
       await this.navigator.click('.download-pdf-btn');
 
-      // Wait for download to start
+      
       await this.navigator.wait(2000);
 
       this.logger.info('Invoice PDF download initiated', { invoiceNumber });
@@ -224,9 +224,9 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Check if currently logged in
-   */
+  
+
+
   async isLoggedIn() {
     try {
       const currentUrl = this.navigator.getUrl();
@@ -236,13 +236,13 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Load saved cookies
-   */
+  
+
+
   async loadCookies() {
     try {
-      // Implement cookie loading logic from file/database
-      // This is a placeholder - implement based on your storage mechanism
+      
+      
       return null;
     } catch (error) {
       this.logger.warn('Failed to load cookies', { error: error.message });
@@ -250,9 +250,9 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Cleanup resources
-   */
+  
+
+
   async cleanup() {
     try {
       this.logger.info('Cleaning up resources');

@@ -3,11 +3,11 @@ const CustomerConnectSyncService = require('./customerConnectSync.service');
 const RouteStarSyncService = require('./routeStarSync.service');
 const SyncLog = require('../models/SyncLog');
 
-/**
- * Inventory Sync Scheduler
- * Schedules daily syncs for CustomerConnect (orders/purchases) and RouteStar (invoices/sales)
- * Runs at 3:00 AM daily
- */
+
+
+
+
+
 class InventoryScheduler {
   constructor() {
     this.dailySyncTask = null;
@@ -20,15 +20,15 @@ class InventoryScheduler {
     this.syncInProgress = false;
   }
 
-  /**
-   * Start the scheduler
-   * @param {Object} options - Configuration options
-   * @param {string} options.cronExpression - Cron expression for scheduling (default: 3 AM daily)
-   * @param {number} options.ordersLimit - Number of orders to fetch per sync (default: Infinity = fetch all)
-   * @param {number} options.invoicesLimit - Number of invoices to fetch per sync (default: Infinity = fetch all)
-   * @param {boolean} options.processStock - Whether to process stock movements
-   * @param {string} options.timezone - Timezone for scheduling
-   */
+  
+
+
+
+
+
+
+
+
   start(options = {}) {
     const {
       cronExpression = '0 3 * * *', 
@@ -92,14 +92,14 @@ class InventoryScheduler {
     console.log(`   Next run: ${this.getNextRunTime(cronExpression, timezone)}\n`);
   }
 
-  /**
-   * Run complete sync (CustomerConnect + RouteStar)
-   * Fetches ALL orders and invoices by default
-   * @param {Object} options - Sync options
-   * @param {number} options.ordersLimit - Max orders to fetch (default: Infinity = fetch all)
-   * @param {number} options.invoicesLimit - Max invoices to fetch (default: Infinity = fetch all)
-   * @param {boolean} options.processStock - Whether to process stock movements
-   */
+  
+
+
+
+
+
+
+
   async runCompleteSync(options = {}) {
     const {
       ordersLimit = Infinity,
@@ -189,9 +189,9 @@ class InventoryScheduler {
     return results;
   }
 
-  /**
-   * Stop the scheduler
-   */
+  
+
+
   stop() {
     if (!this.isRunning) {
       console.log('Inventory scheduler is not running');
@@ -207,10 +207,10 @@ class InventoryScheduler {
     console.log('✓ Inventory scheduler stopped');
   }
 
-  /**
-   * Get scheduler status
-   * @returns {Object} Status information
-   */
+  
+
+
+
   getStatus() {
     return {
       isRunning: this.isRunning,
@@ -220,10 +220,10 @@ class InventoryScheduler {
     };
   }
 
-  /**
-   * Run sync immediately (outside of schedule)
-   * @param {Object} options - Sync options
-   */
+  
+
+
+
   async runNow(options = {}) {
     if (this.syncInProgress) {
       throw new Error('Sync already in progress');
@@ -240,12 +240,12 @@ class InventoryScheduler {
     }
   }
 
-  /**
-   * Get next run time
-   * @param {string} cronExpression - Cron expression
-   * @param {string} timezone - Timezone
-   * @returns {string} Next run time
-   */
+  
+
+
+
+
+
   getNextRunTime(cronExpression, timezone) {
     try {
       const schedule = cron.schedule(cronExpression, () => {}, {
@@ -263,10 +263,10 @@ class InventoryScheduler {
 
 let schedulerInstance = null;
 
-/**
- * Get scheduler instance
- * @returns {InventoryScheduler}
- */
+
+
+
+
 function getInventoryScheduler() {
   if (!schedulerInstance) {
     schedulerInstance = new InventoryScheduler();

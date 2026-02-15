@@ -2,10 +2,10 @@ const { chromium, firefox, webkit } = require('playwright');
 const logger = require('../utils/logger');
 const browserConfig = require('../config/browser.config');
 
-/**
- * BaseBrowser - Manages browser lifecycle and context
- * Provides reusable browser management for all automations
- */
+
+
+
+
 class BaseBrowser {
   constructor(options = {}) {
     this.browser = null;
@@ -14,10 +14,10 @@ class BaseBrowser {
     this.options = { ...browserConfig, ...options };
   }
 
-  /**
-   * Launch browser instance
-   * @param {string} browserType - 'chromium', 'firefox', or 'webkit'
-   */
+  
+
+
+
   async launch(browserType = 'chromium') {
     try {
       logger.info('Launching browser', { browserType, headless: this.options.headless });
@@ -39,10 +39,10 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Create new browser context (isolated session)
-   * @param {Object} contextOptions - Context configuration
-   */
+  
+
+
+
   async createContext(contextOptions = {}) {
     if (!this.browser) {
       throw new Error('Browser not launched. Call launch() first.');
@@ -63,9 +63,9 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Create new page
-   */
+  
+
+
   async createPage() {
     if (!this.context) {
       await this.createContext();
@@ -74,21 +74,21 @@ class BaseBrowser {
     try {
       this.page = await this.context.newPage();
 
-      // Set default timeout
+      
       this.page.setDefaultTimeout(this.options.timeout);
 
-      // Hide automation indicators to bypass bot detection
+      
       await this.page.addInitScript(() => {
-        // Override navigator.webdriver
+        
         try {
           Object.defineProperty(navigator, 'webdriver', {
             get: () => false
           });
         } catch (e) {
-          // Already defined, ignore
+          
         }
 
-        // Override Chrome detection - only if not already defined
+        
         try {
           if (!window.chrome || !window.chrome.runtime) {
             Object.defineProperty(window, 'chrome', {
@@ -104,10 +104,10 @@ class BaseBrowser {
             });
           }
         } catch (e) {
-          // Chrome property already exists and is not configurable, ignore
+          
         }
 
-        // Override permissions
+        
         try {
           const originalQuery = window.navigator.permissions.query;
           window.navigator.permissions.query = (parameters) => (
@@ -116,25 +116,25 @@ class BaseBrowser {
               originalQuery(parameters)
           );
         } catch (e) {
-          // Ignore
+          
         }
 
-        // Override plugins to look more like a real browser
+        
         try {
           Object.defineProperty(navigator, 'plugins', {
             get: () => [1, 2, 3, 4, 5]
           });
         } catch (e) {
-          // Ignore
+          
         }
 
-        // Override languages to look more real
+        
         try {
           Object.defineProperty(navigator, 'languages', {
             get: () => ['en-US', 'en']
           });
         } catch (e) {
-          // Ignore
+          
         }
       });
 
@@ -146,9 +146,9 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Save cookies from current context
-   */
+  
+
+
   async saveCookies() {
     if (!this.context) {
       throw new Error('No context available');
@@ -164,10 +164,10 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Load cookies into context
-   * @param {Array} cookies - Array of cookie objects
-   */
+  
+
+
+
   async loadCookies(cookies) {
     if (!this.context) {
       throw new Error('No context available');
@@ -182,9 +182,9 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Clear cookies
-   */
+  
+
+
   async clearCookies() {
     if (!this.context) {
       return;
@@ -198,9 +198,9 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Close browser and cleanup
-   */
+  
+
+
   async close() {
     try {
       if (this.page) {
@@ -225,23 +225,23 @@ class BaseBrowser {
     }
   }
 
-  /**
-   * Check if browser is running
-   */
+  
+
+
   isRunning() {
     return this.browser !== null && this.browser.isConnected();
   }
 
-  /**
-   * Get current page
-   */
+  
+
+
   getCurrentPage() {
     return this.page;
   }
 
-  /**
-   * Get browser context
-   */
+  
+
+
   getContext() {
     return this.context;
   }

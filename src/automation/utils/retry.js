@@ -1,11 +1,11 @@
 const logger = require('./logger');
 const { wait } = require('./wait');
 
-/**
- * Retry function with exponential backoff
- * @param {Function} fn - Function to retry
- * @param {Object} options - Retry options
- */
+
+
+
+
+
 async function retry(fn, options = {}) {
   const {
     attempts = 3,

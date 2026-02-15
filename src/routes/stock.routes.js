@@ -6,20 +6,20 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const ModelCategory = require('../models/ModelCategory');
 const RouteStarItem = require('../models/RouteStarItem');
 
-/**
- * @route   GET /api/stock/category/:categoryName/skus
- * @desc    Get all SKUs mapped to a specific category with their purchase history
- */
+
+
+
+
 router.get('/category/:categoryName/skus', authenticate, async (req, res) => {
   try {
     const { categoryName } = req.params;
 
-    // Get all mappings for this category
+    
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
 
-    // Get all SKUs for this category
+    
     const skus = mappings.map(m => m.modelNumber);
 
     if (skus.length === 0) {
@@ -32,13 +32,13 @@ router.get('/category/:categoryName/skus', authenticate, async (req, res) => {
       });
     }
 
-    // Get all orders containing these SKUs
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] },
       'items.sku': { $in: skus }
     }).lean();
 
-    // Group purchase history by SKU
+    
     const skuData = {};
 
     orders.forEach(order => {
@@ -73,7 +73,7 @@ router.get('/category/:categoryName/skus', authenticate, async (req, res) => {
       }
     });
 
-    // Add SKUs that have no purchase history
+    
     skus.forEach(sku => {
       if (!skuData[sku]) {
         const mapping = mappings.find(m => m.modelNumber === sku);
@@ -87,7 +87,7 @@ router.get('/category/:categoryName/skus', authenticate, async (req, res) => {
       }
     });
 
-    // Convert to array and sort
+    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
@@ -109,20 +109,20 @@ router.get('/category/:categoryName/skus', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/stock/category/:categoryName/sales
- * @desc    Get all SKUs mapped to a specific category with their purchase AND sales history
- */
+
+
+
+
 router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
   try {
     const { categoryName } = req.params;
 
-    // Get all mappings for this category
+    
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
 
-    // Get all SKUs for this category
+    
     const skus = mappings.map(m => m.modelNumber);
 
     if (skus.length === 0) {
@@ -135,22 +135,22 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       });
     }
 
-    // Get all orders containing these SKUs (purchases)
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] },
       'items.sku': { $in: skus }
     }).lean();
 
-    // Get all invoices containing line items matching this category name
+    
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] },
       'lineItems.name': categoryName
     }).lean();
 
-    // Group purchase and sales history by SKU
+    
     const skuData = {};
 
-    // Process purchases from orders
+    
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
@@ -186,8 +186,8 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       }
     });
 
-    // Process sales from invoices - match by item NAME to category
-    // Since invoices are at category level, we need to aggregate sales first
+    
+    
     let categorySalesData = {
       totalSold: 0,
       totalSalesValue: 0,
@@ -199,7 +199,7 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
         invoice.lineItems.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
 
-          // Match invoice item name directly to the category name
+          
           if (itemName === categoryName) {
             categorySalesData.totalSold += item.quantity || 0;
             categorySalesData.totalSalesValue += item.amount || 0;
@@ -217,8 +217,8 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       }
     });
 
-    // Now distribute the category-level sales across all SKUs
-    // Each SKU gets the full sales history but divided totals to avoid inflation
+    
+    
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
       if (!skuData[sku]) {
@@ -235,13 +235,13 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
         };
       }
 
-      // Add category sales to each SKU (divided to prevent inflation when aggregating)
+      
       skuData[sku].totalSold = categorySalesData.totalSold / skuCount;
       skuData[sku].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
       skuData[sku].salesHistory = [...categorySalesData.salesHistory];
     });
 
-    // Add SKUs that have no purchase or sales history
+    
     skus.forEach(sku => {
       if (!skuData[sku]) {
         const mapping = mappings.find(m => m.modelNumber === sku);
@@ -258,7 +258,7 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       }
     });
 
-    // Convert to array and sort
+    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
@@ -280,17 +280,17 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/stock/use
- * @desc    Get Use Stock summary (purchases from orders grouped by category)
- */
+
+
+
+
 router.get('/use', authenticate, async (req, res) => {
   try {
-    // Get RouteStar items marked for use
+    
     const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
     const allowedCategories = new Set(forUseItems.map(item => item.itemName));
 
-    // Get all mappings to create a lookup
+    
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
 
@@ -300,12 +300,12 @@ router.get('/use', authenticate, async (req, res) => {
       }
     });
 
-    // Get all orders and flatten items
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    // Group by category and sum quantities
+    
     const categoryMap = {};
 
     orders.forEach(order => {
@@ -314,7 +314,7 @@ router.get('/use', authenticate, async (req, res) => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
 
-          // Only include if category is marked for use
+          
           if (category && allowedCategories.has(category)) {
             if (!categoryMap[category]) {
               categoryMap[category] = {
@@ -333,7 +333,7 @@ router.get('/use', authenticate, async (req, res) => {
       }
     });
 
-    // Add categories that have no order data but are marked for use
+    
     forUseItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -345,12 +345,12 @@ router.get('/use', authenticate, async (req, res) => {
       }
     });
 
-    // Convert map to array and sort by category name
+    
     const stockData = Object.values(categoryMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
 
-    // Calculate totals
+    
     const totals = stockData.reduce((acc, item) => ({
       totalQuantity: acc.totalQuantity + item.totalQuantity,
       totalValue: acc.totalValue + item.totalValue,
@@ -374,17 +374,17 @@ router.get('/use', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/stock/sell
- * @desc    Get Sell Stock summary (purchase quantities from orders for resale items)
- */
+
+
+
+
 router.get('/sell', authenticate, async (req, res) => {
   try {
-    // Get RouteStar items marked for sell
+    
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const allowedCategories = new Set(forSellItems.map(item => item.itemName));
 
-    // Get all mappings to create a lookup
+    
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
 
@@ -394,27 +394,27 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    // Get all orders and flatten items (show PURCHASES for sell stock)
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    // Get all invoices (for SALES data)
+    
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
-    // Group by category and sum quantities
+    
     const categoryMap = {};
 
-    // Process purchases from orders
+    
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
 
-          // Only include if category is marked for sell
+          
           if (category && allowedCategories.has(category)) {
             if (!categoryMap[category]) {
               categoryMap[category] = {
@@ -437,16 +437,16 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    // Process sales from invoices - match by category name
-    // Track unique invoices per category
-    const categoryInvoices = {}; // Track unique invoices per category
+    
+    
+    const categoryInvoices = {}; 
 
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
 
-          // Match invoice item name to category and check if it's in allowed categories
+          
           if (allowedCategories.has(itemName)) {
             if (!categoryMap[itemName]) {
               categoryMap[itemName] = {
@@ -464,7 +464,7 @@ router.get('/sell', authenticate, async (req, res) => {
             categoryMap[itemName].totalSold += item.quantity || 0;
             categoryMap[itemName].totalSalesValue += item.amount || 0;
 
-            // Track unique invoices per category
+            
             if (!categoryInvoices[itemName]) {
               categoryInvoices[itemName] = new Set();
             }
@@ -474,19 +474,19 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    // Update invoice counts based on unique invoices
+    
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (categoryMap[categoryName]) {
         categoryMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
-    // Calculate stock remaining for each category
+    
     Object.values(categoryMap).forEach(category => {
       category.stockRemaining = category.totalPurchased - category.totalSold;
     });
 
-    // Add categories that have no order data but are marked for sell
+    
     forSellItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -502,12 +502,12 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    // Convert map to array and sort by category name
+    
     const stockData = Object.values(categoryMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
 
-    // Calculate totals
+    
     const totals = stockData.reduce((acc, item) => ({
       totalPurchased: acc.totalPurchased + item.totalPurchased,
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
@@ -541,19 +541,19 @@ router.get('/sell', authenticate, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/stock/summary
- * @desc    Get both Use and Sell stock summary
- */
+
+
+
+
 router.get('/summary', authenticate, async (req, res) => {
   try {
-    // Get RouteStar items marked for use and sell
+    
     const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const useAllowedCategories = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedCategories = new Set(forSellItems.map(item => item.itemName));
 
-    // Get all mappings
+    
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
 
@@ -563,17 +563,17 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Get orders data
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    // Get invoices data (include Pending, Closed, Completed)
+    
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
-    // Process Use Stock
+    
     const useStockMap = {};
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
@@ -581,7 +581,7 @@ router.get('/summary', authenticate, async (req, res) => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
 
-          // Only include if category is marked for use
+          
           if (category && useAllowedCategories.has(category)) {
             if (!useStockMap[category]) {
               useStockMap[category] = {
@@ -600,7 +600,7 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Add categories that have no order data but are marked for use
+    
     forUseItems.forEach(item => {
       if (!useStockMap[item.itemName]) {
         useStockMap[item.itemName] = {
@@ -612,17 +612,17 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Process Sell Stock - include both purchases and sales
+    
     const sellStockMap = {};
 
-    // Process purchases from orders
+    
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
 
-          // Only include if category is marked for sell
+          
           if (category && sellAllowedCategories.has(category)) {
             if (!sellStockMap[category]) {
               sellStockMap[category] = {
@@ -645,16 +645,16 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Process sales from invoices - match by category name
-    // Track unique invoices per category
-    const categoryInvoices = {}; // Track unique invoices per category
+    
+    
+    const categoryInvoices = {}; 
 
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
 
-          // Match invoice item name to category and check if it's in allowed categories
+          
           if (sellAllowedCategories.has(itemName)) {
             if (!sellStockMap[itemName]) {
               sellStockMap[itemName] = {
@@ -672,7 +672,7 @@ router.get('/summary', authenticate, async (req, res) => {
             sellStockMap[itemName].totalSold += item.quantity || 0;
             sellStockMap[itemName].totalSalesValue += item.amount || 0;
 
-            // Track unique invoices per category
+            
             if (!categoryInvoices[itemName]) {
               categoryInvoices[itemName] = new Set();
             }
@@ -682,19 +682,19 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Update invoice counts based on unique invoices
+    
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (sellStockMap[categoryName]) {
         sellStockMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
-    // Calculate stock remaining for each category
+    
     Object.values(sellStockMap).forEach(category => {
       category.stockRemaining = category.totalPurchased - category.totalSold;
     });
 
-    // Add categories that have no order data but are marked for sell
+    
     forSellItems.forEach(item => {
       if (!sellStockMap[item.itemName]) {
         sellStockMap[item.itemName] = {
@@ -710,7 +710,7 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    // Convert to arrays and sort
+    
     const useStock = Object.values(useStockMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
@@ -718,7 +718,7 @@ router.get('/summary', authenticate, async (req, res) => {
       a.categoryName.localeCompare(b.categoryName)
     );
 
-    // Calculate totals
+    
     const useTotals = useStock.reduce((acc, item) => ({
       totalQuantity: acc.totalQuantity + item.totalQuantity,
       totalValue: acc.totalValue + item.totalValue,

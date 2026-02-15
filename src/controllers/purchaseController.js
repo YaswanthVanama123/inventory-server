@@ -21,19 +21,19 @@ const createPurchase = async (req, res, next) => {
       syncMetadata
     } = req.body;
 
-    // Check if inventoryId is a valid MongoDB ObjectId
+    
     const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
 
     console.log(`[createPurchase] Looking for inventory: ${inventoryId}`);
 
     let inventoryItem;
     if (isValidObjectId && inventoryId.length === 24) {
-      // Try to find by ObjectId
+      
       inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
       console.log(`[createPurchase] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
     }
 
-    // If not found by ObjectId or invalid ObjectId, try SKU code (case-insensitive)
+    
     if (!inventoryItem) {
       console.log(`[createPurchase] Trying SKU code search: ${inventoryId}`);
       inventoryItem = await Inventory.findOne({
@@ -161,7 +161,7 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
       source = 'all' 
     } = req.query;
 
-    // Check if inventoryId is a valid MongoDB ObjectId
+    
     const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
 
     console.log(`[getPurchasesByInventoryItem] Looking for inventory: ${inventoryId}`);
@@ -169,12 +169,12 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
 
     let inventoryItem;
     if (isValidObjectId && inventoryId.length === 24) {
-      // Try to find by ObjectId
+      
       inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
       console.log(`[getPurchasesByInventoryItem] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
     }
 
-    // If not found by ObjectId or invalid ObjectId, try SKU code (case-insensitive)
+    
     if (!inventoryItem) {
       console.log(`[getPurchasesByInventoryItem] Trying SKU code search (case-insensitive): ${inventoryId}`);
       inventoryItem = await Inventory.findOne({
@@ -559,10 +559,10 @@ const deletePurchase = async (req, res, next) => {
   }
 };
 
-/**
- * Get unprocessed purchase orders from CustomerConnect sync
- * Shows purchase orders that haven't been converted to inventory purchases yet
- */
+
+
+
+
 const getUnprocessedPurchaseOrders = async (req, res, next) => {
   try {
     const {
@@ -646,9 +646,9 @@ const getUnprocessedPurchaseOrders = async (req, res, next) => {
   }
 };
 
-/**
- * Get purchase analytics with sync source breakdown
- */
+
+
+
 const getPurchaseAnalytics = async (req, res, next) => {
   try {
     const {
@@ -668,19 +668,19 @@ const getPurchaseAnalytics = async (req, res, next) => {
 
 
     if (inventoryId) {
-      // Check if inventoryId is a valid MongoDB ObjectId
+      
       const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
 
       if (isValidObjectId && inventoryId.length === 24) {
-        // Use ObjectId directly
+        
         query.inventoryItem = inventoryId;
       } else {
-        // Look up by SKU code
+        
         const inventoryItem = await Inventory.findOne({ skuCode: inventoryId.toUpperCase(), isDeleted: false });
         if (inventoryItem) {
           query.inventoryItem = inventoryItem._id;
         } else {
-          // If not found, set an invalid ObjectId to return empty results
+          
           query.inventoryItem = new mongoose.Types.ObjectId();
         }
       }

@@ -1,6 +1,6 @@
-/**
- * Central export for all custom error classes
- */
+
+
+
 module.exports = {
   AutomationError: require('./AutomationError'),
   LoginError: require('./LoginError'),

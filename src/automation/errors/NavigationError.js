@@ -1,8 +1,8 @@
 const AutomationError = require('./AutomationError');
 
-/**
- * Navigation-specific error
- */
+
+
+
 class NavigationError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);

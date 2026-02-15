@@ -1,7 +1,7 @@
-/**
- * CustomerConnect Automation
- * Refactored to use NEW core architecture with reusable base classes
- */
+
+
+
+
 
 const BaseBrowser = require('./core/BaseBrowser');
 const BaseNavigator = require('./core/BaseNavigator');
@@ -28,21 +28,21 @@ class CustomerConnectAutomation {
     this.logger = logger.child({ automation: 'CustomerConnect' });
   }
 
-  /**
-   * Initialize browser and components
-   */
+  
+
+
   async init() {
     try {
       this.logger.info('Initializing CustomerConnect automation');
 
-      // Launch browser using new BaseBrowser
+      
       await this.browser.launch('chromium');
       this.page = await this.browser.createPage();
 
-      // Initialize base navigator for common operations
+      
       this.baseNavigator = new BaseNavigator(this.page);
 
-      // Initialize custom navigator and fetcher
+      
       this.navigator = new CustomerConnectNavigator(this.page, config, selectors);
       this.fetcher = new CustomerConnectFetcher(this.page, this.navigator, selectors);
 
@@ -54,18 +54,18 @@ class CustomerConnectAutomation {
     }
   }
 
-  /**
-   * Login to CustomerConnect portal
-   */
+  
+
+
   async login() {
     try {
       this.logger.info('Attempting login', { username: config.credentials.username });
 
-      // Navigate to login page with retry logic
+      
       await retry(
         async () => {
           await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
-          // Extra wait after navigation for page to stabilize
+          
           await this.baseNavigator.wait(2000);
         },
         {
@@ -81,17 +81,17 @@ class CustomerConnectAutomation {
         }
       );
 
-      // Use BaseNavigator's generic login method
+      
       await this.baseNavigator.login(
         config.credentials,
         selectors.login,
-        config.routes.account // Success URL check - expect account dashboard
+        config.routes.account 
       );
 
-      // Verify login success
+      
       await this.verifyLoginSuccess();
 
-      // Save cookies for session persistence
+      
       await this.browser.saveCookies();
 
       this.isLoggedIn = true;
@@ -108,16 +108,16 @@ class CustomerConnectAutomation {
     }
   }
 
-  /**
-   * Verify login success by checking for logged-in indicator
-   */
+  
+
+
   async verifyLoginSuccess() {
     try {
       await this.baseNavigator.waitForElement(selectors.login.loggedInIndicator, {
         timeout: 10000
       });
     } catch (error) {
-      // Double-check if still on login page
+      
       const stillOnLoginPage = await this.baseNavigator.exists(selectors.login.usernameInput);
       if (stillOnLoginPage) {
         throw new LoginError('Login appears to have failed - still on login page');
@@ -125,9 +125,9 @@ class CustomerConnectAutomation {
     }
   }
 
-  /**
-   * Navigate to orders page
-   */
+  
+
+
   async navigateToOrders() {
     if (!this.isLoggedIn) {
       await this.login();
@@ -136,23 +136,23 @@ class CustomerConnectAutomation {
     return await this.navigator.navigateToOrders();
   }
 
-  /**
-   * Get pagination information
-   */
+  
+
+
   async getPaginationInfo() {
     return await this.navigator.getPaginationInfo();
   }
 
-  /**
-   * Fetch list of orders with retry logic
-   * @param {number} limit - Max orders to fetch (default: Infinity = fetch all)
-   */
+  
+
+
+
   async fetchOrdersList(limit = Infinity) {
     if (!this.isLoggedIn) {
       await this.login();
     }
 
-    // Wrap in retry logic for resilience
+    
     return await retry(
       async () => await this.fetcher.fetchOrders(limit),
       {
@@ -166,10 +166,10 @@ class CustomerConnectAutomation {
     );
   }
 
-  /**
-   * Fetch order details
-   * @param {string} orderUrl - URL of the order detail page
-   */
+  
+
+
+
   async fetchOrderDetails(orderUrl) {
     if (!this.isLoggedIn) {
       await this.login();
@@ -178,32 +178,32 @@ class CustomerConnectAutomation {
     try {
       this.logger.info('Fetching order details', { orderUrl });
 
-      // Navigate using BaseNavigator with automatic fallback strategies
-      // Don't specify waitUntil - let it use ['commit', 'load', 'domcontentloaded'] fallbacks
+      
+      
       await this.baseNavigator.navigateTo(orderUrl);
       await this.baseNavigator.waitForNetwork();
       await this.baseNavigator.wait(1000);
 
-      // Extract order details text using BaseNavigator
+      
       const orderDetailsText = await this.baseNavigator.getText('table.list tbody tr td.left');
 
-      // Parse using existing parser
+      
       const orderNumber = CustomerConnectParser.extractOrderNumber(orderDetailsText);
       const poNumber = CustomerConnectParser.extractPONumberFromDetails(orderDetailsText);
       const orderDate = CustomerConnectParser.extractDate(orderDetailsText);
       const vendorName = CustomerConnectParser.extractVendorFromDetails(orderDetailsText);
 
-      // Get order status (try multiple selectors)
+      
       let orderStatus = 'Unknown';
       try {
-        // Check if the status element exists first
+        
         if (await this.baseNavigator.exists('table.list:last-child tbody tr td:nth-child(2)')) {
           orderStatus = await this.baseNavigator.getText('table.list:last-child tbody tr td:nth-child(2)', {
             timeout: 5000
           });
         }
       } catch (error) {
-        // Try alternative selector
+        
         try {
           const statusText = await this.page.$eval(
             'table.list tbody tr:has-text("Status") td:last-child',
@@ -215,10 +215,10 @@ class CustomerConnectAutomation {
         }
       }
 
-      // Extract line items using new method
+      
       const items = await this.extractLineItems();
 
-      // Extract totals
+      
       const totals = await this.extractTotals();
 
       const orderData = {
@@ -254,16 +254,16 @@ class CustomerConnectAutomation {
     }
   }
 
-  /**
-   * Extract line items from order detail page using BaseParser
-   */
+  
+
+
   async extractLineItems() {
     const items = [];
 
-    // Use BaseParser's list parsing
+    
     const tableSelector = 'table.list:nth-of-type(3)';
 
-    // Get all rows
+    
     const rows = await this.page.$$(`${tableSelector} tbody tr`);
 
     for (const row of rows) {
@@ -300,9 +300,9 @@ class CustomerConnectAutomation {
     return items;
   }
 
-  /**
-   * Extract totals from order detail page using BaseParser
-   */
+  
+
+
   async extractTotals() {
     const extractTotal = async (labelText) => {
       try {
@@ -324,9 +324,9 @@ class CustomerConnectAutomation {
     return { subtotal, tax, shipping, total };
   }
 
-  /**
-   * Take screenshot for debugging
-   */
+  
+
+
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
@@ -337,9 +337,9 @@ class CustomerConnectAutomation {
     }
   }
 
-  /**
-   * Close browser and cleanup
-   */
+  
+
+
   async close() {
     try {
       this.logger.info('Closing browser');
