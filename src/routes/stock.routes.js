@@ -6,6 +6,47 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const ModelCategory = require('../models/ModelCategory');
 const RouteStarItem = require('../models/RouteStarItem');
 
+// Helper function to get merged RouteStarItems (canonical names)
+async function getMergedRouteStarItems(filter = {}) {
+  const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+
+  // Fetch items matching the filter
+  const items = await RouteStarItem.find(filter).lean();
+
+  // Load alias map
+  const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+  // Group by canonical names
+  const groupedByCanonical = {};
+
+  items.forEach(item => {
+    const canonicalName = aliasMap[item.itemName] || item.itemName;
+
+    if (!groupedByCanonical[canonicalName]) {
+      groupedByCanonical[canonicalName] = {
+        itemName: canonicalName,
+        forUse: item.forUse,
+        forSell: item.forSell,
+        variations: []
+      };
+    }
+
+    groupedByCanonical[canonicalName].variations.push(item.itemName);
+    if (item.forUse) groupedByCanonical[canonicalName].forUse = true;
+    if (item.forSell) groupedByCanonical[canonicalName].forSell = true;
+  });
+
+  return {
+    mergedItems: Object.values(groupedByCanonical),
+    aliasMap // Return the map so we can use it to convert raw names to canonical
+  };
+}
+
+// Helper function to convert raw itemName to canonical name
+function getCanonicalName(itemName, aliasMap) {
+  return aliasMap[itemName] || itemName;
+}
+
 
 
 
@@ -117,12 +158,26 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
   try {
     const { categoryName } = req.params;
 
-    
+    // Load alias map to handle item name variations
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Find all variations (aliases) that map to this canonical name
+    const variations = [categoryName]; // Include the canonical name itself
+    Object.keys(aliasMap).forEach(alias => {
+      if (aliasMap[alias] === categoryName) {
+        variations.push(alias);
+      }
+    });
+
+    console.log(`Finding invoices for category: ${categoryName}, variations:`, variations);
+
+    // Get mappings for the category
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
 
-    
+
     const skus = mappings.map(m => m.modelNumber);
 
     if (skus.length === 0) {
@@ -135,16 +190,16 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       });
     }
 
-    
+
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] },
       'items.sku': { $in: skus }
     }).lean();
 
-    
+    // Fetch invoices that have ANY variation of the category name
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] },
-      'lineItems.name': categoryName
+      'lineItems.name': { $in: variations }
     }).lean();
 
     
@@ -197,10 +252,12 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
-          const itemName = item.name ? item.name.trim() : '';
+          const rawItemName = item.name ? item.name.trim() : '';
+          // Map raw item name to canonical name
+          const canonicalItemName = getCanonicalName(rawItemName, aliasMap);
 
-          
-          if (itemName === categoryName) {
+          // Check if canonical name matches the category
+          if (canonicalItemName === categoryName) {
             categorySalesData.totalSold += item.quantity || 0;
             categorySalesData.totalSalesValue += item.amount || 0;
             categorySalesData.salesHistory.push({
@@ -547,9 +604,9 @@ router.get('/sell', authenticate, async (req, res) => {
 
 router.get('/summary', authenticate, async (req, res) => {
   try {
-    
-    const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
-    const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
+    // Get merged items with canonical names
+    const { mergedItems: forUseItems, aliasMap: useAliasMap } = await getMergedRouteStarItems({ forUse: true });
+    const { mergedItems: forSellItems, aliasMap: sellAliasMap } = await getMergedRouteStarItems({ forSell: true });
     const useAllowedCategories = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedCategories = new Set(forSellItems.map(item => item.itemName));
 
@@ -652,13 +709,15 @@ router.get('/summary', authenticate, async (req, res) => {
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
-          const itemName = item.name ? item.name.trim() : '';
+          const rawItemName = item.name ? item.name.trim() : '';
+          // Map raw item name to canonical name
+          const canonicalItemName = getCanonicalName(rawItemName, sellAliasMap);
 
-          
-          if (sellAllowedCategories.has(itemName)) {
-            if (!sellStockMap[itemName]) {
-              sellStockMap[itemName] = {
-                categoryName: itemName,
+          // Check if canonical name is in allowed categories
+          if (sellAllowedCategories.has(canonicalItemName)) {
+            if (!sellStockMap[canonicalItemName]) {
+              sellStockMap[canonicalItemName] = {
+                categoryName: canonicalItemName,
                 totalPurchased: 0,
                 totalPurchaseValue: 0,
                 totalSold: 0,
@@ -669,14 +728,14 @@ router.get('/summary', authenticate, async (req, res) => {
               };
             }
 
-            sellStockMap[itemName].totalSold += item.quantity || 0;
-            sellStockMap[itemName].totalSalesValue += item.amount || 0;
+            sellStockMap[canonicalItemName].totalSold += item.quantity || 0;
+            sellStockMap[canonicalItemName].totalSalesValue += item.amount || 0;
 
-            
-            if (!categoryInvoices[itemName]) {
-              categoryInvoices[itemName] = new Set();
+            // Track invoice count
+            if (!categoryInvoices[canonicalItemName]) {
+              categoryInvoices[canonicalItemName] = new Set();
             }
-            categoryInvoices[itemName].add(invoice.invoiceNumber);
+            categoryInvoices[canonicalItemName].add(invoice.invoiceNumber);
           }
         });
       }

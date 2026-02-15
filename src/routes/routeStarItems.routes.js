@@ -13,11 +13,35 @@ let isSyncing = false;
 
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const total = await RouteStarItem.countDocuments();
-    const forUseCount = await RouteStarItem.countDocuments({ forUse: true });
-    const forSellCount = await RouteStarItem.countDocuments({ forSell: true });
-    const bothCount = await RouteStarItem.countDocuments({ forUse: true, forSell: true });
-    const unmarkedCount = await RouteStarItem.countDocuments({ forUse: false, forSell: false });
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    const allItems = await RouteStarItem.find().lean();
+
+    const groupedByCanonical = {};
+
+    allItems.forEach(item => {
+      const canonicalName = aliasMap[item.itemName] || item.itemName;
+
+      if (!groupedByCanonical[canonicalName]) {
+        groupedByCanonical[canonicalName] = {
+          forUse: false,
+          forSell: false,
+          isMapped: !!aliasMap[item.itemName]
+        };
+      }
+
+      if (item.forUse) groupedByCanonical[canonicalName].forUse = true;
+      if (item.forSell) groupedByCanonical[canonicalName].forSell = true;
+    });
+
+    const mergedItems = Object.values(groupedByCanonical);
+
+    const total = mergedItems.length;
+    const forUseCount = mergedItems.filter(item => item.forUse).length;
+    const forSellCount = mergedItems.filter(item => item.forSell).length;
+    const bothCount = mergedItems.filter(item => item.forUse && item.forSell).length;
+    const unmarkedCount = mergedItems.filter(item => !item.forUse && !item.forSell).length;
 
     res.json({
       success: true,
@@ -58,67 +82,98 @@ router.get('/', authenticate, async (req, res) => {
       sortOrder = 'asc'
     } = req.query;
 
-    
     const query = {};
 
-    
-    if (search) {
-      query.$or = [
-        { itemName: { $regex: search, $options: 'i' } },
-        { itemParent: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
+    // Don't apply search to database query - we'll filter after merging
+    // if (search) {
+    //   query.$or = [
+    //     { itemName: { $regex: search, $options: 'i' } },
+    //     { itemParent: { $regex: search, $options: 'i' } },
+    //     { description: { $regex: search, $options: 'i' } }
+    //   ];
+    // }
 
-    
     if (itemParent && itemParent !== 'all') {
       query.itemParent = itemParent;
     }
 
-    
     if (type && type !== 'all') {
       query.type = type;
     }
 
-    
     if (forUse === 'true') {
       query.forUse = true;
     }
 
-    
     if (forSell === 'true') {
       query.forSell = true;
     }
 
-    
     if (itemCategory && itemCategory !== 'all') {
       query.itemCategory = itemCategory;
     }
 
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const sortOptions = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-
-    
-    const items = await RouteStarItem.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit))
+    const allItems = await RouteStarItem.find(query)
+      .sort({ itemName: sortOrder === 'asc' ? 1 : -1 })
       .lean();
 
-    
-    const total = await RouteStarItem.countDocuments(query);
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-    
+    const groupedByCanonical = {};
+
+    allItems.forEach(item => {
+      const canonicalName = aliasMap[item.itemName] || item.itemName;
+
+      if (!groupedByCanonical[canonicalName]) {
+        groupedByCanonical[canonicalName] = {
+          _id: item._id,
+          itemName: canonicalName,
+          itemParent: item.itemParent,
+          description: item.description,
+          itemCategory: item.itemCategory,
+          qtyOnHand: 0,
+          forUse: item.forUse,
+          forSell: item.forSell,
+          type: item.type,
+          isMapped: !!aliasMap[item.itemName],
+          mergedCount: 0,
+          variations: []
+        };
+      }
+
+      groupedByCanonical[canonicalName].qtyOnHand += (item.qtyOnHand || 0);
+      groupedByCanonical[canonicalName].mergedCount++;
+      groupedByCanonical[canonicalName].variations.push(item.itemName);
+
+      if (item.forUse) groupedByCanonical[canonicalName].forUse = true;
+      if (item.forSell) groupedByCanonical[canonicalName].forSell = true;
+    });
+
+    let mergedItems = Object.values(groupedByCanonical);
+
+    // Apply search filter AFTER merging (on canonical names)
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      mergedItems = mergedItems.filter(item => {
+        return searchRegex.test(item.itemName) ||
+               searchRegex.test(item.itemParent || '') ||
+               searchRegex.test(item.description || '') ||
+               item.variations.some(variation => searchRegex.test(variation));
+      });
+    }
+
+    const total = mergedItems.length;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedItems = mergedItems.slice(skip, skip + parseInt(limit));
+
     const itemParents = await RouteStarItem.distinct('itemParent');
-
-    
     const types = await RouteStarItem.distinct('type');
 
     res.json({
       success: true,
       data: {
-        items,
+        items: paginatedItems,
         pagination: {
           total,
           page: parseInt(page),
@@ -159,25 +214,41 @@ router.patch('/:id/flags', authenticate, async (req, res) => {
       });
     }
 
-    
-    if (forUse !== undefined) {
-      item.forUse = forUse;
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    const canonicalName = aliasMap[item.itemName] || item.itemName;
+
+    const itemsToUpdate = await RouteStarItem.find({
+      itemName: {
+        $in: Object.keys(aliasMap).filter(alias => aliasMap[alias] === canonicalName)
+      }
+    });
+
+    if (itemsToUpdate.length === 0) {
+      itemsToUpdate.push(item);
     }
 
-    if (forSell !== undefined) {
-      item.forSell = forSell;
-    }
+    const updatePromises = itemsToUpdate.map(async (itemToUpdate) => {
+      if (forUse !== undefined) {
+        itemToUpdate.forUse = forUse;
+      }
 
-    
-    if (itemCategory !== undefined && ['Service', 'Item'].includes(itemCategory)) {
-      item.itemCategory = itemCategory;
-    }
+      if (forSell !== undefined) {
+        itemToUpdate.forSell = forSell;
+      }
 
-    await item.save();
+      if (itemCategory !== undefined && ['Service', 'Item'].includes(itemCategory)) {
+        itemToUpdate.itemCategory = itemCategory;
+      }
+
+      return itemToUpdate.save();
+    });
+
+    await Promise.all(updatePromises);
 
     res.json({
       success: true,
-      message: 'Item updated successfully',
+      message: 'Item(s) updated successfully',
       data: item
     });
   } catch (error) {

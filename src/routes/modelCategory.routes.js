@@ -85,16 +85,48 @@ router.get('/unique-models', authenticate, async (req, res) => {
 
 router.get('/routestar-items', authenticate, async (req, res) => {
   try {
-    const items = await RouteStarItem.find()
+    // Fetch all RouteStarItems
+    const allItems = await RouteStarItem.find()
       .select('itemName itemParent description')
       .sort({ itemName: 1 })
       .lean();
 
+    // Load the alias lookup map
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Group items by canonical names (merge variations)
+    const groupedByCanonical = {};
+
+    allItems.forEach(item => {
+      const canonicalName = aliasMap[item.itemName] || item.itemName;
+
+      if (!groupedByCanonical[canonicalName]) {
+        groupedByCanonical[canonicalName] = {
+          _id: item._id, // Use the first item's _id
+          itemName: canonicalName,
+          itemParent: item.itemParent,
+          description: item.description,
+          isMapped: !!aliasMap[item.itemName],
+          mergedCount: 0,
+          variations: []
+        };
+      }
+
+      groupedByCanonical[canonicalName].mergedCount++;
+      groupedByCanonical[canonicalName].variations.push(item.itemName);
+    });
+
+    // Convert to array and sort by itemName
+    const mergedItems = Object.values(groupedByCanonical).sort((a, b) =>
+      a.itemName.localeCompare(b.itemName)
+    );
+
     res.json({
       success: true,
       data: {
-        items,
-        total: items.length
+        items: mergedItems,
+        total: mergedItems.length
       }
     });
   } catch (error) {
