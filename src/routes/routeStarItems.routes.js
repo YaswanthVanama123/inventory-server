@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const RouteStarItem = require('../models/RouteStarItem');
+const RouteStarInvoice = require('../models/RouteStarInvoice');
 const { authenticate } = require('../middleware/auth');
 
 // Sync lock to prevent multiple simultaneous syncs
@@ -259,6 +260,160 @@ router.post('/sync', authenticate, async (req, res) => {
   } finally {
     // Always release the lock
     isSyncing = false;
+  }
+});
+
+/**
+ * @route   GET /api/routestar-items/sales-report
+ * @desc    Get all RouteStar items with their sales quantities from invoices
+ */
+router.get('/sales-report', authenticate, async (req, res) => {
+  try {
+    // Get all RouteStar items
+    const items = await RouteStarItem.find().sort({ itemName: 1 }).lean();
+
+    // Get all invoices (not filtering by isComplete since it's usually false)
+    // Include Closed, Completed, and Pending invoices
+    const invoices = await RouteStarInvoice.find({
+      status: { $in: ['Completed', 'Closed', 'Pending'] }
+    }).lean();
+
+    console.log('\n=== SALES REPORT DEBUG ===');
+    console.log('Total RouteStar items:', items.length);
+    console.log('Total invoices (filtered):', invoices.length);
+    console.log('Sample RouteStar item names:', items.slice(0, 5).map(i => i.itemName));
+
+    // Check total invoices without filter
+    const allInvoices = await RouteStarInvoice.find({}).lean();
+    console.log('Total invoices (unfiltered):', allInvoices.length);
+    console.log('Sample invoice statuses:', allInvoices.slice(0, 5).map(inv => ({
+      number: inv.invoiceNumber,
+      status: inv.status,
+      isComplete: inv.isComplete
+    })));
+
+    // Check if NRV7840 exists
+    const nrv7840 = await RouteStarInvoice.findOne({ invoiceNumber: 'NRV7840' }).lean();
+    if (nrv7840) {
+      console.log('NRV7840 found:', {
+        status: nrv7840.status,
+        isComplete: nrv7840.isComplete,
+        lineItemCount: nrv7840.lineItems?.length || 0
+      });
+    } else {
+      console.log('NRV7840 NOT found in database');
+    }
+
+    // Create a map to aggregate sales by item name
+    const salesMap = {};
+
+    // Process all invoice line items
+    let totalLineItems = 0;
+    const uniqueInvoiceItemNames = new Set();
+
+    invoices.forEach(invoice => {
+      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        invoice.lineItems.forEach(lineItem => {
+          totalLineItems++;
+          const itemName = lineItem.name ? lineItem.name.trim() : '';
+
+          if (itemName) {
+            uniqueInvoiceItemNames.add(itemName);
+          }
+
+          if (itemName) {
+            if (!salesMap[itemName]) {
+              salesMap[itemName] = {
+                totalQuantity: 0,
+                totalAmount: 0,
+                invoiceCount: 0,
+                invoices: [],
+                invoiceDetails: []
+              };
+            }
+
+            salesMap[itemName].totalQuantity += lineItem.quantity || 0;
+            salesMap[itemName].totalAmount += lineItem.amount || 0;
+
+            // Track unique invoices
+            if (!salesMap[itemName].invoices.includes(invoice.invoiceNumber)) {
+              salesMap[itemName].invoices.push(invoice.invoiceNumber);
+              salesMap[itemName].invoiceCount += 1;
+            }
+
+            // Add invoice line item details
+            salesMap[itemName].invoiceDetails.push({
+              invoiceNumber: invoice.invoiceNumber,
+              invoiceDate: invoice.invoiceDate,
+              quantity: lineItem.quantity,
+              rate: lineItem.rate,
+              amount: lineItem.amount,
+              customer: invoice.customer?.name || '',
+              status: invoice.status
+            });
+          }
+        });
+      }
+    });
+
+    console.log('Total invoice line items:', totalLineItems);
+    console.log('Unique invoice item names:', uniqueInvoiceItemNames.size);
+    console.log('Sample invoice item names:', Array.from(uniqueInvoiceItemNames).slice(0, 10));
+    console.log('Items in salesMap:', Object.keys(salesMap).length);
+    console.log('=== END DEBUG ===\n');
+
+    // Combine RouteStar items with sales data
+    const itemsWithSales = items.map(item => {
+      const salesData = salesMap[item.itemName] || {
+        totalQuantity: 0,
+        totalAmount: 0,
+        invoiceCount: 0,
+        invoiceDetails: []
+      };
+
+      return {
+        _id: item._id,
+        itemName: item.itemName,
+        itemParent: item.itemParent,
+        description: item.description,
+        itemCategory: item.itemCategory,
+        qtyOnHand: item.qtyOnHand,
+        forUse: item.forUse,
+        forSell: item.forSell,
+        soldQuantity: salesData.totalQuantity,
+        soldAmount: salesData.totalAmount,
+        invoiceCount: salesData.invoiceCount,
+        invoiceDetails: salesData.invoiceDetails
+      };
+    });
+
+    // Calculate totals
+    const totals = itemsWithSales.reduce((acc, item) => ({
+      totalItems: acc.totalItems + 1,
+      totalSoldQuantity: acc.totalSoldQuantity + item.soldQuantity,
+      totalSoldAmount: acc.totalSoldAmount + item.soldAmount,
+      totalInvoices: acc.totalInvoices + item.invoiceCount
+    }), {
+      totalItems: 0,
+      totalSoldQuantity: 0,
+      totalSoldAmount: 0,
+      totalInvoices: 0
+    });
+
+    res.json({
+      success: true,
+      data: {
+        items: itemsWithSales,
+        totals
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching sales report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sales report',
+      error: error.message
+    });
   }
 });
 
