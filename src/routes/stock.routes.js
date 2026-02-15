@@ -143,8 +143,7 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
 
     // Get all invoices containing line items matching this category name
     const invoices = await RouteStarInvoice.find({
-      status: { $in: ['Completed', 'Closed'] },
-      isComplete: true,
+      status: { $in: ['Completed', 'Closed', 'Pending'] },
       'lineItems.name': categoryName
     }).lean();
 
@@ -402,8 +401,7 @@ router.get('/sell', authenticate, async (req, res) => {
 
     // Get all invoices (for SALES data)
     const invoices = await RouteStarInvoice.find({
-      status: { $in: ['Completed', 'Closed'] },
-      isComplete: true
+      status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
     // Group by category and sum quantities
@@ -440,6 +438,9 @@ router.get('/sell', authenticate, async (req, res) => {
     });
 
     // Process sales from invoices - match by category name
+    // Track unique invoices per category
+    const categoryInvoices = {}; // Track unique invoices per category
+
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
@@ -462,9 +463,21 @@ router.get('/sell', authenticate, async (req, res) => {
 
             categoryMap[itemName].totalSold += item.quantity || 0;
             categoryMap[itemName].totalSalesValue += item.amount || 0;
-            categoryMap[itemName].invoiceCount += 1;
+
+            // Track unique invoices per category
+            if (!categoryInvoices[itemName]) {
+              categoryInvoices[itemName] = new Set();
+            }
+            categoryInvoices[itemName].add(invoice.invoiceNumber);
           }
         });
+      }
+    });
+
+    // Update invoice counts based on unique invoices
+    Object.keys(categoryInvoices).forEach(categoryName => {
+      if (categoryMap[categoryName]) {
+        categoryMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
@@ -555,10 +568,9 @@ router.get('/summary', authenticate, async (req, res) => {
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    // Get invoices data
+    // Get invoices data (include Pending, Closed, Completed)
     const invoices = await RouteStarInvoice.find({
-      status: { $in: ['Completed', 'Closed'] },
-      isComplete: true
+      status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
     // Process Use Stock
@@ -634,6 +646,9 @@ router.get('/summary', authenticate, async (req, res) => {
     });
 
     // Process sales from invoices - match by category name
+    // Track unique invoices per category
+    const categoryInvoices = {}; // Track unique invoices per category
+
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
@@ -656,9 +671,21 @@ router.get('/summary', authenticate, async (req, res) => {
 
             sellStockMap[itemName].totalSold += item.quantity || 0;
             sellStockMap[itemName].totalSalesValue += item.amount || 0;
-            sellStockMap[itemName].invoiceCount += 1;
+
+            // Track unique invoices per category
+            if (!categoryInvoices[itemName]) {
+              categoryInvoices[itemName] = new Set();
+            }
+            categoryInvoices[itemName].add(invoice.invoiceNumber);
           }
         });
+      }
+    });
+
+    // Update invoice counts based on unique invoices
+    Object.keys(categoryInvoices).forEach(categoryName => {
+      if (sellStockMap[categoryName]) {
+        sellStockMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
