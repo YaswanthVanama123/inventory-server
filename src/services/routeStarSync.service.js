@@ -252,9 +252,24 @@ class RouteStarSyncService {
     }
   }
 
-  
 
 
+  async checkPendingInvoicesInRouteStar() {
+    console.log('\n🔍 Checking pending invoices in RouteStar...');
+
+    try {
+      const invoices = await this.automation.fetchInvoicesList(10, 'new');
+      console.log(`✓ Found ${invoices.length} pending invoices in RouteStar`);
+
+      return {
+        count: invoices.length,
+        hasPendingInvoices: invoices.length > 0
+      };
+    } catch (error) {
+      console.error('❌ Error checking RouteStar pending invoices:', error);
+      throw error;
+    }
+  }
 
 
   async syncPendingInvoices(limit = Infinity, direction = 'new') {
@@ -540,20 +555,28 @@ class RouteStarSyncService {
 
 
 
-  async syncAllInvoiceDetails(limit = Infinity) {
+  async syncAllInvoiceDetails(limit = Infinity, invoiceType = null) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📥 Syncing missing invoice details${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
+    const typeText = invoiceType ? ` (${invoiceType})` : '';
+    console.log(`\n📥 Syncing missing invoice details${typeText}${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
 
     await this.createSyncLog();
 
     try {
-      
-      const query = RouteStarInvoice.find({
+
+      const queryFilter = {
         $or: [
           { lineItems: { $exists: false } },
           { lineItems: { $size: 0 } }
         ]
-      }).sort({ invoiceDate: -1 });
+      };
+
+
+      if (invoiceType) {
+        queryFilter.status = invoiceType;
+      }
+
+      const query = RouteStarInvoice.find(queryFilter).sort({ invoiceDate: -1 });
 
       
       const invoicesWithoutDetails = fetchAll ? await query : await query.limit(limit);

@@ -260,31 +260,63 @@ class RouteStarAutomation {
         timeout: 90000
       });
 
-      
+
       await this.baseNavigator.wait(2000);
 
-      
+
       await this.baseNavigator.dismissModals();
 
-      
+
+      // Try to click the "Line Items" tab to ensure it's active
+      this.logger.info('Attempting to click Line Items tab');
+      try {
+        const lineItemsTab = await this.page.$('a[href="#tab_line_items"]');
+        if (lineItemsTab) {
+          await lineItemsTab.click();
+          this.logger.info('Clicked Line Items tab');
+          await this.baseNavigator.wait(2000);
+        } else {
+          this.logger.warn('Line Items tab link not found');
+        }
+      } catch (error) {
+        this.logger.warn('Could not click Line Items tab', { error: error.message });
+      }
+
+
       try {
         await this.baseNavigator.waitForElement(selectors.invoiceDetail.itemsTable, {
           timeout: 30000
         });
+        this.logger.info('Items table found');
       } catch (error) {
         this.logger.warn('Items table selector timeout - checking for modal again', { error: error.message });
 
-        
+
         await this.baseNavigator.dismissModals();
 
-        
+
+        // Try clicking the tab again
+        try {
+          const lineItemsTab = await this.page.$('a[href="#tab_line_items"]');
+          if (lineItemsTab) {
+            await lineItemsTab.click();
+            await this.baseNavigator.wait(3000);
+          }
+        } catch (e) {
+          this.logger.warn('Could not retry clicking Line Items tab');
+        }
+
+
         const tableExists = await this.baseNavigator.exists(selectors.invoiceDetail.itemsTable);
         if (!tableExists) {
-          this.logger.warn('Items table still not found - will try to extract anyway');
+          this.logger.warn('Items table still not found - taking screenshot for debugging');
+          await this.takeScreenshot('items-table-not-found');
+        } else {
+          this.logger.info('Items table found after retry');
         }
       }
 
-      
+
       await this.baseNavigator.wait(3000);
 
       this.logger.info('Extracting invoice details');
@@ -330,24 +362,71 @@ class RouteStarAutomation {
     const masterTable = await this.page.$('div.ht_master');
 
     if (!masterTable) {
-      throw new ParsingError('Could not find invoice items table');
+      this.logger.error('Could not find invoice items table - table div not present');
+      await this.takeScreenshot('table-not-found');
+      return items; // Return empty array instead of throwing
     }
 
     const itemRows = await masterTable.$$('table.htCore tbody tr');
     this.logger.info('Found line item rows', { count: itemRows.length });
 
+    // Debug: Log the table structure
+    if (itemRows.length > 0) {
+      this.logger.info('Checking first row structure');
+
+      // Get all tbody elements to see if we have the right one
+      const allTbodies = await this.page.$$('div.ht_master table.htCore tbody');
+      this.logger.info('Total tbody elements found', { count: allTbodies.length });
+
+      // Check each tbody
+      for (let tbodyIdx = 0; tbodyIdx < allTbodies.length; tbodyIdx++) {
+        const tbody = allTbodies[tbodyIdx];
+        const rows = await tbody.$$('tr');
+        this.logger.info(`Tbody ${tbodyIdx} has ${rows.length} rows`);
+
+        // Log first row of each tbody
+        if (rows.length > 0) {
+          const firstRowText = await rows[0].textContent().catch(() => '[could not get text]');
+          this.logger.info(`Tbody ${tbodyIdx} first row text: ${firstRowText.substring(0, 200)}`);
+        }
+      }
+    }
+
     for (let i = 0; i < itemRows.length; i++) {
       const row = itemRows[i];
 
       try {
-        
+        // Debug: Log all cell contents for troubleshooting
+        const cellTexts = await row.$$eval('td', cells =>
+          cells.map((cell, idx) => ({
+            index: idx + 1,
+            text: cell.textContent.trim(),
+            innerHTML: cell.innerHTML.substring(0, 100) // First 100 chars
+          }))
+        ).catch(() => []);
+
+        this.logger.info('Row cell contents', {
+          rowIndex: i + 1,
+          cellCount: cellTexts.length,
+          firstCellText: cellTexts[0]?.text
+        });
+
+        if (i === 0) { // Log first row details for debugging
+          this.logger.debug('First row detailed cell contents', { cellTexts });
+        }
+
         const itemName = await row.$eval(
           selectors.invoiceDetail.itemName,
           el => el.textContent.replace('▼', '').trim()
         ).catch(() => null);
 
-        
+
         if (!itemName || itemName === 'Choose..' || itemName === '') {
+          this.logger.debug('Skipping row - no valid item name', {
+            rowIndex: i + 1,
+            itemName,
+            firstCellText: cellTexts[0]?.text
+          });
           continue;
         }
 

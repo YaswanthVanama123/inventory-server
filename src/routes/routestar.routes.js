@@ -304,8 +304,102 @@ router.post('/sync/all-details', authenticate, requireAdmin(), async (req, res) 
 });
 
 
+router.post('/sync/pending-details', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { limit = 0 } = req.body;
+
+    console.log('\n========================================');
+    console.log('Starting sync pending invoice details request');
+    console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
+    console.log('========================================\n');
+
+    console.log('Created sync service, initializing...');
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    console.log('Sync service initialized, starting sync...');
+    const results = await syncService.syncAllInvoiceDetails(limit, 'Pending');
+
+    console.log('\n========================================');
+    console.log('Pending invoice details sync completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Pending invoice details synced successfully',
+      data: results
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ PENDING INVOICE DETAILS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync pending invoice details',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
 
 
+router.post('/sync/closed-details', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { limit = 0 } = req.body;
+
+    console.log('\n========================================');
+    console.log('Starting sync closed invoice details request');
+    console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
+    console.log('========================================\n');
+
+    console.log('Created sync service, initializing...');
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    console.log('Sync service initialized, starting sync...');
+    const results = await syncService.syncAllInvoiceDetails(limit, 'Closed');
+
+    console.log('\n========================================');
+    console.log('Closed invoice details sync completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Closed invoice details synced successfully',
+      data: results
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ CLOSED INVOICE DETAILS SYNC ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync closed invoice details',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
 
 
 router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (req, res) => {
@@ -325,12 +419,12 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
 
     console.log('Sync service initialized, starting sync...');
 
-    
+
     const invoiceResults = await syncService.syncPendingInvoices(limit, direction);
     console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
 
-    
-    const detailsResults = await syncService.syncAllInvoiceDetails(0);
+
+    const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Pending');
     console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
 
     console.log('\n========================================');
@@ -388,12 +482,12 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
 
     console.log('Sync service initialized, starting sync...');
 
-    
+
     const invoiceResults = await syncService.syncClosedInvoices(limit, direction);
     console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
 
-    
-    const detailsResults = await syncService.syncAllInvoiceDetails(0);
+
+    const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Closed');
     console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
 
     console.log('\n========================================');
@@ -430,8 +524,48 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
 });
 
 
+router.get('/check-pending', authenticate, requireAdmin(), async (req, res) => {
+  let syncService = null;
 
+  try {
+    console.log('\n========================================');
+    console.log('Checking pending invoices in RouteStar');
+    console.log('========================================\n');
 
+    syncService = new RouteStarSyncService();
+    await syncService.init();
+
+    const result = await syncService.checkPendingInvoicesInRouteStar();
+
+    console.log('\n========================================');
+    console.log('Check completed successfully');
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Pending invoices check completed',
+      data: result
+    });
+  } catch (error) {
+    console.error('\n========================================');
+    console.error('❌ CHECK PENDING INVOICES ERROR:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check pending invoices',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      console.log('Closing sync service...');
+      await syncService.close();
+      console.log('Sync service closed\n');
+    }
+  }
+});
 
 
 router.post('/sync/stock', authenticate, requireAdmin(), async (req, res) => {
