@@ -195,54 +195,55 @@ const getAllInvoices = async (req, res, next) => {
       endDate,
       search,
       itemId,
-      source, 
+      source,
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
 
 
-    const query = { isDeleted: false };
+    // Query for regular invoices
+    const invoiceQuery = { isDeleted: false };
 
 
     if (itemId) {
-      query['items.inventory'] = itemId;
-      query.status = { $in: ['issued', 'paid'] };
+      invoiceQuery['items.inventory'] = itemId;
+      invoiceQuery.status = { $in: ['issued', 'paid'] };
     }
 
 
     if (status && !itemId) {
-      query.status = status;
+      invoiceQuery.status = status;
     }
 
 
     if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
+      invoiceQuery.paymentStatus = paymentStatus;
     }
 
 
     if (customer) {
-      query['customer.name'] = { $regex: customer, $options: 'i' };
+      invoiceQuery['customer.name'] = { $regex: customer, $options: 'i' };
     }
 
 
     if (startDate || endDate) {
-      query.invoiceDate = {};
+      invoiceQuery.invoiceDate = {};
       if (startDate) {
-        query.invoiceDate.$gte = new Date(startDate);
+        invoiceQuery.invoiceDate.$gte = new Date(startDate);
       }
       if (endDate) {
-        query.invoiceDate.$lte = new Date(endDate);
+        invoiceQuery.invoiceDate.$lte = new Date(endDate);
       }
     }
 
-    
+
     if (source && source !== 'all') {
-      query['syncMetadata.source'] = source;
+      invoiceQuery['syncMetadata.source'] = source;
     }
 
 
     if (search) {
-      query.$or = [
+      invoiceQuery.$or = [
         { invoiceNumber: { $regex: search, $options: 'i' } },
         { 'customer.name': { $regex: search, $options: 'i' } },
         { 'customer.email': { $regex: search, $options: 'i' } },
@@ -250,37 +251,119 @@ const getAllInvoices = async (req, res, next) => {
       ];
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const total = await Invoice.countDocuments(query);
+    // Query for RouteStar invoices (both pending and closed)
+    const routeStarQuery = {};
 
+    if (customer) {
+      routeStarQuery['customer.name'] = { $regex: customer, $options: 'i' };
+    }
 
-    const sort = {};
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    if (startDate || endDate) {
+      routeStarQuery.invoiceDate = {};
+      if (startDate) {
+        routeStarQuery.invoiceDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        routeStarQuery.invoiceDate.$lte = new Date(endDate);
+      }
+    }
 
-    const invoices = await Invoice.find(query)
-      .populate('createdBy', 'username fullName')
-      .populate('lastUpdatedBy', 'username fullName')
-      .populate('items.inventory', 'itemName skuCode category quantity pricing')
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
+    if (search) {
+      routeStarQuery.$or = [
+        { invoiceNumber: { $regex: search, $options: 'i' } },
+        { 'customer.name': { $regex: search, $options: 'i' } }
+      ];
+    }
 
-    
-    const invoicesWithSyncInfo = invoices.map(invoice => {
-      const invoiceObj = invoice.toObject();
-      invoiceObj.syncInfo = {
-        source: invoiceObj.syncMetadata?.source || 'manual',
-        isSynced: invoiceObj.syncMetadata?.isSynced || false,
-        sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
-        lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
-      };
-      return invoiceObj;
+    // Fetch both types of invoices in parallel
+    const [regularInvoices, routeStarInvoices] = await Promise.all([
+      Invoice.find(invoiceQuery)
+        .populate('createdBy', 'username fullName')
+        .populate('lastUpdatedBy', 'username fullName')
+        .populate('items.inventory', 'itemName skuCode category quantity pricing')
+        .lean(),
+      RouteStarInvoice.find(routeStarQuery).lean()
+    ]);
+
+    // Transform regular invoices
+    const transformedRegularInvoices = regularInvoices.map(invoice => ({
+      ...invoice,
+      invoiceType: 'manual',
+      totalAmount: invoice.totalAmount,
+      syncInfo: {
+        source: invoice.syncMetadata?.source || 'manual',
+        isSynced: invoice.syncMetadata?.isSynced || false,
+        sourceInvoiceId: invoice.syncMetadata?.sourceInvoiceId || null,
+        lastSyncedAt: invoice.syncMetadata?.lastSyncedAt || null
+      }
+    }));
+
+    // Transform RouteStar invoices to match Invoice format
+    const transformedRouteStarInvoices = routeStarInvoices.map(invoice => ({
+      _id: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceType: invoice.invoiceType || 'routestar',
+      invoiceDate: invoice.invoiceDate,
+      customer: {
+        name: invoice.customer?.name || 'Unknown',
+        email: null,
+        phone: null
+      },
+      items: invoice.lineItems?.map(item => ({
+        itemName: item.name,
+        skuCode: item.sku || 'N/A',
+        quantity: item.quantity || 0,
+        unit: 'pieces',
+        priceAtSale: item.rate || 0,
+        subtotal: item.amount || 0,
+        description: item.description
+      })) || [],
+      subtotalAmount: invoice.subtotal || 0,
+      taxAmount: invoice.tax || 0,
+      totalAmount: invoice.total || 0,
+      taxRate: 0,
+      discount: { type: 'percentage', value: 0, amount: 0 },
+      status: invoice.status?.toLowerCase() || 'pending',
+      paymentStatus: invoice.stockProcessed ? 'paid' : 'pending',
+      dueDate: invoice.invoiceDate,
+      notes: invoice.serviceNotes || '',
+      remarks: invoice.invoiceDetails?.invoiceMemo || '',
+      stockProcessed: invoice.stockProcessed,
+      isComplete: invoice.isComplete,
+      createdAt: invoice.createdAt,
+      updatedAt: invoice.updatedAt,
+      syncInfo: {
+        source: 'routestar',
+        isSynced: true,
+        sourceInvoiceId: invoice._id,
+        lastSyncedAt: invoice.lastSyncedAt
+      }
+    }));
+
+    // Combine all invoices
+    let allInvoices = [...transformedRegularInvoices, ...transformedRouteStarInvoices];
+
+    // Sort combined results
+    const sortField = sortBy === 'createdAt' ? 'createdAt' : sortBy;
+    allInvoices.sort((a, b) => {
+      const aValue = a[sortField] || a.invoiceDate || a.createdAt;
+      const bValue = b[sortField] || b.invoiceDate || b.createdAt;
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      }
+      return aValue < bValue ? 1 : -1;
     });
+
+    // Apply pagination on combined results
+    const total = allInvoices.length;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedInvoices = allInvoices.slice(skip, skip + parseInt(limit));
 
     res.status(200).json({
       success: true,
       data: {
-        invoices: invoicesWithSyncInfo,
+        invoices: paginatedInvoices,
         pagination: {
           total,
           page: parseInt(page),
