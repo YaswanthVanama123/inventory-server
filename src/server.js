@@ -105,6 +105,7 @@ const modelCategoryRoutes = require('./routes/modelCategory.routes');
 const routeStarItemsRoutes = require('./routes/routeStarItems.routes');
 const routeStarItemAliasRoutes = require('./routes/routestarItemAlias.routes');
 const stockRoutes = require('./routes/stock.routes');
+const fetchHistoryRoutes = require('./routes/fetchHistory');
 
 
 app.get('/health', (req, res) => {
@@ -139,6 +140,7 @@ app.use('/api/model-category', modelCategoryRoutes);
 app.use('/api/routestar-items', routeStarItemsRoutes);
 app.use('/api/routestar-item-alias', routeStarItemAliasRoutes);
 app.use('/api/stock', stockRoutes);
+app.use('/api/fetch-history', fetchHistoryRoutes);
 
 
 app.use(notFound);

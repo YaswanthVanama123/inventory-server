@@ -3,6 +3,7 @@ const router = express.Router();
 const RouteStarSyncService = require('../services/routeStarSync.service');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
+const FetchHistory = require('../models/FetchHistory');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
@@ -12,11 +13,18 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     let { limit = 0 } = req.body;
 
-    
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('routestar_items', 'items', {
+      limit: limit,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
+
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -35,6 +43,13 @@ router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
 
     const results = await syncService.syncItems(limit);
 
+    // Mark fetch as completed
+    await fetchRecord.markCompleted({
+      totalFetched: results.total || 0,
+      created: results.created || 0,
+      updated: results.updated || 0
+    });
+
     console.log(`\n========================================`);
     console.log(`Items sync completed successfully`);
     console.log(`========================================\n`);
@@ -42,7 +57,8 @@ router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
     res.json({
       success: true,
       message: `Items synced successfully (${limit === Infinity ? 'all' : limit} items requested)`,
-      data: results
+      data: results,
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('\n========================================');
@@ -51,10 +67,16 @@ router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
     console.error('Error stack:', error.stack);
     console.error('========================================\n');
 
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync items',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {
@@ -72,11 +94,19 @@ router.post('/sync/items', authenticate, requireAdmin(), async (req, res) => {
 
 router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
+
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -95,6 +125,13 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
 
     const results = await syncService.syncPendingInvoices(limit);
 
+    // Mark fetch as completed
+    await fetchRecord.markCompleted({
+      totalFetched: results.total || 0,
+      created: results.created || 0,
+      updated: results.updated || 0
+    });
+
     const limitText = limit === Infinity ? 'all available' : limit;
 
     console.log(`\n========================================`);
@@ -104,7 +141,8 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
     res.json({
       success: true,
       message: `Pending invoices synced successfully (${limitText} ${direction} invoices requested)`,
-      data: results
+      data: results,
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('\n========================================');
@@ -113,10 +151,16 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
     console.error('Error stack:', error.stack);
     console.error('========================================\n');
 
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync pending invoices',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {
@@ -178,11 +222,19 @@ router.get('/invoice-range', authenticate, requireAdmin(), async (req, res) => {
 
 router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
+
     if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
     } else {
@@ -194,19 +246,34 @@ router.post('/sync/closed', authenticate, requireAdmin(), async (req, res) => {
 
     const results = await syncService.syncClosedInvoices(limit);
 
+    // Mark fetch as completed
+    await fetchRecord.markCompleted({
+      totalFetched: results.total || 0,
+      created: results.created || 0,
+      updated: results.updated || 0
+    });
+
     const limitText = limit === Infinity ? 'all available' : limit;
 
     res.json({
       success: true,
       message: `Closed invoices synced successfully (${limitText} ${direction} invoices requested)`,
-      data: results
+      data: results,
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('Closed invoices sync error:', error);
+
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync closed invoices',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {

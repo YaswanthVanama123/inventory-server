@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const CustomerConnectSyncService = require('../services/customerConnectSync.service');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const FetchHistory = require('../models/FetchHistory');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
@@ -11,13 +12,21 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     let { limit = 0, direction = 'new' } = req.body;
 
-    
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('customer_connect', 'all', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
+
     if (limit === 0 || limit === null || limit === 'auto') {
-      
+
       const highestOrder = await CustomerConnectOrder.findOne()
         .sort({ orderNumber: -1 })
         .select('orderNumber')
@@ -30,7 +39,7 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
         console.log(`📊 No orders in database. Starting fresh sync...`);
       }
 
-      
+
       limit = Infinity;
     } else if (limit === 'Infinity' || limit === Infinity) {
       limit = Infinity;
@@ -43,19 +52,35 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
 
     const results = await syncService.syncOrders(limit);
 
+    // Mark fetch as completed
+    await fetchRecord.markCompleted({
+      totalFetched: results.total || 0,
+      created: results.created || 0,
+      updated: results.updated || 0,
+      failed: results.errors?.length || 0
+    });
+
     const limitText = limit === Infinity ? 'all available' : limit;
 
     res.json({
       success: true,
       message: `Orders synced successfully (${limitText} ${direction} orders requested)`,
-      data: results
+      data: results,
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('Orders sync error:', error);
+
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync orders',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {
