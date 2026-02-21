@@ -41,6 +41,7 @@ const fetchHistorySchema = new mongoose.Schema({
     totalFetched: { type: Number, default: 0 },
     created: { type: Number, default: 0 },
     updated: { type: Number, default: 0 },
+    deleted: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
     skipped: { type: Number, default: 0 }
   },

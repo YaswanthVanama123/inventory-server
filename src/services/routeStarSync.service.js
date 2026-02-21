@@ -361,6 +361,44 @@ class RouteStarSyncService {
         }
       }
 
+      // Delete pending invoices that are no longer in RouteStar (only when fetching ALL)
+      let deleted = 0;
+      if (fetchAll) {
+        console.log(`\n🗑️  Checking for pending invoices to delete...`);
+
+        // Get all invoice numbers that were fetched
+        const fetchedInvoiceNumbers = invoices.map(inv => inv.invoiceNumber);
+
+        // Find all pending invoices in our DB that were NOT in the fetched list
+        const invoicesToDelete = await RouteStarInvoice.find({
+          invoiceType: 'pending',
+          invoiceNumber: { $nin: fetchedInvoiceNumbers }
+        }).lean();
+
+        if (invoicesToDelete.length > 0) {
+          console.log(`  Found ${invoicesToDelete.length} pending invoices no longer in RouteStar - deleting...`);
+
+          // Delete them
+          const deleteResult = await RouteStarInvoice.deleteMany({
+            invoiceType: 'pending',
+            invoiceNumber: { $nin: fetchedInvoiceNumbers }
+          });
+
+          deleted = deleteResult.deletedCount;
+
+          // Log each deleted invoice
+          invoicesToDelete.forEach(inv => {
+            console.log(`  ✗ Deleted: ${inv.invoiceNumber} (no longer pending)`);
+          });
+
+          console.log(`  ✓ Deleted ${deleted} pending invoices that are no longer active`);
+        } else {
+          console.log(`  ℹ️  No pending invoices need to be deleted`);
+        }
+      } else {
+        console.log(`  ℹ️  Skipping deletion check (not fetching all pending invoices)`);
+      }
+
       await this.updateSyncLog({
         total: invoices.length,
         created,
@@ -372,10 +410,11 @@ class RouteStarSyncService {
       console.log(`\n✓ Pending invoices sync completed:`);
       console.log(`  - Created: ${created}`);
       console.log(`  - Updated: ${updated}`);
+      console.log(`  - Deleted: ${deleted}`);
       console.log(`  - Skipped: ${skipped}`);
       console.log(`  - Total processed: ${invoices.length}`);
 
-      return { created, updated, skipped, total: invoices.length, errors };
+      return { created, updated, deleted, skipped, total: invoices.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message

@@ -129,7 +129,8 @@ router.post('/sync/pending', authenticate, requireAdmin(), async (req, res) => {
     await fetchRecord.markCompleted({
       totalFetched: results.total || 0,
       created: results.created || 0,
-      updated: results.updated || 0
+      updated: results.updated || 0,
+      deleted: results.deleted || 0
     });
 
     const limitText = limit === Infinity ? 'all available' : limit;
