@@ -189,7 +189,8 @@ const adminLogin = async (req, res, next) => {
           username: user.username,
           email: user.email,
           fullName: user.fullName,
-          role: user.role
+          role: user.role,
+          truckNumber: user.truckNumber
         }
       },
       message: 'Admin login successful'
@@ -285,7 +286,8 @@ const login = async (req, res, next) => {
           username: user.username,
           email: user.email,
           fullName: user.fullName,
-          role: user.role
+          role: user.role,
+          truckNumber: user.truckNumber
         }
       },
       message: 'Login successful'

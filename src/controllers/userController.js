@@ -81,7 +81,7 @@ const getUser = async (req, res, next) => {
 
 const createUser = async (req, res, next) => {
   try {
-    const { username, email, password, fullName, role } = req.body;
+    const { username, email, password, fullName, role, truckNumber } = req.body;
 
     
     const existingUser = await User.findOne({
@@ -98,14 +98,21 @@ const createUser = async (req, res, next) => {
       });
     }
 
-    const user = await User.create({
+    const userData = {
       username,
       email,
       password,
       fullName,
       role: role || 'employee',
       createdBy: req.user.id
-    });
+    };
+
+    // Add truckNumber if provided
+    if (truckNumber) {
+      userData.truckNumber = truckNumber;
+    }
+
+    const user = await User.create(userData);
 
     
     await AuditLog.create({
@@ -113,7 +120,7 @@ const createUser = async (req, res, next) => {
       resource: 'USER',
       resourceId: user._id,
       performedBy: req.user.id,
-      details: { username, role: user.role },
+      details: { username, role: user.role, truckNumber },
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
@@ -126,7 +133,8 @@ const createUser = async (req, res, next) => {
           username: user.username,
           email: user.email,
           fullName: user.fullName,
-          role: user.role
+          role: user.role,
+          truckNumber: user.truckNumber
         }
       },
       message: 'User created successfully'
@@ -142,7 +150,7 @@ const createUser = async (req, res, next) => {
 
 const updateUser = async (req, res, next) => {
   try {
-    const { email, fullName, role, isActive } = req.body;
+    const { email, fullName, role, isActive, truckNumber } = req.body;
 
     const user = await User.findOne({ _id: req.params.id, isDeleted: false });
 
@@ -156,11 +164,12 @@ const updateUser = async (req, res, next) => {
       });
     }
 
-    
+
     if (email) user.email = email;
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
     if (typeof isActive === 'boolean') user.isActive = isActive;
+    if (truckNumber !== undefined) user.truckNumber = truckNumber || null;
     user.lastUpdatedBy = req.user.id;
 
     await user.save();
@@ -171,7 +180,7 @@ const updateUser = async (req, res, next) => {
       resource: 'USER',
       resourceId: user._id,
       performedBy: req.user.id,
-      details: { email, fullName, role, isActive },
+      details: { email, fullName, role, isActive, truckNumber },
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
@@ -185,7 +194,8 @@ const updateUser = async (req, res, next) => {
           email: user.email,
           fullName: user.fullName,
           role: user.role,
-          isActive: user.isActive
+          isActive: user.isActive,
+          truckNumber: user.truckNumber
         }
       },
       message: 'User updated successfully'
@@ -293,11 +303,65 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+// Update own truck number (for employees)
+const updateOwnTruckNumber = async (req, res, next) => {
+  try {
+    const { truckNumber } = req.body;
+
+    const user = await User.findOne({ _id: req.user.id, isDeleted: false });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'User not found',
+          code: 'USER_NOT_FOUND'
+        }
+      });
+    }
+
+    // Update truck number
+    user.truckNumber = truckNumber || null;
+    await user.save();
+
+    // Log action
+    await AuditLog.create({
+      action: 'UPDATE',
+      resource: 'USER',
+      resourceId: user._id,
+      performedBy: req.user.id,
+      details: { field: 'truckNumber', truckNumber },
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          truckNumber: user.truckNumber
+        }
+      },
+      message: 'Truck number updated successfully'
+    });
+  } catch (error) {
+    console.error('Update truck number error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getUsers,
   getUser,
   createUser,
   updateUser,
   deleteUser,
-  resetPassword
+  resetPassword,
+  updateOwnTruckNumber
 };

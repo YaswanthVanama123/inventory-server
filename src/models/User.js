@@ -37,6 +37,13 @@ const userSchema = new mongoose.Schema({
     },
     default: 'employee'
   },
+  truckNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    index: true,
+    sparse: true  // Allow multiple users without truck numbers, but unique if set
+  },
   isActive: {
     type: Boolean,
     default: true
