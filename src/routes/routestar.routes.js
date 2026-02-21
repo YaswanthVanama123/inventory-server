@@ -909,7 +909,7 @@ router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, 
 
 
 
-router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
+router.get('/items/grouped', authenticate, async (req, res) => {
   try {
     console.log('[getGroupedRouteStarItems] Starting aggregation...');
 

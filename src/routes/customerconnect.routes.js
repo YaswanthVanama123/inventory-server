@@ -424,7 +424,7 @@ router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
 
 
 
-router.get('/items/grouped', authenticate, requireAdmin(), async (req, res) => {
+router.get('/items/grouped', authenticate, async (req, res) => {
   try {
     
     const groupedItems = await CustomerConnectOrder.aggregate([
