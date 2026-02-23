@@ -107,6 +107,7 @@ const routeStarItemAliasRoutes = require('./routes/routestarItemAlias.routes');
 const stockRoutes = require('./routes/stock.routes');
 const fetchHistoryRoutes = require('./routes/fetchHistory');
 const employeeDataRoutes = require('./routes/employeeData.routes');
+const truckCheckoutRoutes = require('./routes/truckCheckout.routes');
 
 
 app.get('/health', (req, res) => {
@@ -143,6 +144,7 @@ app.use('/api/routestar-item-alias', routeStarItemAliasRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/fetch-history', fetchHistoryRoutes);
 app.use('/api/employee-data', employeeDataRoutes);
+app.use('/api/truck-checkouts', truckCheckoutRoutes);
 
 
 app.use(notFound);

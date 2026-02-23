@@ -4,6 +4,7 @@ const AuditLog = require('../models/AuditLog');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const StockSummary = require('../models/StockSummary');
+const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../utils/imgbbUpload');
 
 
@@ -1801,6 +1802,63 @@ const getSyncInfo = async (req, res, next) => {
   }
 };
 
+/**
+ * Get inventory items with RouteStar alias mappings for truck checkout
+ * Returns items grouped by canonical name with all their aliases
+ */
+const getInventoryItemsForTruckCheckout = async (req, res, next) => {
+  try {
+    // Get all active inventory items
+    const inventoryItems = await Inventory.find({ isActive: true, isDeleted: false })
+      .sort({ itemName: 1 })
+      .lean();
+
+    // Get all RouteStar alias mappings
+    const aliasMappings = await RouteStarItemAlias.find({ isActive: true }).lean();
+
+    // Create a lookup map: itemName -> canonical name
+    const aliasLookupMap = {};
+    const canonicalToAliasesMap = {};
+
+    aliasMappings.forEach(mapping => {
+      // Map the canonical name to itself
+      aliasLookupMap[mapping.canonicalName.toLowerCase()] = mapping.canonicalName;
+      canonicalToAliasesMap[mapping.canonicalName] = mapping.aliases.map(a => a.name);
+
+      // Map all aliases to the canonical name
+      mapping.aliases.forEach(alias => {
+        aliasLookupMap[alias.name.toLowerCase()] = mapping.canonicalName;
+      });
+    });
+
+    // Transform inventory items with alias information
+    const itemsWithAliases = inventoryItems.map(item => {
+      const itemNameLower = item.itemName.toLowerCase();
+      const canonicalName = aliasLookupMap[itemNameLower];
+      const aliases = canonicalName ? canonicalToAliasesMap[canonicalName] || [] : [];
+
+      return {
+        ...transformItem(item),
+        canonicalName: canonicalName || item.itemName,
+        routeStarAliases: aliases,
+        hasAliases: aliases.length > 0,
+        categoryName: item.category
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: itemsWithAliases,
+        total: itemsWithAliases.length
+      }
+    });
+  } catch (error) {
+    console.error('Get inventory items for truck checkout error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getInventoryItems,
   getInventoryItem,
@@ -1811,6 +1869,7 @@ module.exports = {
   getStockHistory,
   getLowStockItems,
   getInventoryItemsForPOS,
+  getInventoryItemsForTruckCheckout,
   getCategories,
   uploadImages,
   deleteImage,

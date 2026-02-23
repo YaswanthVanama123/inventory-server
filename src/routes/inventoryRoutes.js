@@ -10,6 +10,7 @@ const {
   getStockHistory,
   getLowStockItems,
   getInventoryItemsForPOS,
+  getInventoryItemsForTruckCheckout,
   getCategories,
   uploadImages,
   deleteImage,
@@ -29,6 +30,7 @@ router.use(authenticate);
 
 
 router.get('/pos', requireEmployee(), getInventoryItemsForPOS);
+router.get('/truck-checkout', requireEmployee(), getInventoryItemsForTruckCheckout);
 
 
 router.get('/', requireEmployee(), getInventoryItems);
