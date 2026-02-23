@@ -3,6 +3,7 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
 const StockMovement = require('../models/StockMovement');
 const SyncLog = require('../models/SyncLog');
+const routestarConfig = require('../automation/config/routestar.config');
 
 
 
@@ -298,6 +299,7 @@ class RouteStarSyncService {
       let created = 0;
       let updated = 0;
       let skipped = 0;
+      let detailsFetched = 0;
       const errors = [];
 
 
@@ -340,7 +342,7 @@ class RouteStarSyncService {
             }
           );
 
-          
+
           const wasCreated = !result.createdAt ||
                             (new Date() - result.createdAt < 1000);
 
@@ -350,6 +352,23 @@ class RouteStarSyncService {
           } else {
             updated++;
             console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
+          }
+
+          // Check if invoice needs details and fetch them immediately
+          const needsDetails = !result.lineItems || result.lineItems.length === 0;
+          if (needsDetails) {
+            try {
+              console.log(`    → Fetching details for ${invoice.invoiceNumber}...`);
+              await this.syncInvoiceDetails(invoice.invoiceNumber);
+              detailsFetched++;
+              console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
+
+              // Rate limiting to avoid overwhelming the server
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (detailError) {
+              console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
+              // Don't fail the whole sync, just log the error
+            }
           }
         } catch (error) {
           errors.push({
@@ -411,10 +430,11 @@ class RouteStarSyncService {
       console.log(`  - Created: ${created}`);
       console.log(`  - Updated: ${updated}`);
       console.log(`  - Deleted: ${deleted}`);
+      console.log(`  - Details Fetched: ${detailsFetched}`);
       console.log(`  - Skipped: ${skipped}`);
       console.log(`  - Total processed: ${invoices.length}`);
 
-      return { created, updated, deleted, skipped, total: invoices.length, errors };
+      return { created, updated, deleted, detailsFetched, skipped, total: invoices.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message
@@ -454,6 +474,7 @@ class RouteStarSyncService {
       let created = 0;
       let updated = 0;
       let skipped = 0;
+      let detailsFetched = 0;
       const errors = [];
 
 
@@ -485,7 +506,7 @@ class RouteStarSyncService {
             rawData: invoice
           };
 
-          
+
           const result = await RouteStarInvoice.findOneAndUpdate(
             { invoiceNumber: invoice.invoiceNumber },
             invoiceData,
@@ -497,7 +518,7 @@ class RouteStarSyncService {
             }
           );
 
-          
+
           const wasCreated = !result.createdAt ||
                             (new Date() - result.createdAt < 1000);
 
@@ -507,6 +528,23 @@ class RouteStarSyncService {
           } else {
             updated++;
             console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
+          }
+
+          // Check if invoice needs details and fetch them immediately
+          const needsDetails = !result.lineItems || result.lineItems.length === 0;
+          if (needsDetails) {
+            try {
+              console.log(`    → Fetching details for ${invoice.invoiceNumber}...`);
+              await this.syncInvoiceDetails(invoice.invoiceNumber);
+              detailsFetched++;
+              console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
+
+              // Rate limiting to avoid overwhelming the server
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (detailError) {
+              console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
+              // Don't fail the whole sync, just log the error
+            }
           }
         } catch (error) {
           errors.push({
@@ -529,10 +567,11 @@ class RouteStarSyncService {
       console.log(`\n✓ Closed invoices sync completed:`);
       console.log(`  - Created: ${created}`);
       console.log(`  - Updated: ${updated}`);
+      console.log(`  - Details Fetched: ${detailsFetched}`);
       console.log(`  - Skipped: ${skipped}`);
       console.log(`  - Total processed: ${invoices.length}`);
 
-      return { created, updated, skipped, total: invoices.length, errors };
+      return { created, updated, skipped, detailsFetched, total: invoices.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message
@@ -546,14 +585,23 @@ class RouteStarSyncService {
 
   async syncInvoiceDetails(invoiceNumber) {
     try {
-      
+
       const invoice = await RouteStarInvoice.findByInvoiceNumber(invoiceNumber);
       if (!invoice) {
         throw new Error(`Invoice ${invoiceNumber} not found in database`);
       }
 
-      
-      const details = await this.automation.fetchInvoiceDetails(invoice.detailUrl);
+      // If invoice doesn't have detailUrl, construct it from invoice number
+      let detailUrl = invoice.detailUrl;
+      if (!detailUrl) {
+        // Construct the detail URL using the RouteStar URL pattern
+        const baseUrl = routestarConfig.baseUrl;
+        detailUrl = `${baseUrl}/web/invoicedetails/${invoiceNumber}`;
+        console.log(`  ⚠️  No detailUrl in database, using constructed URL: ${detailUrl}`);
+      }
+
+
+      const details = await this.automation.fetchInvoiceDetails(detailUrl);
 
       
       invoice.lineItems = details.items.map(item => ({
@@ -594,49 +642,53 @@ class RouteStarSyncService {
 
 
 
-  async syncAllInvoiceDetails(limit = Infinity, invoiceType = null) {
+  async syncAllInvoiceDetails(limit = Infinity, invoiceType = null, forceAll = false) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     const typeText = invoiceType ? ` (${invoiceType})` : '';
-    console.log(`\n📥 Syncing missing invoice details${typeText}${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
+    const forceText = forceAll ? ' (FORCE ALL)' : ' (MISSING ONLY)';
+    console.log(`\n📥 Syncing invoice details${typeText}${forceText}${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
 
     await this.createSyncLog();
 
     try {
 
-      const queryFilter = {
-        $or: [
-          { lineItems: { $exists: false } },
-          { lineItems: { $size: 0 } }
-        ]
-      };
+      let queryFilter = {};
 
+      // If not forcing all, only get invoices without details
+      if (!forceAll) {
+        queryFilter = {
+          $or: [
+            { lineItems: { $exists: false } },
+            { lineItems: { $size: 0 } }
+          ]
+        };
+      }
 
+      // Filter by invoice type
       if (invoiceType) {
         queryFilter.status = invoiceType;
       }
 
       const query = RouteStarInvoice.find(queryFilter).sort({ invoiceDate: -1 });
 
-      
-      const invoicesWithoutDetails = fetchAll ? await query : await query.limit(limit);
 
-      console.log(`   Found: ${invoicesWithoutDetails.length} invoices needing details`);
+      const invoicesToSync = fetchAll ? await query : await query.limit(limit);
+
+      console.log(`   Found: ${invoicesToSync.length} invoices to sync details`);
 
       let synced = 0;
       let skipped = 0;
       const errors = [];
 
-      for (const invoice of invoicesWithoutDetails) {
+      for (const invoice of invoicesToSync) {
         try {
-          if (!invoice.detailUrl) {
-            skipped++;
-            continue;
-          }
+          // Note: We no longer skip invoices without detailUrl
+          // The syncInvoiceDetails method will construct the URL if needed
 
           await this.syncInvoiceDetails(invoice.invoiceNumber);
           synced++;
 
-          
+          // Rate limiting
           await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
           errors.push({
@@ -648,7 +700,7 @@ class RouteStarSyncService {
       }
 
       await this.updateSyncLog({
-        total: invoicesWithoutDetails.length,
+        total: invoicesToSync.length,
         created: synced,
         skipped,
         success: true
@@ -656,7 +708,7 @@ class RouteStarSyncService {
 
       console.log(`   ✓ Details Synced: ${synced}${skipped > 0 ? `, ${skipped} skipped` : ''}\n`);
 
-      return { synced, skipped, total: invoicesWithoutDetails.length, errors };
+      return { synced, skipped, total: invoicesToSync.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message

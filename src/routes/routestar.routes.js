@@ -472,13 +472,22 @@ router.post('/sync/closed-details', authenticate, requireAdmin(), async (req, re
 
 router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     const { limit = 0, direction = 'new' } = req.body;
 
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending_with_details', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
     console.log('\n========================================');
     console.log('Starting pending invoices + details sync');
     console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}, Direction: ${direction}`);
+    console.log(`Fetch ID: ${fetchRecord._id}`);
     console.log('========================================\n');
 
     console.log('Created sync service, initializing...');
@@ -489,11 +498,21 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
 
 
     const invoiceResults = await syncService.syncPendingInvoices(limit, direction);
-    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
+    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
 
 
+    // Sync details only for invoices that don't have line items yet (catch any that weren't fetched inline)
     const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Pending');
-    console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
+    console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
+
+    // Mark fetch as completed - combine inline and batch detail counts
+    const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
+    await fetchRecord.markCompleted({
+      totalFetched: invoiceResults.total || 0,
+      created: invoiceResults.created || 0,
+      updated: invoiceResults.updated || 0,
+      detailsSynced: totalDetailsSynced
+    });
 
     console.log('\n========================================');
     console.log('Pending invoices + details sync completed successfully');
@@ -505,7 +524,8 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
       data: {
         invoices: invoiceResults,
         details: detailsResults
-      }
+      },
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('\n========================================');
@@ -514,10 +534,16 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
     console.error('Error stack:', error.stack);
     console.error('========================================\n');
 
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync pending invoices and details',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {
@@ -535,13 +561,22 @@ router.post('/sync/pending-with-details', authenticate, requireAdmin(), async (r
 
 router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (req, res) => {
   let syncService = null;
+  let fetchRecord = null;
 
   try {
     const { limit = 0, direction = 'new' } = req.body;
 
+    // Create fetch history record
+    fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed_with_details', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: req.body.triggeredBy || 'manual'
+    });
+
     console.log('\n========================================');
     console.log('Starting closed invoices + details sync');
     console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}, Direction: ${direction}`);
+    console.log(`Fetch ID: ${fetchRecord._id}`);
     console.log('========================================\n');
 
     console.log('Created sync service, initializing...');
@@ -552,11 +587,21 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
 
 
     const invoiceResults = await syncService.syncClosedInvoices(limit, direction);
-    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated`);
+    console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
 
 
-    const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Closed');
-    console.log(`\nStep 2 complete: ${detailsResults.synced} details synced`);
+    // Sync details only for invoices that don't have line items yet (catch any that weren't fetched inline)
+    const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Closed', false);
+    console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
+
+    // Mark fetch as completed - combine inline and batch detail counts
+    const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
+    await fetchRecord.markCompleted({
+      totalFetched: invoiceResults.total || 0,
+      created: invoiceResults.created || 0,
+      updated: invoiceResults.updated || 0,
+      detailsSynced: totalDetailsSynced
+    });
 
     console.log('\n========================================');
     console.log('Closed invoices + details sync completed successfully');
@@ -568,7 +613,8 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
       data: {
         invoices: invoiceResults,
         details: detailsResults
-      }
+      },
+      fetchId: fetchRecord._id
     });
   } catch (error) {
     console.error('\n========================================');
@@ -577,10 +623,16 @@ router.post('/sync/closed-with-details', authenticate, requireAdmin(), async (re
     console.error('Error stack:', error.stack);
     console.error('========================================\n');
 
+    // Mark fetch as failed
+    if (fetchRecord) {
+      await fetchRecord.markFailed(error.message, { stack: error.stack });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync closed invoices and details',
-      error: error.message
+      error: error.message,
+      fetchId: fetchRecord?._id
     });
   } finally {
     if (syncService) {

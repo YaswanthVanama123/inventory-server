@@ -11,7 +11,7 @@ const fetchHistorySchema = new mongoose.Schema({
   fetchType: {
     type: String,
     required: true,
-    enum: ['pending', 'closed', 'all', 'items'],
+    enum: ['pending', 'closed', 'all', 'items', 'pending_with_details', 'closed_with_details'],
   },
 
   status: {
@@ -43,7 +43,8 @@ const fetchHistorySchema = new mongoose.Schema({
     updated: { type: Number, default: 0 },
     deleted: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
-    skipped: { type: Number, default: 0 }
+    skipped: { type: Number, default: 0 },
+    detailsSynced: { type: Number, default: 0 }
   },
 
   errorMessage: {

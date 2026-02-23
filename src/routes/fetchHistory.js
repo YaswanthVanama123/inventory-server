@@ -4,16 +4,16 @@ const fetchHistoryController = require('../controllers/fetchHistoryController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 // Get all fetch history
-router.get('/', authenticate, requireAdmin(), fetchHistoryController.getFetchHistory);
+router.get('/', authenticate, fetchHistoryController.getFetchHistory);
 
 // Get active/in-progress fetches
-router.get('/active', authenticate, requireAdmin(), fetchHistoryController.getActiveFetches);
+router.get('/active', authenticate, fetchHistoryController.getActiveFetches);
 
 // Get statistics
-router.get('/statistics', authenticate, requireAdmin(), fetchHistoryController.getStatistics);
+router.get('/statistics', authenticate, fetchHistoryController.getStatistics);
 
 // Get single fetch details
-router.get('/:id', authenticate, requireAdmin(), fetchHistoryController.getFetchDetails);
+router.get('/:id', authenticate, fetchHistoryController.getFetchDetails);
 
 // Cancel an in-progress fetch
 router.post('/:id/cancel', authenticate, requireAdmin(), fetchHistoryController.cancelFetch);
