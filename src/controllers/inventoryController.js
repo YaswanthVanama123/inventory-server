@@ -5,6 +5,7 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+const RouteStarItem = require('../models/RouteStarItem');
 const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../utils/imgbbUpload');
 
 
@@ -1803,58 +1804,123 @@ const getSyncInfo = async (req, res, next) => {
 };
 
 /**
- * Get inventory items with RouteStar alias mappings for truck checkout
+ * Get RouteStar items with alias mappings for truck checkout
  * Returns items grouped by canonical name with all their aliases
  */
 const getInventoryItemsForTruckCheckout = async (req, res, next) => {
   try {
-    // Get all active inventory items
-    const inventoryItems = await Inventory.find({ isActive: true, isDeleted: false })
+    // Get all RouteStar items
+    const routeStarItems = await RouteStarItem.find()
       .sort({ itemName: 1 })
       .lean();
 
     // Get all RouteStar alias mappings
     const aliasMappings = await RouteStarItemAlias.find({ isActive: true }).lean();
 
-    // Create a lookup map: itemName -> canonical name
-    const aliasLookupMap = {};
-    const canonicalToAliasesMap = {};
+    // Create lookup maps
+    const aliasToCanonicalMap = {}; // maps any name to canonical name
+    const canonicalToAliasesMap = {}; // maps canonical name to all its aliases
 
     aliasMappings.forEach(mapping => {
-      // Map the canonical name to itself
-      aliasLookupMap[mapping.canonicalName.toLowerCase()] = mapping.canonicalName;
-      canonicalToAliasesMap[mapping.canonicalName] = mapping.aliases.map(a => a.name);
+      const canonical = mapping.canonicalName;
 
-      // Map all aliases to the canonical name
+      // Store the canonical name's aliases
+      canonicalToAliasesMap[canonical] = mapping.aliases.map(a => a.name);
+
+      // Map canonical name to itself
+      aliasToCanonicalMap[canonical.toLowerCase()] = canonical;
+
+      // Map each alias to the canonical name
       mapping.aliases.forEach(alias => {
-        aliasLookupMap[alias.name.toLowerCase()] = mapping.canonicalName;
+        aliasToCanonicalMap[alias.name.toLowerCase()] = canonical;
       });
     });
 
-    // Transform inventory items with alias information
-    const itemsWithAliases = inventoryItems.map(item => {
-      const itemNameLower = item.itemName.toLowerCase();
-      const canonicalName = aliasLookupMap[itemNameLower];
-      const aliases = canonicalName ? canonicalToAliasesMap[canonicalName] || [] : [];
+    // Group RouteStar items by their canonical name
+    const groupedItems = {};
 
+    routeStarItems.forEach(item => {
+      const itemNameLower = item.itemName.toLowerCase();
+      const canonicalName = aliasToCanonicalMap[itemNameLower] || item.itemName;
+
+      if (!groupedItems[canonicalName]) {
+        groupedItems[canonicalName] = {
+          canonicalName: canonicalName,
+          originalNames: [],
+          aliases: canonicalToAliasesMap[canonicalName] || [],
+          hasAliases: (canonicalToAliasesMap[canonicalName] || []).length > 0,
+          totalQuantity: 0,
+          itemParent: item.itemParent,
+          description: item.description,
+          salesPrice: item.salesPrice,
+          purchaseCost: item.purchaseCost,
+          category: item.category,
+          department: item.department,
+          uom: item.uom || 'pieces',
+          items: []
+        };
+      }
+
+      // Add this item to the group
+      groupedItems[canonicalName].originalNames.push(item.itemName);
+      groupedItems[canonicalName].totalQuantity += item.qtyOnHand || 0;
+      groupedItems[canonicalName].items.push(item);
+
+      // Use the first item's metadata if not set
+      if (!groupedItems[canonicalName].salesPrice) {
+        groupedItems[canonicalName].salesPrice = item.salesPrice;
+      }
+      if (!groupedItems[canonicalName].category) {
+        groupedItems[canonicalName].category = item.category;
+      }
+    });
+
+    // Transform to array and format for frontend
+    const itemsArray = Object.values(groupedItems).map((group, index) => {
       return {
-        ...transformItem(item),
-        canonicalName: canonicalName || item.itemName,
-        routeStarAliases: aliases,
-        hasAliases: aliases.length > 0,
-        categoryName: item.category
+        _id: `rs_${group.canonicalName.replace(/\s+/g, '_')}_${index}`,
+        itemName: group.canonicalName,
+        name: group.canonicalName,
+        canonicalName: group.canonicalName,
+        routeStarAliases: group.aliases,
+        hasAliases: group.hasAliases,
+        skuCode: `RS-${group.canonicalName.substring(0, 10).toUpperCase().replace(/\s+/g, '')}`,
+        description: group.description || `RouteStar Item${group.hasAliases ? ` (${group.aliases.length} aliases)` : ''}`,
+        category: group.category || 'RouteStar',
+        categoryName: group.category || 'RouteStar',
+        tags: [],
+        quantity: group.totalQuantity,
+        currentStock: group.totalQuantity,
+        currentQuantity: group.totalQuantity,
+        unit: group.uom || 'pieces',
+        price: group.salesPrice || 0,
+        sellingPrice: group.salesPrice || 0,
+        purchasePrice: group.purchaseCost || 0,
+        images: [],
+        primaryImageIndex: 0,
+        isActive: true,
+        isLowStock: group.totalQuantity < 10,
+        itemParent: group.itemParent,
+        department: group.department,
+        originalNames: group.originalNames,
+        itemCount: group.items.length
       };
     });
 
     res.status(200).json({
       success: true,
       data: {
-        items: itemsWithAliases,
-        total: itemsWithAliases.length
+        items: itemsArray,
+        total: itemsArray.length,
+        stats: {
+          totalItems: itemsArray.length,
+          mappedItems: itemsArray.filter(i => i.hasAliases).length,
+          uniqueItems: itemsArray.filter(i => !i.hasAliases).length
+        }
       }
     });
   } catch (error) {
-    console.error('Get inventory items for truck checkout error:', error);
+    console.error('Get RouteStar items for truck checkout error:', error);
     next(error);
   }
 };
