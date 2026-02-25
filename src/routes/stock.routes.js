@@ -21,7 +21,7 @@ async function getMergedRouteStarItems(filter = {}) {
   const groupedByCanonical = {};
 
   items.forEach(item => {
-    const canonicalName = aliasMap[item.itemName] || item.itemName;
+    const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
 
     if (!groupedByCanonical[canonicalName]) {
       groupedByCanonical[canonicalName] = {
@@ -45,7 +45,7 @@ async function getMergedRouteStarItems(filter = {}) {
 
 // Helper function to convert raw itemName to canonical name
 function getCanonicalName(itemName, aliasMap) {
-  return aliasMap[itemName] || itemName;
+  return aliasMap[itemName.toLowerCase()] || itemName;
 }
 
 

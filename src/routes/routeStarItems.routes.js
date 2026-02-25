@@ -21,13 +21,13 @@ router.get('/stats', authenticate, async (req, res) => {
     const groupedByCanonical = {};
 
     allItems.forEach(item => {
-      const canonicalName = aliasMap[item.itemName] || item.itemName;
+      const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
 
       if (!groupedByCanonical[canonicalName]) {
         groupedByCanonical[canonicalName] = {
           forUse: false,
           forSell: false,
-          isMapped: !!aliasMap[item.itemName]
+          isMapped: !!aliasMap[item.itemName.toLowerCase()]
         };
       }
 
@@ -123,7 +123,7 @@ router.get('/', authenticate, async (req, res) => {
     const groupedByCanonical = {};
 
     allItems.forEach(item => {
-      const canonicalName = aliasMap[item.itemName] || item.itemName;
+      const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
 
       if (!groupedByCanonical[canonicalName]) {
         groupedByCanonical[canonicalName] = {
@@ -136,7 +136,7 @@ router.get('/', authenticate, async (req, res) => {
           forUse: item.forUse,
           forSell: item.forSell,
           type: item.type,
-          isMapped: !!aliasMap[item.itemName],
+          isMapped: !!aliasMap[item.itemName.toLowerCase()],
           mergedCount: 0,
           variations: []
         };
@@ -216,7 +216,7 @@ router.patch('/:id/flags', authenticate, async (req, res) => {
 
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
-    const canonicalName = aliasMap[item.itemName] || item.itemName;
+    const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
 
     const itemsToUpdate = await RouteStarItem.find({
       itemName: {

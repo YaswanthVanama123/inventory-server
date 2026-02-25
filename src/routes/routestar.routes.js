@@ -1034,8 +1034,8 @@ router.get('/items/grouped', authenticate, async (req, res) => {
     const mergedItems = {};
 
     groupedItems.forEach(item => {
-      
-      const canonicalName = aliasMap[item.name] || item.name;
+
+      const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
 
       if (!mergedItems[canonicalName]) {
         mergedItems[canonicalName] = {
@@ -1288,6 +1288,166 @@ router.delete('/items/all', authenticate, requireAdmin(), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete items',
+      error: error.message
+    });
+  }
+});
+
+// Get all item names with their invoice usage in a folder structure
+router.get('/items/invoice-usage', authenticate, async (req, res) => {
+  try {
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+
+    // Get alias map and reverse map (alias -> canonical)
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Build reverse map with ORIGINAL case aliases from database
+    // We need original case for MongoDB queries
+    const aliasDocs = await RouteStarItemAlias.find({ isActive: true }).lean();
+    const canonicalToOriginalAliases = {};
+    aliasDocs.forEach(doc => {
+      if (!canonicalToOriginalAliases[doc.canonicalName]) {
+        canonicalToOriginalAliases[doc.canonicalName] = [];
+      }
+      doc.aliases.forEach(alias => {
+        if (alias.name !== doc.canonicalName) {
+          canonicalToOriginalAliases[doc.canonicalName].push(alias.name);
+        }
+      });
+    });
+
+    // Get all unique canonical names
+    const canonicalNames = [...new Set(Object.values(aliasMap))];
+
+    // Get all unique item names from invoices
+    const allInvoiceItems = await RouteStarInvoice.distinct('lineItems.name');
+
+    // Separate into mapped (canonical) and unmapped (unique) names
+    const mappedNames = new Set();
+    const unmappedNames = new Set();
+
+    allInvoiceItems.forEach(itemName => {
+      const nameLower = itemName.toLowerCase();
+      const canonical = aliasMap[nameLower];
+
+      if (canonical) {
+        // This item is mapped to a canonical name
+        mappedNames.add(canonical);
+      } else {
+        // This item is not mapped
+        unmappedNames.add(itemName);
+      }
+    });
+
+    // Build result array with invoice usage for each item
+    const itemsWithInvoices = [];
+
+    // Process mapped (canonical) names
+    for (const canonicalName of mappedNames) {
+      // Get all variations (aliases) with ORIGINAL case for this canonical name
+      const variations = [canonicalName, ...(canonicalToOriginalAliases[canonicalName] || [])];
+
+      // Find all invoices that use any of these variations (case-insensitive)
+      const invoices = await RouteStarInvoice.find({
+        'lineItems.name': { $in: variations }
+      }).select('invoiceNumber invoiceDate customer status lineItems total').lean();
+
+      // Extract relevant invoice details
+      const invoiceDetails = invoices.map(invoice => {
+        // Find the matching line items
+        const matchingItems = invoice.lineItems.filter(item =>
+          variations.map(v => v.toLowerCase()).includes(item.name.toLowerCase())
+        );
+
+        return {
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceDate: invoice.invoiceDate,
+          customer: invoice.customer?.name || 'Unknown',
+          status: invoice.status,
+          total: invoice.total,
+          items: matchingItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            rate: item.rate,
+            amount: item.amount
+          })),
+          totalQuantity: matchingItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+        };
+      });
+
+      itemsWithInvoices.push({
+        itemName: canonicalName,
+        type: 'mapped',
+        aliases: canonicalToOriginalAliases[canonicalName] || [],
+        invoiceCount: invoices.length,
+        totalQuantitySold: invoiceDetails.reduce((sum, inv) => sum + inv.totalQuantity, 0),
+        invoices: invoiceDetails
+      });
+    }
+
+    // Process unmapped (unique) names
+    for (const uniqueName of unmappedNames) {
+      // Find all invoices that use this exact name
+      const invoices = await RouteStarInvoice.find({
+        'lineItems.name': uniqueName
+      }).select('invoiceNumber invoiceDate customer status lineItems total').lean();
+
+      // Extract relevant invoice details
+      const invoiceDetails = invoices.map(invoice => {
+        // Find the matching line items
+        const matchingItems = invoice.lineItems.filter(item =>
+          item.name.toLowerCase() === uniqueName.toLowerCase()
+        );
+
+        return {
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceDate: invoice.invoiceDate,
+          customer: invoice.customer?.name || 'Unknown',
+          status: invoice.status,
+          total: invoice.total,
+          items: matchingItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            rate: item.rate,
+            amount: item.amount
+          })),
+          totalQuantity: matchingItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+        };
+      });
+
+      itemsWithInvoices.push({
+        itemName: uniqueName,
+        type: 'unique',
+        aliases: [],
+        invoiceCount: invoices.length,
+        totalQuantitySold: invoiceDetails.reduce((sum, inv) => sum + inv.totalQuantity, 0),
+        invoices: invoiceDetails
+      });
+    }
+
+    // Sort by item name
+    itemsWithInvoices.sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+    // Calculate totals
+    const totals = {
+      totalMappedItems: Array.from(mappedNames).length,
+      totalUniqueItems: Array.from(unmappedNames).length,
+      totalItems: mappedNames.size + unmappedNames.size,
+      totalInvoices: itemsWithInvoices.reduce((sum, item) => sum + item.invoiceCount, 0)
+    };
+
+    res.json({
+      success: true,
+      data: {
+        items: itemsWithInvoices,
+        totals
+      }
+    });
+  } catch (error) {
+    console.error('Get items invoice usage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch items invoice usage',
       error: error.message
     });
   }

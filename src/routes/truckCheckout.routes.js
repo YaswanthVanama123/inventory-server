@@ -319,6 +319,9 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       req.user?.username || 'system'
     );
 
+    // Record stock movements for the invoices (marked as already processed to avoid double-decrease)
+    await recordStockMovementsForCheckout(checkout);
+
     console.log(`✓ Checkout ${id} marked as completed with ${invoiceNumbers.length} invoices`);
 
     res.json({
@@ -333,6 +336,289 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       message: 'Failed to complete checkout',
       error: error.message
     });
+  }
+});
+
+// Helper function to record stock movements
+async function recordStockMovementsForCheckout(checkout) {
+  const Stock = require('../models/Stock');
+  const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+
+  // Load alias map for item name mapping
+  const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+  // Process each invoice
+  if (checkout.fetchedInvoices && checkout.fetchedInvoices.length > 0) {
+    for (const invoice of checkout.fetchedInvoices) {
+      for (const item of invoice.items) {
+        // Map item name to canonical name
+        const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
+
+        // Record stock movement (marked as already processed)
+        await Stock.create({
+          itemName: canonicalName,
+          originalItemName: item.name,
+          quantity: -item.quantity, // Negative for sale
+          type: 'truck_checkout_invoice',
+          source: 'routestar',
+          sourceId: invoice.invoiceNumber,
+          checkoutId: checkout._id,
+          employeeName: checkout.employeeName,
+          notes: `Invoice ${invoice.invoiceNumber} - Stock already decreased during checkout`,
+          alreadyProcessed: true, // Important: Don't decrease stock again!
+          processedBy: 'system',
+          processedAt: new Date()
+        });
+      }
+    }
+  }
+}
+
+// Check work: Fetch invoices and compare (BEFORE completing)
+router.post('/:id/check-work', authenticate, async (req, res) => {
+  let syncService = null;
+
+  try {
+    const { id } = req.params;
+    const { invoiceNumbers, invoiceType = 'closed' } = req.body;
+
+    if (!invoiceNumbers || invoiceNumbers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one invoice number is required'
+      });
+    }
+
+    const checkout = await TruckCheckout.findById(id);
+
+    if (!checkout) {
+      return res.status(404).json({
+        success: false,
+        message: 'Checkout not found'
+      });
+    }
+
+    if (checkout.status !== 'checked_out') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only check work for checked out items'
+      });
+    }
+
+    // VALIDATION: Check if any of these invoices are already linked to another checkout
+    const duplicateCheckouts = await TruckCheckout.find({
+      _id: { $ne: checkout._id },
+      invoiceNumbers: { $in: invoiceNumbers },
+      status: { $in: ['completed', 'checked_out'] }
+    }).select('_id employeeName invoiceNumbers');
+
+    if (duplicateCheckouts.length > 0) {
+      const duplicateInvoices = [];
+      for (const dup of duplicateCheckouts) {
+        const sharedInvoices = dup.invoiceNumbers.filter(inv => invoiceNumbers.includes(inv));
+        if (sharedInvoices.length > 0) {
+          duplicateInvoices.push({
+            checkoutId: dup._id,
+            employeeName: dup.employeeName,
+            invoices: sharedInvoices
+          });
+        }
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'One or more invoices are already linked to another checkout (possible theft/fraud)',
+        duplicateCheckouts: duplicateInvoices
+      });
+    }
+
+    console.log(`\n📊 Starting check work for checkout ${id}`);
+    console.log(`   Fetching ${invoiceNumbers.length} ${invoiceType} invoices...`);
+
+    // Fetch invoices from database first
+    const invoicesFromDB = await RouteStarInvoice.find({
+      invoiceNumber: { $in: invoiceNumbers }
+    }).lean();
+
+    const fetchedInvoices = [];
+    const missingInvoices = [];
+
+    // Check which invoices are missing or need details
+    for (const invoiceNumber of invoiceNumbers) {
+      const dbInvoice = invoicesFromDB.find(inv => inv.invoiceNumber === invoiceNumber);
+
+      if (dbInvoice && dbInvoice.lineItems && dbInvoice.lineItems.length > 0) {
+        // Invoice exists with details
+        fetchedInvoices.push({
+          invoiceNumber: dbInvoice.invoiceNumber,
+          customer: dbInvoice.customer?.name || 'Unknown',
+          items: dbInvoice.lineItems.map(item => ({
+            name: item.name,
+            sku: item.sku || item.name,
+            quantity: item.quantity
+          })),
+          total: dbInvoice.total,
+          fetchedAt: new Date()
+        });
+      } else {
+        // Missing or needs details
+        missingInvoices.push(invoiceNumber);
+      }
+    }
+
+    // Fetch missing invoices from RouteStar if needed
+    if (missingInvoices.length > 0) {
+      console.log(`   ${missingInvoices.length} invoices need to be fetched from RouteStar...`);
+
+      syncService = new RouteStarSyncService();
+      await syncService.init();
+
+      for (const invoiceNumber of missingInvoices) {
+        try {
+          console.log(`   → Fetching ${invoiceNumber} from RouteStar...`);
+          const invoice = await syncService.syncInvoiceDetails(invoiceNumber);
+
+          if (invoice && invoice.lineItems && invoice.lineItems.length > 0) {
+            fetchedInvoices.push({
+              invoiceNumber: invoice.invoiceNumber,
+              customer: invoice.customer?.name || 'Unknown',
+              items: invoice.lineItems.map(item => ({
+                name: item.name,
+                sku: item.sku || item.name,
+                quantity: item.quantity
+              })),
+              total: invoice.total,
+              fetchedAt: new Date()
+            });
+            console.log(`   ✓ Fetched ${invoiceNumber}`);
+          }
+        } catch (error) {
+          console.error(`   ✗ Failed to fetch ${invoiceNumber}: ${error.message}`);
+        }
+      }
+    }
+
+    // Load alias map for canonical name mapping
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Tally: Group items sold by canonical name
+    const itemsSoldMap = {};
+
+    for (const invoice of fetchedInvoices) {
+      for (const item of invoice.items) {
+        // Map to canonical name for proper grouping
+        const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
+        const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+
+        if (!itemsSoldMap[key]) {
+          itemsSoldMap[key] = {
+            name: canonicalName,
+            sku: item.sku || canonicalName,
+            quantitySold: 0
+          };
+        }
+        itemsSoldMap[key].quantitySold += item.quantity;
+      }
+    }
+
+    const itemsSold = Object.values(itemsSoldMap);
+
+    // Tally: Group items taken by canonical name
+    const itemsTakenMap = {};
+
+    for (const item of checkout.itemsTaken) {
+      // Map to canonical name for proper grouping
+      const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
+      const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+
+      if (!itemsTakenMap[key]) {
+        itemsTakenMap[key] = {
+          name: canonicalName,
+          sku: item.sku || canonicalName,
+          quantityTaken: 0
+        };
+      }
+      itemsTakenMap[key].quantityTaken += item.quantity;
+    }
+
+    const itemsTaken = Object.values(itemsTakenMap);
+
+    // Calculate discrepancies - ONLY for items that were checked out
+    const discrepancies = [];
+    const checkedOutKeys = Object.keys(itemsTakenMap); // Only show items that were taken
+
+    for (const key of checkedOutKeys) {
+      const taken = itemsTakenMap[key];
+      const sold = itemsSoldMap[key] || { name: taken.name, sku: taken.sku, quantitySold: 0 };
+
+      const difference = taken.quantityTaken - sold.quantitySold;
+      let status = 'matched';
+
+      if (difference > 0) {
+        status = 'excess'; // Took more than sold (has returns)
+      } else if (difference < 0) {
+        status = 'shortage'; // Sold more than took (error/missing items)
+      }
+
+      discrepancies.push({
+        name: taken.name,
+        sku: taken.sku,
+        quantityTaken: taken.quantityTaken,
+        quantitySold: sold.quantitySold,
+        difference,
+        status
+      });
+    }
+
+    // Save temporary results for completion step
+    checkout.invoiceNumbers = invoiceNumbers;
+    checkout.invoiceType = invoiceType;
+    checkout.fetchedInvoices = fetchedInvoices;
+    checkout.tallyResults = {
+      itemsTaken,
+      itemsSold,
+      discrepancies
+    };
+    await checkout.save();
+
+    console.log(`✓ Check work completed for checkout ${id}`);
+    console.log(`   Invoices processed: ${fetchedInvoices.length}/${invoiceNumbers.length}`);
+    console.log(`   Items matched: ${discrepancies.filter(d => d.status === 'matched').length}`);
+    console.log(`   Discrepancies: ${discrepancies.filter(d => d.status !== 'matched').length}`);
+
+    res.json({
+      success: true,
+      message: 'Check work completed successfully. Review the comparison and click Complete when ready.',
+      data: {
+        checkout,
+        comparison: {
+          itemsTaken,
+          itemsSold,
+          discrepancies
+        },
+        summary: {
+          totalInvoices: invoiceNumbers.length,
+          fetchedInvoices: fetchedInvoices.length,
+          missingInvoices: invoiceNumbers.length - fetchedInvoices.length,
+          totalItemsTaken: discrepancies.reduce((sum, item) => sum + item.quantityTaken, 0),
+          totalItemsSold: discrepancies.reduce((sum, item) => sum + item.quantitySold, 0),
+          matched: discrepancies.filter(d => d.status === 'matched').length,
+          discrepancies: discrepancies.filter(d => d.status !== 'matched').length
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Check work error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check work',
+      error: error.message
+    });
+  } finally {
+    if (syncService) {
+      await syncService.close();
+    }
   }
 });
 
@@ -432,16 +718,23 @@ router.post('/:id/tally', authenticate, async (req, res) => {
       }
     }
 
-    // Tally: Group items sold
+    // Load alias map for canonical name mapping
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Tally: Group items sold by canonical name
     const itemsSoldMap = {};
 
     for (const invoice of fetchedInvoices) {
       for (const item of invoice.items) {
-        const key = item.sku || item.name;
+        // Map to canonical name for proper grouping
+        const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
+        const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+
         if (!itemsSoldMap[key]) {
           itemsSoldMap[key] = {
-            name: item.name,
-            sku: item.sku,
+            name: canonicalName,
+            sku: item.sku || canonicalName,
             quantitySold: 0
           };
         }
@@ -451,15 +744,18 @@ router.post('/:id/tally', authenticate, async (req, res) => {
 
     const itemsSold = Object.values(itemsSoldMap);
 
-    // Tally: Group items taken
+    // Tally: Group items taken by canonical name
     const itemsTakenMap = {};
 
     for (const item of checkout.itemsTaken) {
-      const key = item.sku || item.name;
+      // Map to canonical name for proper grouping
+      const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
+      const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+
       if (!itemsTakenMap[key]) {
         itemsTakenMap[key] = {
-          name: item.name,
-          sku: item.sku,
+          name: canonicalName,
+          sku: item.sku || canonicalName,
           quantityTaken: 0
         };
       }
@@ -468,13 +764,13 @@ router.post('/:id/tally', authenticate, async (req, res) => {
 
     const itemsTaken = Object.values(itemsTakenMap);
 
-    // Calculate discrepancies
+    // Calculate discrepancies - ONLY for items that were checked out
     const discrepancies = [];
-    const allKeys = new Set([...Object.keys(itemsTakenMap), ...Object.keys(itemsSoldMap)]);
+    const checkedOutKeys = Object.keys(itemsTakenMap); // Only show items that were taken
 
-    for (const key of allKeys) {
-      const taken = itemsTakenMap[key] || { name: key, sku: key, quantityTaken: 0 };
-      const sold = itemsSoldMap[key] || { name: key, sku: key, quantitySold: 0 };
+    for (const key of checkedOutKeys) {
+      const taken = itemsTakenMap[key];
+      const sold = itemsSoldMap[key] || { name: taken.name, sku: taken.sku, quantitySold: 0 };
 
       const difference = taken.quantityTaken - sold.quantitySold;
       let status = 'matched';
@@ -486,8 +782,8 @@ router.post('/:id/tally', authenticate, async (req, res) => {
       }
 
       discrepancies.push({
-        name: taken.name || sold.name,
-        sku: taken.sku || sold.sku,
+        name: taken.name,
+        sku: taken.sku,
         quantityTaken: taken.quantityTaken,
         quantitySold: sold.quantitySold,
         difference,
@@ -805,6 +1101,7 @@ router.patch('/:id', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
+    const StockSummary = require('../models/StockSummary');
 
     const checkout = await TruckCheckout.findById(id);
 
@@ -822,13 +1119,57 @@ router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
       });
     }
 
+    console.log(`\n🗑️  Deleting checkout ${id}...`);
+    console.log(`   Reversing stock movements for ${checkout.itemsTaken?.length || 0} items...`);
+
+    // Reverse stock movements: Add back the quantities that were decreased during checkout
+    for (const item of checkout.itemsTaken || []) {
+      if (item.quantity <= 0) continue;
+
+      try {
+        const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+        const canonicalName = await RouteStarItemAlias.getCanonicalName(item.name);
+        const sku = (item.sku || canonicalName || item.name).toUpperCase();
+
+        // Delete the OUT stock movement that was created during checkout
+        await StockMovement.deleteMany({
+          refType: 'TRUCK_CHECKOUT',
+          refId: checkout._id,
+          sku: sku
+        });
+
+        // Add back the stock to StockSummary
+        let stockSummary = await StockSummary.findOne({ sku });
+        if (stockSummary) {
+          stockSummary.addStock(item.quantity);
+          await stockSummary.save();
+          console.log(`   ✓ Reversed ${sku}: +${item.quantity}`);
+        }
+      } catch (error) {
+        console.error(`   ✗ Failed to reverse stock for ${item.name}: ${error.message}`);
+      }
+    }
+
+    // Delete any invoice-related stock movements if checkout was completed
+    if (checkout.status === 'completed') {
+      await StockMovement.deleteMany({
+        refType: 'TRUCK_CHECKOUT_ADJUSTMENT',
+        refId: checkout._id
+      });
+      await StockMovement.deleteMany({
+        refType: 'TRUCK_CHECKOUT_USED',
+        refId: checkout._id
+      });
+      console.log(`   ✓ Deleted invoice-related stock movements`);
+    }
+
     await checkout.deleteOne();
 
-    console.log(`✓ Checkout ${id} deleted`);
+    console.log(`✓ Checkout ${id} deleted and stock reversed\n`);
 
     res.json({
       success: true,
-      message: 'Checkout deleted successfully'
+      message: 'Checkout deleted successfully and stock movements reversed'
     });
   } catch (error) {
     console.error('Delete checkout error:', error);

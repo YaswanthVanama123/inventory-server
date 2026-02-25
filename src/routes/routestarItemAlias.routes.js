@@ -56,10 +56,10 @@ router.get('/unique-items', authenticate, async (req, res) => {
       itemParent: item.itemParent,
       description: item.description,
       qtyOnHand: item.qtyOnHand || 0,
-      isMapped: !!lookupMap[item.itemName],
-      canonicalName: lookupMap[item.itemName] || null,
-      
-      occurrences: 1, 
+      isMapped: !!lookupMap[item.itemName.toLowerCase()],
+      canonicalName: lookupMap[item.itemName.toLowerCase()] || null,
+
+      occurrences: 1,
       totalQuantity: item.qtyOnHand || 0
     }));
 

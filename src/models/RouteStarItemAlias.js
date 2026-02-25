@@ -133,7 +133,7 @@ routeStarItemAliasSchema.statics.buildLookupMap = async function() {
 
   mappings.forEach(mapping => {
     mapping.aliases.forEach(alias => {
-      lookupMap[alias.name] = mapping.canonicalName;
+      lookupMap[alias.name.toLowerCase()] = mapping.canonicalName;
     });
   });
 
