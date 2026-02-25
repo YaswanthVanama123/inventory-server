@@ -1805,11 +1805,13 @@ const getSyncInfo = async (req, res, next) => {
 
 /**
  * Get RouteStar items with alias mappings for truck checkout
- * Returns items grouped by canonical name with all their aliases
+ * Returns items with calculated stock (CustomerConnect purchases - RouteStar sales)
  */
 const getInventoryItemsForTruckCheckout = async (req, res, next) => {
   try {
-    // Get all RouteStar items
+    const ModelCategory = require('../models/ModelCategory');
+
+    // Get all RouteStar items for the item list structure
     const routeStarItems = await RouteStarItem.find()
       .sort({ itemName: 1 })
       .lean();
@@ -1836,7 +1838,26 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       });
     });
 
-    // Group RouteStar items by their canonical name
+    // Get ModelCategory mappings (SKU to category mapping)
+    const mappings = await ModelCategory.find().lean();
+    const skuToCategoryMap = {};
+    mappings.forEach(mapping => {
+      if (mapping.modelNumber && mapping.categoryItemName) {
+        skuToCategoryMap[mapping.modelNumber] = mapping.categoryItemName;
+      }
+    });
+
+    // Get CustomerConnect orders (purchases)
+    const orders = await CustomerConnectOrder.find({
+      status: { $in: ['Complete', 'Processing', 'Shipped'] }
+    }).lean();
+
+    // Get RouteStar invoices (sales)
+    const invoices = await RouteStarInvoice.find({
+      status: { $in: ['Completed', 'Closed', 'Pending'] }
+    }).lean();
+
+    // Group RouteStar items by their canonical name and calculate stock
     const groupedItems = {};
 
     routeStarItems.forEach(item => {
@@ -1849,7 +1870,8 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
           originalNames: [],
           aliases: canonicalToAliasesMap[canonicalName] || [],
           hasAliases: (canonicalToAliasesMap[canonicalName] || []).length > 0,
-          totalQuantity: 0,
+          totalPurchased: 0,
+          totalSold: 0,
           itemParent: item.itemParent,
           description: item.description,
           salesPrice: item.salesPrice,
@@ -1863,7 +1885,6 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
 
       // Add this item to the group
       groupedItems[canonicalName].originalNames.push(item.itemName);
-      groupedItems[canonicalName].totalQuantity += item.qtyOnHand || 0;
       groupedItems[canonicalName].items.push(item);
 
       // Use the first item's metadata if not set
@@ -1875,8 +1896,39 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       }
     });
 
+    // Calculate purchases for each canonical name
+    orders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          const sku = item.sku ? item.sku.toUpperCase() : '';
+          const category = skuToCategoryMap[sku];
+
+          if (category && groupedItems[category]) {
+            groupedItems[category].totalPurchased += item.qty || 0;
+          }
+        });
+      }
+    });
+
+    // Calculate sales for each canonical name (using alias mapping)
+    invoices.forEach(invoice => {
+      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        invoice.lineItems.forEach(item => {
+          const rawItemName = item.name ? item.name.trim() : '';
+          const itemNameLower = rawItemName.toLowerCase();
+          const canonicalName = aliasToCanonicalMap[itemNameLower] || rawItemName;
+
+          if (groupedItems[canonicalName]) {
+            groupedItems[canonicalName].totalSold += item.quantity || 0;
+          }
+        });
+      }
+    });
+
     // Transform to array and format for frontend
     const itemsArray = Object.values(groupedItems).map((group, index) => {
+      const calculatedQuantity = group.totalPurchased - group.totalSold;
+
       return {
         _id: `rs_${group.canonicalName.replace(/\s+/g, '_')}_${index}`,
         itemName: group.canonicalName,
@@ -1889,9 +1941,11 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
         category: group.category || 'RouteStar',
         categoryName: group.category || 'RouteStar',
         tags: [],
-        quantity: group.totalQuantity,
-        currentStock: group.totalQuantity,
-        currentQuantity: group.totalQuantity,
+        quantity: calculatedQuantity,
+        currentStock: calculatedQuantity,
+        currentQuantity: calculatedQuantity,
+        totalPurchased: group.totalPurchased,
+        totalSold: group.totalSold,
         unit: group.uom || 'pieces',
         price: group.salesPrice || 0,
         sellingPrice: group.salesPrice || 0,
@@ -1899,7 +1953,7 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
         images: [],
         primaryImageIndex: 0,
         isActive: true,
-        isLowStock: group.totalQuantity < 10,
+        isLowStock: calculatedQuantity < 10,
         itemParent: group.itemParent,
         department: group.department,
         originalNames: group.originalNames,

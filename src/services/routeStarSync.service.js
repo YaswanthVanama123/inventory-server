@@ -1,7 +1,9 @@
 const RouteStarAutomation = require('../automation/routestar');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
+const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const StockMovement = require('../models/StockMovement');
+const StockSummary = require('../models/StockSummary');
 const SyncLog = require('../models/SyncLog');
 const routestarConfig = require('../automation/config/routestar.config');
 
@@ -603,20 +605,29 @@ class RouteStarSyncService {
 
       const details = await this.automation.fetchInvoiceDetails(detailUrl);
 
-      
-      invoice.lineItems = details.items.map(item => ({
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity || 0,
-        rate: parseFloat(item.rate) || 0,
-        amount: parseFloat(item.amount) || 0,
-        class: item.class,
-        warehouse: item.warehouse,
-        taxCode: item.taxCode,
-        location: item.location
+
+      const lineItemsWithSKU = await Promise.all(details.items.map(async (item) => {
+
+        const canonicalName = await RouteStarItemAlias.getCanonicalName(item.name);
+        const sku = (canonicalName || item.name).toUpperCase();
+
+        return {
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity || 0,
+          rate: parseFloat(item.rate) || 0,
+          amount: parseFloat(item.amount) || 0,
+          class: item.class,
+          warehouse: item.warehouse,
+          taxCode: item.taxCode,
+          location: item.location,
+          sku: sku
+        };
       }));
 
-      
+      invoice.lineItems = lineItemsWithSKU;
+
+
       invoice.invoiceDetails = {
         signedBy: details.signedBy,
         invoiceMemo: details.invoiceMemo,
@@ -727,30 +738,38 @@ class RouteStarSyncService {
     await this.createSyncLog();
 
     try {
-      
+
       const invoices = await RouteStarInvoice.getUnprocessedInvoices();
       console.log(`✓ Found ${invoices.length} unprocessed invoices`);
 
       let processed = 0;
       let skipped = 0;
+      let itemsProcessed = 0;
       const errors = [];
 
       for (const invoice of invoices) {
         try {
-          
+
           if (!invoice.lineItems || invoice.lineItems.length === 0) {
             console.log(`  ⊗ Skipped ${invoice.invoiceNumber}: No line items`);
             skipped++;
             continue;
           }
 
-          
+
           for (const item of invoice.lineItems) {
             if (item.quantity <= 0) continue;
 
-            
+
+            const itemName = item.name;
+            const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
+            const sku = (item.sku || canonicalName || itemName).toUpperCase();
+
+            console.log(`  → Processing item: ${itemName} → Canonical: ${canonicalName} → SKU: ${sku}`);
+
+
             await StockMovement.create({
-              sku: item.sku || item.name.toUpperCase(), 
+              sku: sku,
               type: 'OUT',
               qty: item.quantity,
               refType: 'INVOICE',
@@ -760,7 +779,28 @@ class RouteStarSyncService {
               notes: `Sale: ${invoice.customer.name} - ${invoice.invoiceNumber}`
             });
 
-            console.log(`  ✓ Stock movement created for ${item.sku || item.name}: -${item.quantity}`);
+
+            let stockSummary = await StockSummary.findOne({ sku });
+
+            if (!stockSummary) {
+
+              console.log(`  ⚠️  Creating new StockSummary for SKU: ${sku}`);
+              stockSummary = await StockSummary.create({
+                sku,
+                availableQty: 0,
+                reservedQty: 0,
+                totalInQty: 0,
+                totalOutQty: 0,
+                lowStockThreshold: 10
+              });
+            }
+
+
+            stockSummary.removeStock(item.quantity);
+            await stockSummary.save();
+
+            itemsProcessed++;
+            console.log(`  ✓ Stock updated for ${sku}: -${item.quantity} (Available: ${stockSummary.availableQty}, Total Out: ${stockSummary.totalOutQty})`);
           }
 
 
@@ -786,11 +826,12 @@ class RouteStarSyncService {
       });
 
       console.log(`\n✓ Stock movements completed:`);
-      console.log(`  - Processed: ${processed}`);
+      console.log(`  - Invoices Processed: ${processed}`);
+      console.log(`  - Items Processed: ${itemsProcessed}`);
       console.log(`  - Skipped: ${skipped}`);
       console.log(`  - Total: ${invoices.length}`);
 
-      return { processed, skipped, total: invoices.length, errors };
+      return { processed, skipped, itemsProcessed, total: invoices.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message

@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const TruckCheckout = require('../models/TruckCheckout');
 const ModelCategory = require('../models/ModelCategory');
 const RouteStarItem = require('../models/RouteStarItem');
 
@@ -202,7 +203,13 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       'lineItems.name': { $in: variations }
     }).lean();
 
-    
+    // Fetch active checkouts that have ANY variation of the category name
+    const checkouts = await TruckCheckout.find({
+      status: 'checked_out',
+      'itemsTaken.name': { $in: variations }
+    }).lean();
+
+
     const skuData = {};
 
     
@@ -220,8 +227,10 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
                 totalPurchaseValue: 0,
                 totalSold: 0,
                 totalSalesValue: 0,
+                totalCheckedOut: 0,
                 purchaseHistory: [],
-                salesHistory: []
+                salesHistory: [],
+                checkoutHistory: []
               };
             }
 
@@ -274,8 +283,37 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       }
     });
 
-    
-    
+
+
+    let categoryCheckoutData = {
+      totalCheckedOut: 0,
+      checkoutHistory: []
+    };
+
+    checkouts.forEach(checkout => {
+      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
+        checkout.itemsTaken.forEach(item => {
+          const rawItemName = item.name ? item.name.trim() : '';
+          // Map raw item name to canonical name
+          const canonicalItemName = getCanonicalName(rawItemName, aliasMap);
+
+          // Check if canonical name matches the category
+          if (canonicalItemName === categoryName) {
+            categoryCheckoutData.totalCheckedOut += item.quantity || 0;
+            categoryCheckoutData.checkoutHistory.push({
+              employeeName: checkout.employeeName,
+              truckNumber: checkout.truckNumber,
+              checkoutDate: checkout.checkoutDate,
+              quantity: item.quantity,
+              notes: item.notes || ''
+            });
+          }
+        });
+      }
+    });
+
+
+
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
       if (!skuData[sku]) {
@@ -287,18 +325,24 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
           totalPurchaseValue: 0,
           totalSold: 0,
           totalSalesValue: 0,
+          totalCheckedOut: 0,
           purchaseHistory: [],
-          salesHistory: []
+          salesHistory: [],
+          checkoutHistory: []
         };
       }
 
-      
+
       skuData[sku].totalSold = categorySalesData.totalSold / skuCount;
       skuData[sku].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
       skuData[sku].salesHistory = [...categorySalesData.salesHistory];
+
+
+      skuData[sku].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
+      skuData[sku].checkoutHistory = [...categoryCheckoutData.checkoutHistory];
     });
 
-    
+
     skus.forEach(sku => {
       if (!skuData[sku]) {
         const mapping = mappings.find(m => m.modelNumber === sku);
@@ -309,8 +353,10 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
           totalPurchaseValue: 0,
           totalSold: 0,
           totalSalesValue: 0,
+          totalCheckedOut: 0,
           purchaseHistory: [],
-          salesHistory: []
+          salesHistory: [],
+          checkoutHistory: []
         };
       }
     });
@@ -437,11 +483,11 @@ router.get('/use', authenticate, async (req, res) => {
 
 router.get('/sell', authenticate, async (req, res) => {
   try {
-    
+    // Get all forSell items
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const allowedCategories = new Set(forSellItems.map(item => item.itemName));
 
-    
+    // Get ModelCategory mappings (SKU to category mapping)
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
 
@@ -451,27 +497,32 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    
+    // Get CustomerConnect orders (purchases)
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    
+    // Get RouteStar invoices (sales)
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
-    
+    // Get active truck checkouts (checked_out status only)
+    const checkouts = await TruckCheckout.find({
+      status: 'checked_out'
+    }).lean();
+
+    // Build category map
     const categoryMap = {};
 
-    
+    // Calculate purchases for each category
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
 
-          
+          // Only process if category is in allowed categories
           if (category && allowedCategories.has(category)) {
             if (!categoryMap[category]) {
               categoryMap[category] = {
@@ -480,6 +531,8 @@ router.get('/sell', authenticate, async (req, res) => {
                 totalPurchaseValue: 0,
                 totalSold: 0,
                 totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
                 stockRemaining: 0
@@ -494,56 +547,97 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    
-    
-    const categoryInvoices = {}; 
+    // Calculate sales for each category using alias mapping
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    const categoryInvoices = {}; // Track unique invoices per category
 
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
-          const itemName = item.name ? item.name.trim() : '';
+          const rawItemName = item.name ? item.name.trim() : '';
+          const itemNameLower = rawItemName.toLowerCase();
+          const canonicalName = aliasMap[itemNameLower] || rawItemName;
 
-          
-          if (allowedCategories.has(itemName)) {
-            if (!categoryMap[itemName]) {
-              categoryMap[itemName] = {
-                categoryName: itemName,
+          // Check if canonical name is in allowed categories
+          if (allowedCategories.has(canonicalName)) {
+            if (!categoryMap[canonicalName]) {
+              categoryMap[canonicalName] = {
+                categoryName: canonicalName,
                 totalPurchased: 0,
                 totalPurchaseValue: 0,
                 totalSold: 0,
                 totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
                 stockRemaining: 0
               };
             }
 
-            categoryMap[itemName].totalSold += item.quantity || 0;
-            categoryMap[itemName].totalSalesValue += item.amount || 0;
+            categoryMap[canonicalName].totalSold += item.quantity || 0;
+            categoryMap[canonicalName].totalSalesValue += item.amount || 0;
 
-            
-            if (!categoryInvoices[itemName]) {
-              categoryInvoices[itemName] = new Set();
+            // Track invoice count
+            if (!categoryInvoices[canonicalName]) {
+              categoryInvoices[canonicalName] = new Set();
             }
-            categoryInvoices[itemName].add(invoice.invoiceNumber);
+            categoryInvoices[canonicalName].add(invoice.invoiceNumber);
           }
         });
       }
     });
 
-    
+    // Calculate checked out quantities for each category
+    checkouts.forEach(checkout => {
+      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
+        checkout.itemsTaken.forEach(item => {
+          const itemName = item.name ? item.name.trim() : '';
+          const itemNameLower = itemName.toLowerCase();
+          const canonicalName = aliasMap[itemNameLower] || itemName;
+
+          if (allowedCategories.has(canonicalName)) {
+            if (!categoryMap[canonicalName]) {
+              categoryMap[canonicalName] = {
+                categoryName: canonicalName,
+                totalPurchased: 0,
+                totalPurchaseValue: 0,
+                totalSold: 0,
+                totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
+                itemCount: 0,
+                invoiceCount: 0,
+                stockRemaining: 0
+              };
+            }
+
+            categoryMap[canonicalName].totalCheckedOut += item.quantity || 0;
+            categoryMap[canonicalName].checkoutDetails.push({
+              employeeName: checkout.employeeName,
+              truckNumber: checkout.truckNumber,
+              quantity: item.quantity,
+              checkoutDate: checkout.checkoutDate
+            });
+          }
+        });
+      }
+    });
+
+    // Update invoice counts
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (categoryMap[categoryName]) {
         categoryMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
-    
+    // Calculate remaining stock: Purchased - Sold - CheckedOut
     Object.values(categoryMap).forEach(category => {
-      category.stockRemaining = category.totalPurchased - category.totalSold;
+      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut;
     });
 
-    
+    // Ensure all forSell items have an entry
     forSellItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -552,6 +646,8 @@ router.get('/sell', authenticate, async (req, res) => {
           totalPurchaseValue: 0,
           totalSold: 0,
           totalSalesValue: 0,
+          totalCheckedOut: 0,
+          checkoutDetails: [],
           itemCount: 0,
           invoiceCount: 0,
           stockRemaining: 0
@@ -559,17 +655,18 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    
+    // Transform to array and sort
     const stockData = Object.values(categoryMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
 
-    
+    // Calculate totals
     const totals = stockData.reduce((acc, item) => ({
       totalPurchased: acc.totalPurchased + item.totalPurchased,
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
       totalSold: acc.totalSold + item.totalSold,
       totalSalesValue: acc.totalSalesValue + item.totalSalesValue,
+      totalCheckedOut: acc.totalCheckedOut + item.totalCheckedOut,
       stockRemaining: acc.stockRemaining + item.stockRemaining,
       categoryCount: acc.categoryCount + 1
     }), {
@@ -577,6 +674,7 @@ router.get('/sell', authenticate, async (req, res) => {
       totalPurchaseValue: 0,
       totalSold: 0,
       totalSalesValue: 0,
+      totalCheckedOut: 0,
       stockRemaining: 0,
       categoryCount: 0
     });
@@ -625,12 +723,17 @@ router.get('/summary', authenticate, async (req, res) => {
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    
+
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
-    
+    // Get active truck checkouts (checked_out status only)
+    const checkouts = await TruckCheckout.find({
+      status: 'checked_out'
+    }).lean();
+
+
     const useStockMap = {};
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
@@ -688,6 +791,8 @@ router.get('/summary', authenticate, async (req, res) => {
                 totalPurchaseValue: 0,
                 totalSold: 0,
                 totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
                 stockRemaining: 0
@@ -722,6 +827,8 @@ router.get('/summary', authenticate, async (req, res) => {
                 totalPurchaseValue: 0,
                 totalSold: 0,
                 totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
                 stockRemaining: 0
@@ -741,19 +848,54 @@ router.get('/summary', authenticate, async (req, res) => {
       }
     });
 
-    
+
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (sellStockMap[categoryName]) {
         sellStockMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
-    
-    Object.values(sellStockMap).forEach(category => {
-      category.stockRemaining = category.totalPurchased - category.totalSold;
+    // Calculate checked out quantities for each category
+    checkouts.forEach(checkout => {
+      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
+        checkout.itemsTaken.forEach(item => {
+          const itemName = item.name ? item.name.trim() : '';
+          const itemNameLower = itemName.toLowerCase();
+          const canonicalName = sellAliasMap[itemNameLower] || itemName;
+
+          if (sellAllowedCategories.has(canonicalName)) {
+            if (!sellStockMap[canonicalName]) {
+              sellStockMap[canonicalName] = {
+                categoryName: canonicalName,
+                totalPurchased: 0,
+                totalPurchaseValue: 0,
+                totalSold: 0,
+                totalSalesValue: 0,
+                totalCheckedOut: 0,
+                checkoutDetails: [],
+                itemCount: 0,
+                invoiceCount: 0,
+                stockRemaining: 0
+              };
+            }
+
+            sellStockMap[canonicalName].totalCheckedOut += item.quantity || 0;
+            sellStockMap[canonicalName].checkoutDetails.push({
+              employeeName: checkout.employeeName,
+              truckNumber: checkout.truckNumber,
+              quantity: item.quantity,
+              checkoutDate: checkout.checkoutDate
+            });
+          }
+        });
+      }
     });
 
-    
+
+    Object.values(sellStockMap).forEach(category => {
+      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut;
+    });
+
     forSellItems.forEach(item => {
       if (!sellStockMap[item.itemName]) {
         sellStockMap[item.itemName] = {
@@ -762,6 +904,8 @@ router.get('/summary', authenticate, async (req, res) => {
           totalPurchaseValue: 0,
           totalSold: 0,
           totalSalesValue: 0,
+          totalCheckedOut: 0,
+          checkoutDetails: [],
           itemCount: 0,
           invoiceCount: 0,
           stockRemaining: 0
@@ -789,6 +933,7 @@ router.get('/summary', authenticate, async (req, res) => {
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
       totalSold: acc.totalSold + item.totalSold,
       totalSalesValue: acc.totalSalesValue + item.totalSalesValue,
+      totalCheckedOut: acc.totalCheckedOut + item.totalCheckedOut,
       stockRemaining: acc.stockRemaining + item.stockRemaining,
       categoryCount: acc.categoryCount + 1
     }), {
@@ -796,6 +941,7 @@ router.get('/summary', authenticate, async (req, res) => {
       totalPurchaseValue: 0,
       totalSold: 0,
       totalSalesValue: 0,
+      totalCheckedOut: 0,
       stockRemaining: 0,
       categoryCount: 0
     });
