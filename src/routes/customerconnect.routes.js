@@ -94,7 +94,7 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
 
 
 
-router.get('/order-range', authenticate, requireAdmin(), async (req, res) => {
+router.get('/order-range', authenticate, async (req, res) => {
   try {
     const highestOrder = await CustomerConnectOrder.findOne()
       .sort({ orderNumber: -1 })
@@ -279,7 +279,7 @@ router.post('/sync/full', authenticate, requireAdmin(), async (req, res) => {
 
 
 
-router.get('/orders', authenticate, requireAdmin(), async (req, res) => {
+router.get('/orders', authenticate, async (req, res) => {
   try {
     const {
       page = 1,
@@ -341,7 +341,7 @@ router.get('/orders', authenticate, requireAdmin(), async (req, res) => {
 
 
 
-router.get('/orders/:orderNumber', authenticate, requireAdmin(), async (req, res) => {
+router.get('/orders/:orderNumber', authenticate, async (req, res) => {
   try {
     const { orderNumber } = req.params;
 
@@ -373,7 +373,7 @@ router.get('/orders/:orderNumber', authenticate, requireAdmin(), async (req, res
 
 
 
-router.get('/stats', authenticate, requireAdmin(), async (req, res) => {
+router.get('/stats', authenticate, async (req, res) => {
   try {
     const { startDate, endDate, vendor } = req.query;
 
@@ -584,7 +584,7 @@ router.post('/orders/bulk-delete-by-numbers', authenticate, requireAdmin(), asyn
 
 
 
-router.get('/items/:sku/orders', authenticate, requireAdmin(), async (req, res) => {
+router.get('/items/:sku/orders', authenticate, async (req, res) => {
   try {
     const { sku } = req.params;
 
