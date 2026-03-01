@@ -6,6 +6,7 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const TruckCheckout = require('../models/TruckCheckout');
 const ModelCategory = require('../models/ModelCategory');
 const RouteStarItem = require('../models/RouteStarItem');
+const StockDiscrepancy = require('../models/StockDiscrepancy');
 
 // Helper function to get merged RouteStarItems (canonical names)
 async function getMergedRouteStarItems(filter = {}) {
@@ -191,24 +192,86 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       });
     }
 
+    // Extract RouteStarItem names from SKU descriptions to find sales
+    // This helps match invoices that have line items like "WHITE", "BLACK", etc.
+    const routeStarItemNames = new Set([categoryName]); // Start with parent category
+    const categoryKeywords = ['WHITE', 'BLACK', 'BLUE', 'RED', 'GREEN', 'YELLOW', 'BROWN', 'GRAY', 'GREY', 'ORANGE', 'PINK', 'PURPLE'];
 
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] },
       'items.sku': { $in: skus }
     }).lean();
 
-    // Fetch invoices that have ANY variation of the category name
+    // Extract RouteStarItem names from actual order items (where the real itemName is)
+    orders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (skus.includes(item.sku?.toUpperCase())) {
+            const itemNameUpper = (item.name || '').toUpperCase();
+            categoryKeywords.forEach(keyword => {
+              if (itemNameUpper.includes(keyword)) {
+                routeStarItemNames.add(keyword);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // Add extracted RouteStarItem names to variations for invoice search
+    const expandedVariations = [...variations, ...Array.from(routeStarItemNames)];
+    console.log(`Expanded variations for invoice search:`, expandedVariations);
+
+    // Fetch invoices that have ANY variation of the category name OR RouteStarItem names
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] },
-      'lineItems.name': { $in: variations }
+      'lineItems.name': { $in: expandedVariations }
     }).lean();
 
-    // Fetch active checkouts that have ANY variation of the category name
+    // Fetch active checkouts that have ANY variation of the category name OR RouteStarItem names
     const checkouts = await TruckCheckout.find({
       status: 'checked_out',
-      'itemsTaken.name': { $in: variations }
+      'itemsTaken.name': { $in: expandedVariations }
     }).lean();
 
+    // Fetch discrepancies for this category AND for any RouteStarItem names extracted from SKUs
+    // This handles both ModelCategory-level and RouteStarItem-level discrepancies
+    const itemNamesInSales = new Set();
+    invoices.forEach(invoice => {
+      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        invoice.lineItems.forEach(item => {
+          const rawItemName = item.name ? item.name.trim() : '';
+          const canonicalItemName = getCanonicalName(rawItemName, aliasMap);
+          if (expandedVariations.includes(canonicalItemName)) {
+            itemNamesInSales.add(canonicalItemName);
+          }
+        });
+      }
+    });
+
+    // Query for discrepancies matching this category OR any of its RouteStarItem names
+    const discrepancies = await StockDiscrepancy.find({
+      $or: [
+        { categoryName: categoryName },  // ModelCategory level
+        { categoryName: { $in: Array.from(routeStarItemNames) } }  // RouteStarItem level (WHITE, BLACK, etc.)
+      ]
+    })
+      .populate('reportedBy', 'username fullName')
+      .populate('resolvedBy', 'username fullName')
+      .lean();
+
+    console.log(`\n=== CATEGORY SKU DISCREPANCY DEBUG for ${categoryName} ===`);
+    console.log(`Extracted RouteStarItem names from SKUs:`, Array.from(routeStarItemNames));
+    console.log(`Item names in sales:`, Array.from(itemNamesInSales));
+    console.log(`Found ${discrepancies.length} discrepancies`);
+    discrepancies.forEach(d => {
+      console.log(`  Discrepancy ID: ${d._id}`);
+      console.log(`    itemName: "${d.itemName}"`);
+      console.log(`    categoryName: "${d.categoryName}"`);
+      console.log(`    difference: ${d.difference}`);
+      console.log(`    status: ${d.status}`);
+    });
+    console.log('====================================\n');
 
     const skuData = {};
 
@@ -230,7 +293,8 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
                 totalCheckedOut: 0,
                 purchaseHistory: [],
                 salesHistory: [],
-                checkoutHistory: []
+                checkoutHistory: [],
+                discrepancyHistory: []
               };
             }
 
@@ -342,6 +406,84 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
       skuData[sku].checkoutHistory = [...categoryCheckoutData.checkoutHistory];
     });
 
+    // Add discrepancy history to SKU data - match by item category
+    // Group discrepancies by categoryName for efficient matching
+    const discrepanciesByCategory = {};
+    discrepancies.forEach(d => {
+      if (!discrepanciesByCategory[d.categoryName]) {
+        discrepanciesByCategory[d.categoryName] = [];
+      }
+      discrepanciesByCategory[d.categoryName].push({
+        invoiceNumber: d.invoiceNumber,
+        reportedAt: d.reportedAt,
+        systemQuantity: d.systemQuantity,
+        actualQuantity: d.actualQuantity,
+        difference: d.difference,
+        discrepancyType: d.discrepancyType,
+        status: d.status,
+        reason: d.reason,
+        notes: d.notes,
+        reportedBy: d.reportedBy,
+        resolvedBy: d.resolvedBy,
+        resolvedAt: d.resolvedAt,
+        resolutionNotes: d.resolutionNotes
+      });
+    });
+
+    // Assign discrepancies to SKUs and calculate adjustments
+    skus.forEach(sku => {
+      if (skuData[sku]) {
+        // Find which item categories this SKU is associated with (from sales)
+        const skuItemCategories = new Set();
+        if (skuData[sku].salesHistory) {
+          // This SKU sold items - check which categories
+          // Since sales are distributed evenly, we need to check original invoice data
+          // For now, we'll match based on the parent categoryName or check itemName
+        }
+
+        // Try to extract category from SKU's itemName
+        const itemNameUpper = skuData[sku].itemName.toUpperCase();
+        let matchedCategory = null;
+
+        // Check common keywords that might indicate the category
+        const categoryKeywords = ['WHITE', 'BLACK', 'BLUE', 'RED', 'GREEN', 'YELLOW', 'BROWN', 'GRAY', 'GREY', 'ORANGE', 'PINK', 'PURPLE'];
+        for (const keyword of categoryKeywords) {
+          if (itemNameUpper.includes(keyword)) {
+            matchedCategory = keyword;
+            break;
+          }
+        }
+
+        // Assign discrepancies that match this SKU's category
+        skuData[sku].discrepancyHistory = [];
+        let skuDiscrepancyAdjustment = 0;
+
+        if (matchedCategory && discrepanciesByCategory[matchedCategory]) {
+          // This SKU matches a specific item category - assign those discrepancies
+          skuData[sku].discrepancyHistory = discrepanciesByCategory[matchedCategory];
+
+          // Calculate adjustment for approved discrepancies
+          discrepanciesByCategory[matchedCategory].forEach(d => {
+            if (d.status === 'Approved' && d.difference !== undefined) {
+              skuDiscrepancyAdjustment += d.difference;
+            }
+          });
+        } else if (discrepanciesByCategory[categoryName]) {
+          // No specific match - use parent category discrepancies and distribute
+          skuData[sku].discrepancyHistory = discrepanciesByCategory[categoryName];
+
+          const categoryDiscrepancyTotal = discrepanciesByCategory[categoryName]
+            .filter(d => d.status === 'Approved' && d.difference !== undefined)
+            .reduce((sum, d) => sum + d.difference, 0);
+
+          skuDiscrepancyAdjustment = categoryDiscrepancyTotal / skuCount;
+        }
+
+        // Calculate stock remaining with approved discrepancy adjustments
+        skuData[sku].stockRemaining = skuData[sku].totalPurchased - skuData[sku].totalSold - skuData[sku].totalCheckedOut + skuDiscrepancyAdjustment;
+      }
+    });
+
 
     skus.forEach(sku => {
       if (!skuData[sku]) {
@@ -356,7 +498,9 @@ router.get('/category/:categoryName/sales', authenticate, async (req, res) => {
           totalCheckedOut: 0,
           purchaseHistory: [],
           salesHistory: [],
-          checkoutHistory: []
+          checkoutHistory: [],
+          discrepancyHistory: [...categoryDiscrepancyHistory],
+          stockRemaining: adjustmentPerSku  // Only approved adjustments apply if no purchases/sales
         };
       }
     });
@@ -532,6 +676,8 @@ router.get('/sell', authenticate, async (req, res) => {
                 totalSold: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalDiscrepancies: 0,
+                totalDiscrepancyDifference: 0,  // Total difference amount
                 checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
@@ -569,6 +715,8 @@ router.get('/sell', authenticate, async (req, res) => {
                 totalSold: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalDiscrepancies: 0,
+                totalDiscrepancyDifference: 0,  // Total difference amount
                 checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
@@ -632,9 +780,69 @@ router.get('/sell', authenticate, async (req, res) => {
       }
     });
 
-    // Calculate remaining stock: Purchased - Sold - CheckedOut
+    // Fetch and count discrepancies for each category
+    // Only search by categoryName field (not itemName) for accurate matching
+    const discrepancies = await StockDiscrepancy.find({
+      categoryName: { $in: Array.from(allowedCategories) }
+    })
+      .populate('reportedBy', 'username fullName')
+      .populate('resolvedBy', 'username fullName')
+      .lean();
+
+    console.log('=== DISCREPANCY DEBUG ===');
+    console.log('Allowed categories:', Array.from(allowedCategories).slice(0, 10)); // Show first 10
+    console.log('Found discrepancies:', discrepancies.length);
+    discrepancies.forEach(d => {
+      console.log(`  - ID: ${d._id}, itemName: "${d.itemName}", categoryName: "${d.categoryName}", status: ${d.status}, diff: ${d.difference}`);
+    });
+    console.log('========================');
+
+    // Track which discrepancies have been assigned to which categories to prevent double-counting
+    const processedDiscrepancies = new Set();
+
+    // Count discrepancies and apply approved adjustments to stock
+    discrepancies.forEach(discrepancy => {
+      const matchedCategory = discrepancy.categoryName;
+
+      if (!matchedCategory) {
+        console.log(`Skipping discrepancy ${discrepancy._id}: No categoryName set`);
+        return;
+      }
+
+      console.log(`Processing discrepancy ${discrepancy._id}: categoryName="${discrepancy.categoryName}", status: ${discrepancy.status}, difference: ${discrepancy.difference}`);
+
+      // Only count this discrepancy once per category
+      const discrepancyKey = `${discrepancy._id}-${matchedCategory}`;
+      if (processedDiscrepancies.has(discrepancyKey)) {
+        console.log(`  -> Already counted for category ${matchedCategory}, skipping`);
+        return;
+      }
+
+      if (allowedCategories.has(matchedCategory) && categoryMap[matchedCategory]) {
+        categoryMap[matchedCategory].totalDiscrepancies += 1;
+        categoryMap[matchedCategory].totalDiscrepancyDifference += (discrepancy.difference || 0);
+        processedDiscrepancies.add(discrepancyKey);
+        console.log(`  -> Added to ${matchedCategory}: count=${categoryMap[matchedCategory].totalDiscrepancies}, diff total=${categoryMap[matchedCategory].totalDiscrepancyDifference}`);
+
+        // Apply approved discrepancy adjustments to stock
+        if (discrepancy.status === 'Approved' && discrepancy.difference !== undefined) {
+          if (!categoryMap[matchedCategory].discrepancyAdjustment) {
+            categoryMap[matchedCategory].discrepancyAdjustment = 0;
+          }
+          categoryMap[matchedCategory].discrepancyAdjustment += discrepancy.difference;
+          console.log(`  -> Applied adjustment ${discrepancy.difference} to ${matchedCategory}, total adjustment now: ${categoryMap[matchedCategory].discrepancyAdjustment}`);
+        }
+      } else {
+        console.log(`  -> Category ${matchedCategory} not found in allowedCategories or categoryMap`);
+      }
+    });
+
+    // Calculate remaining stock: Purchased - Sold - CheckedOut + Approved Discrepancy Adjustments
     Object.values(categoryMap).forEach(category => {
-      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut;
+      const adjustment = category.discrepancyAdjustment || 0;
+      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut + adjustment;
+      // Clean up temporary field
+      delete category.discrepancyAdjustment;
     });
 
     // Ensure all forSell items have an entry
@@ -647,6 +855,8 @@ router.get('/sell', authenticate, async (req, res) => {
           totalSold: 0,
           totalSalesValue: 0,
           totalCheckedOut: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
           checkoutDetails: [],
           itemCount: 0,
           invoiceCount: 0,
@@ -668,6 +878,8 @@ router.get('/sell', authenticate, async (req, res) => {
       totalSalesValue: acc.totalSalesValue + item.totalSalesValue,
       totalCheckedOut: acc.totalCheckedOut + item.totalCheckedOut,
       stockRemaining: acc.stockRemaining + item.stockRemaining,
+      totalDiscrepancies: acc.totalDiscrepancies + item.totalDiscrepancies,
+      totalDiscrepancyDifference: acc.totalDiscrepancyDifference + (item.totalDiscrepancyDifference || 0),
       categoryCount: acc.categoryCount + 1
     }), {
       totalPurchased: 0,
@@ -676,6 +888,8 @@ router.get('/sell', authenticate, async (req, res) => {
       totalSalesValue: 0,
       totalCheckedOut: 0,
       stockRemaining: 0,
+      totalDiscrepancies: 0,
+      totalDiscrepancyDifference: 0,
       categoryCount: 0
     });
 
@@ -792,6 +1006,8 @@ router.get('/summary', authenticate, async (req, res) => {
                 totalSold: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalDiscrepancies: 0,
+                totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
@@ -828,6 +1044,8 @@ router.get('/summary', authenticate, async (req, res) => {
                 totalSold: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalDiscrepancies: 0,
+                totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
@@ -872,6 +1090,8 @@ router.get('/summary', authenticate, async (req, res) => {
                 totalSold: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalDiscrepancies: 0,
+                totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
                 itemCount: 0,
                 invoiceCount: 0,
@@ -892,8 +1112,103 @@ router.get('/summary', authenticate, async (req, res) => {
     });
 
 
+    // Fetch and count discrepancies for sell categories
+    // First, extract RouteStarItem names from order items to find all relevant categories
+    const categoryKeywords = ['WHITE', 'BLACK', 'BLUE', 'RED', 'GREEN', 'YELLOW', 'BROWN', 'GRAY', 'GREY', 'ORANGE', 'PINK', 'PURPLE'];
+    const extractedRouteStarItemNames = new Set();
+
+    orders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          const category = skuToCategoryMap[item.sku?.toUpperCase()];
+          if (category && sellAllowedCategories.has(category)) {
+            // Extract RouteStarItem names from order item names
+            const itemNameUpper = (item.name || '').toUpperCase();
+            categoryKeywords.forEach(keyword => {
+              if (itemNameUpper.includes(keyword)) {
+                extractedRouteStarItemNames.add(keyword);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    const allSellVariations = [];
+    sellAllowedCategories.forEach(category => {
+      allSellVariations.push(category);
+      Object.keys(sellAliasMap).forEach(alias => {
+        if (sellAliasMap[alias] === category) {
+          allSellVariations.push(alias);
+        }
+      });
+    });
+
+    // Add extracted RouteStarItem names to search for their discrepancies
+    allSellVariations.push(...Array.from(extractedRouteStarItemNames));
+
+    console.log(`Summary endpoint - searching for discrepancies in:`, allSellVariations);
+
+    const discrepancies = await StockDiscrepancy.find({
+      categoryName: { $in: allSellVariations }
+    })
+      .populate('reportedBy', 'username fullName')
+      .populate('resolvedBy', 'username fullName')
+      .lean();
+
+    // Count discrepancies and apply approved adjustments for each category
+    // Need to map RouteStarItem names (WHITE, BLACK) back to parent categories (Bulk Soap)
+    const routeStarItemToParentMap = {}; // Map of RouteStarItem name -> parent category
+
+    orders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          const category = skuToCategoryMap[item.sku?.toUpperCase()];
+          if (category && sellAllowedCategories.has(category)) {
+            const itemNameUpper = (item.name || '').toUpperCase();
+            categoryKeywords.forEach(keyword => {
+              if (itemNameUpper.includes(keyword)) {
+                routeStarItemToParentMap[keyword] = category;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    console.log(`RouteStarItem to parent map:`, routeStarItemToParentMap);
+
+    discrepancies.forEach(discrepancy => {
+      const rawCategoryName = discrepancy.categoryName ? discrepancy.categoryName.trim() : '';
+      const categoryNameLower = rawCategoryName.toLowerCase();
+      let canonicalName = sellAliasMap[categoryNameLower] || rawCategoryName;
+
+      // Check if this is a RouteStarItem name (like WHITE) that maps to a parent category
+      if (routeStarItemToParentMap[canonicalName]) {
+        canonicalName = routeStarItemToParentMap[canonicalName];
+      }
+
+      if (sellAllowedCategories.has(canonicalName) && sellStockMap[canonicalName]) {
+        sellStockMap[canonicalName].totalDiscrepancies += 1;
+        sellStockMap[canonicalName].totalDiscrepancyDifference += (discrepancy.difference || 0);
+
+        // Apply approved discrepancy adjustments to stock
+        if (discrepancy.status === 'Approved' && discrepancy.difference !== undefined) {
+          if (!sellStockMap[canonicalName].discrepancyAdjustment) {
+            sellStockMap[canonicalName].discrepancyAdjustment = 0;
+          }
+          sellStockMap[canonicalName].discrepancyAdjustment += discrepancy.difference;
+          console.log(`Applied discrepancy adjustment ${discrepancy.difference} to ${canonicalName}`);
+        }
+      }
+    });
+
+    // Calculate remaining stock with approved discrepancy adjustments
     Object.values(sellStockMap).forEach(category => {
-      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut;
+      const adjustment = category.discrepancyAdjustment || 0;
+      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut + adjustment;
+      // Clean up temporary field
+      delete category.discrepancyAdjustment;
     });
 
     forSellItems.forEach(item => {
@@ -905,6 +1220,8 @@ router.get('/summary', authenticate, async (req, res) => {
           totalSold: 0,
           totalSalesValue: 0,
           totalCheckedOut: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
           checkoutDetails: [],
           itemCount: 0,
           invoiceCount: 0,
@@ -935,6 +1252,8 @@ router.get('/summary', authenticate, async (req, res) => {
       totalSalesValue: acc.totalSalesValue + item.totalSalesValue,
       totalCheckedOut: acc.totalCheckedOut + item.totalCheckedOut,
       stockRemaining: acc.stockRemaining + item.stockRemaining,
+      totalDiscrepancies: acc.totalDiscrepancies + item.totalDiscrepancies,
+      totalDiscrepancyDifference: acc.totalDiscrepancyDifference + (item.totalDiscrepancyDifference || 0),
       categoryCount: acc.categoryCount + 1
     }), {
       totalPurchased: 0,
@@ -943,6 +1262,8 @@ router.get('/summary', authenticate, async (req, res) => {
       totalSalesValue: 0,
       totalCheckedOut: 0,
       stockRemaining: 0,
+      totalDiscrepancies: 0,
+      totalDiscrepancyDifference: 0,
       categoryCount: 0
     });
 

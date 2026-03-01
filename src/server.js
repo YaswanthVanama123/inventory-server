@@ -108,6 +108,7 @@ const stockRoutes = require('./routes/stock.routes');
 const fetchHistoryRoutes = require('./routes/fetchHistory');
 const employeeDataRoutes = require('./routes/employeeData.routes');
 const truckCheckoutRoutes = require('./routes/truckCheckout.routes');
+const discrepancyRoutes = require('./routes/discrepancy');
 
 
 app.get('/health', (req, res) => {
@@ -145,6 +146,7 @@ app.use('/api/stock', stockRoutes);
 app.use('/api/fetch-history', fetchHistoryRoutes);
 app.use('/api/employee-data', employeeDataRoutes);
 app.use('/api/truck-checkouts', truckCheckoutRoutes);
+app.use('/api/discrepancies', discrepancyRoutes);
 
 
 app.use(notFound);
