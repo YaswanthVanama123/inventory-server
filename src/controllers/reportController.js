@@ -202,8 +202,37 @@ const getDashboard = async (req, res, next) => {
     
     const itemSalesMap = {};
     routeStarInvoices.forEach(invoice => {
-      if (invoice.items && Array.isArray(invoice.items)) {
-        invoice.items.forEach(item => {
+      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        invoice.lineItems.forEach(item => {
+          const key = item.sku || item.name;
+          if (!itemSalesMap[key]) {
+            itemSalesMap[key] = {
+              sku: item.sku || '',
+              name: item.name || 'Unknown',
+              totalQty: 0,
+              totalRevenue: 0,
+              orderCount: 0
+            };
+          }
+          itemSalesMap[key].totalQty += item.quantity || 0;
+          itemSalesMap[key].totalRevenue += item.amount || 0;
+          itemSalesMap[key].orderCount += 1;
+        });
+      }
+    });
+
+
+    const customerConnectOrders = await CustomerConnectOrder.find({
+      status: 'Complete',
+      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+    })
+      .sort({ orderDate: 1 })
+      .lean();
+
+    // Add CustomerConnect order items to the sales map
+    customerConnectOrders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
           const key = item.sku || item.name;
           if (!itemSalesMap[key]) {
             itemSalesMap[key] = {
@@ -215,31 +244,40 @@ const getDashboard = async (req, res, next) => {
             };
           }
           itemSalesMap[key].totalQty += item.qty || 0;
-          itemSalesMap[key].totalRevenue += (item.unitPrice || 0) * (item.qty || 0);
+          itemSalesMap[key].totalRevenue += item.lineTotal || 0;
           itemSalesMap[key].orderCount += 1;
         });
       }
     });
 
-    
-    const topSellingItems = Object.values(itemSalesMap)
+    // Sort by revenue and take top 5
+    const topSellingItemsArray = Object.values(itemSalesMap)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 5)
-      .map(item => ({
-        itemName: item.name,
-        skuCode: item.sku,
-        value: item.totalRevenue,
-        quantity: item.totalQty,
-        orderCount: item.orderCount
-      }));
+      .slice(0, 5);
 
+    console.log('Total unique items in sales map:', Object.keys(itemSalesMap).length);
+    console.log('Top selling items array:', topSellingItemsArray);
 
-    const customerConnectOrders = await CustomerConnectOrder.find({
-      status: 'Complete',
-      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-    })
-      .sort({ orderDate: 1 })
-      .lean();
+    // Format for mobile react-native-chart-kit BarChart
+    const topSellingItems = {
+      labels: topSellingItemsArray.map(item => {
+        // Truncate long names for chart labels
+        const name = item.name || 'Unknown';
+        return name.length > 12 ? name.substring(0, 12) + '...' : name;
+      }),
+      datasets: [{
+        data: topSellingItemsArray.map(item => Math.round(item.totalRevenue))
+      }]
+    };
+
+    // Keep detailed data for reference
+    const topSellingItemsDetailed = topSellingItemsArray.map(item => ({
+      itemName: item.name,
+      skuCode: item.sku,
+      value: item.totalRevenue,
+      quantity: item.totalQty,
+      orderCount: item.orderCount
+    }));
 
     console.log('=== DASHBOARD DEBUG (Automation Data) ===');
     console.log('Total RouteStar invoices found:', routeStarInvoices.length);
@@ -247,7 +285,7 @@ const getDashboard = async (req, res, next) => {
     console.log('Sample RouteStar invoice:', routeStarInvoices.length > 0 ? {
       invoiceNumber: routeStarInvoices[0].invoiceNumber,
       total: routeStarInvoices[0].total,
-      itemsCount: routeStarInvoices[0].items?.length || 0
+      lineItemsCount: routeStarInvoices[0].lineItems?.length || 0
     } : 'No invoices');
 
 
@@ -265,22 +303,30 @@ const getDashboard = async (req, res, next) => {
     console.log('Calculated totalPurchaseAmount:', totalPurchaseAmount);
     console.log('Calculated totalPurchaseOrders:', totalPurchaseOrders);
 
+    // Calculate invoice status distribution
+    const invoiceStatusStats = {};
+    routeStarInvoices.forEach(inv => {
+      const status = inv.status || 'Unknown';
+      invoiceStatusStats[status] = (invoiceStatusStats[status] || 0) + 1;
+    });
+    console.log('Invoice status distribution:', invoiceStatusStats);
+
 
     let totalProfit = 0;
     let totalCost = 0;
 
 
     routeStarInvoices.forEach(inv => {
-      if (inv.items && Array.isArray(inv.items)) {
-        inv.items.forEach(item => {
-          const itemRevenue = (item.unitPrice || 0) * (item.qty || 0);
+      if (inv.lineItems && Array.isArray(inv.lineItems)) {
+        inv.lineItems.forEach(item => {
+          const itemRevenue = item.amount || 0;
 
           const matchingInventory = items.find(invItem =>
             invItem.skuCode === item.sku || invItem.itemName === item.name
           );
 
           if (matchingInventory && matchingInventory.pricing) {
-            const itemCost = matchingInventory.pricing.purchasePrice * (item.qty || 0);
+            const itemCost = matchingInventory.pricing.purchasePrice * (item.quantity || 0);
             totalCost += itemCost;
             totalProfit += itemRevenue - itemCost;
           }
@@ -396,6 +442,8 @@ const getDashboard = async (req, res, next) => {
         categoryStats,
         recentActivity,
         topSellingItems,
+        topSellingItemsDetailed,
+        invoiceStatusStats,
         salesTrend,
         syncStatus: syncStats ? {
           lastSync: syncStats.lastSync,
@@ -421,7 +469,8 @@ const getDashboard = async (req, res, next) => {
       totalPurchaseOrders: responseData.data.summary.totalPurchaseOrders,
       profitMargin: responseData.data.summary.profitMargin,
       salesTrendLength: responseData.data.salesTrend.length,
-      topSellingItemsCount: responseData.data.topSellingItems.length,
+      topSellingItemsLabels: responseData.data.topSellingItems.labels,
+      topSellingItemsDetailedCount: responseData.data.topSellingItemsDetailed.length,
       syncStatus: responseData.data.syncStatus ? 'included' : 'not available',
       dataSource: 'automation'
     });
