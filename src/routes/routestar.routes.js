@@ -963,120 +963,182 @@ router.delete('/invoices/closed/all', authenticate, requireAdmin(), async (req, 
 
 router.get('/items/grouped', authenticate, async (req, res) => {
   try {
-    console.log('[getGroupedRouteStarItems] Starting aggregation...');
+    const {
+      page = 1,
+      limit = 100,
+      sortBy = 'name',
+      sortOrder = 'asc',
+      search = '',
+      minQuantity = 0
+    } = req.query;
 
-    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    // Pre-compute all parameters
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    const sortDirection = sortOrder === 'desc' ? -1 : 1;
+    const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
+    const minQty = parseInt(minQuantity);
 
-    
-    const aliasMap = await RouteStarItemAlias.buildLookupMap();
-    console.log(`[getGroupedRouteStarItems] Loaded ${Object.keys(aliasMap).length} aliases`);
+    console.log('[getGroupedRouteStarItems] Starting ultra-optimized aggregation...');
+    console.time('[getGroupedRouteStarItems] Total time');
 
-    
-    const groupedItems = await RouteStarInvoice.aggregate([
-      
-      { $match: { 'lineItems.0': { $exists: true } } },
+    // Ultra-optimized: Group first, then lookup aliases only on unique names
+    const result = await RouteStarInvoice.aggregate([
+      // Stage 1: Filter early
+      {
+        $match: {
+          'lineItems.0': { $exists: true }
+        }
+      },
 
-      
+      // Stage 2: Project only needed fields
+      {
+        $project: {
+          lineItems: 1
+        }
+      },
+
+      // Stage 3: Unwind
       { $unwind: '$lineItems' },
 
-      
-      { $match: { 'lineItems.name': { $exists: true, $ne: null, $ne: '' } } },
+      // Stage 4: Filter invalid items and search
+      {
+        $match: {
+          'lineItems.name': { $exists: true, $ne: null, $ne: '' },
+          ...(search ? {
+            $or: [
+              { 'lineItems.name': { $regex: search, $options: 'i' } },
+              { 'lineItems.sku': { $regex: search, $options: 'i' } }
+            ]
+          } : {})
+        }
+      },
 
-      
+      // Stage 5: Group by ORIGINAL name first (before alias lookup)
       {
         $group: {
-          _id: {
-            name: '$lineItems.name',
-            sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } 
-          },
+          _id: '$lineItems.name',
           totalQuantity: { $sum: '$lineItems.quantity' },
           totalValue: { $sum: '$lineItems.amount' },
-          avgUnitPrice: { $avg: '$lineItems.rate' },
-          invoiceCount: { $sum: 1 },
-          invoices: {
-            $push: {
-              invoiceId: '$_id',
-              invoiceNumber: '$invoiceNumber',
-              invoiceDate: '$invoiceDate',
-              invoiceType: '$invoiceType',
-              customerName: '$customer.name',
-              quantity: '$lineItems.quantity',
-              rate: '$lineItems.rate',
-              amount: '$lineItems.amount',
-              status: '$status',
-              stockProcessed: '$stockProcessed'
+          sumRates: { $sum: '$lineItems.rate' },
+          countRates: { $sum: 1 },
+          sku: { $first: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } }
+        }
+      },
+
+      // Stage 6: Add lowercase for lookup (only once per unique item now!)
+      {
+        $addFields: {
+          nameLower: { $toLower: '$_id' }
+        }
+      },
+
+      // Stage 7: Lookup aliases (much faster - only on unique items, not every line item!)
+      {
+        $lookup: {
+          from: 'routestaritemaliases',
+          let: { itemNameLower: '$nameLower' },
+          pipeline: [
+            {
+              $match: {
+                isActive: true,
+                $expr: {
+                  $in: ['$$itemNameLower', {
+                    $map: {
+                      input: '$aliases',
+                      as: 'alias',
+                      in: { $toLower: '$$alias.name' }
+                    }
+                  }]
+                }
+              }
+            },
+            { $limit: 1 },
+            { $project: { canonicalName: 1, _id: 0 } }
+          ],
+          as: 'aliasDoc'
+        }
+      },
+
+      // Stage 8: Determine canonical name
+      {
+        $addFields: {
+          canonicalName: {
+            $cond: {
+              if: { $gt: [{ $size: '$aliasDoc' }, 0] },
+              then: { $arrayElemAt: ['$aliasDoc.canonicalName', 0] },
+              else: '$_id'
             }
           }
         }
       },
 
-      
-      { $sort: { '_id.name': 1 } },
+      // Stage 9: Regroup by canonical name (merging aliases)
+      {
+        $group: {
+          _id: '$canonicalName',
+          totalQuantity: { $sum: '$totalQuantity' },
+          totalValue: { $sum: '$totalValue' },
+          sumRates: { $sum: '$sumRates' },
+          countRates: { $sum: '$countRates' },
+          sku: { $first: '$sku' }
+        }
+      },
 
-      
+      // Stage 10: Filter by minimum quantity
+      ...(minQty > 0 ? [{
+        $match: {
+          totalQuantity: { $gte: minQty }
+        }
+      }] : []),
+
+      // Stage 11: Format output with calculated average
       {
         $project: {
           _id: 0,
-          sku: '$_id.sku',
-          name: '$_id.name',
+          name: '$_id',
+          sku: 1,
           totalQuantity: 1,
-          totalValue: 1,
-          avgUnitPrice: 1,
-          invoiceCount: 1,
-          invoices: 1
+          totalValue: { $round: ['$totalValue', 2] },
+          avgUnitPrice: {
+            $round: [
+              { $cond: [{ $eq: ['$countRates', 0] }, 0, { $divide: ['$sumRates', '$countRates'] }] },
+              2
+            ]
+          },
+          invoiceCount: '$countRates'
+        }
+      },
+
+      // Stage 12: Sort
+      { $sort: { [sortField]: sortDirection } },
+
+      // Stage 13: Paginate with $facet
+      {
+        $facet: {
+          metadata: [{ $count: 'total' }],
+          data: [{ $skip: skip }, { $limit: limitNum }]
         }
       }
     ]);
 
-    console.log(`[getGroupedRouteStarItems] Found ${groupedItems.length} initial grouped items`);
+    const total = result[0].metadata[0]?.total || 0;
+    const items = result[0].data || [];
 
-    
-    const mergedItems = {};
-
-    groupedItems.forEach(item => {
-
-      const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
-
-      if (!mergedItems[canonicalName]) {
-        mergedItems[canonicalName] = {
-          sku: item.sku,
-          name: canonicalName,
-          originalNames: [item.name],
-          totalQuantity: 0,
-          totalValue: 0,
-          avgUnitPrice: 0,
-          invoiceCount: 0,
-          invoices: []
-        };
-      }
-
-      
-      const merged = mergedItems[canonicalName];
-      if (!merged.originalNames.includes(item.name)) {
-        merged.originalNames.push(item.name);
-      }
-      merged.totalQuantity += item.totalQuantity;
-      merged.totalValue += item.totalValue;
-      merged.invoiceCount += item.invoiceCount;
-      merged.invoices.push(...item.invoices);
-
-      
-      const totalRate = merged.invoices.reduce((sum, inv) => sum + (inv.rate || 0), 0);
-      merged.avgUnitPrice = merged.invoices.length > 0 ? totalRate / merged.invoices.length : 0;
-    });
-
-    
-    const finalItems = Object.values(mergedItems).sort((a, b) => a.name.localeCompare(b.name));
-
-    console.log(`[getGroupedRouteStarItems] After merging: ${finalItems.length} items (merged ${groupedItems.length - finalItems.length} aliases)`);
+    console.timeEnd('[getGroupedRouteStarItems] Total time');
+    console.log(`[getGroupedRouteStarItems] Returned ${items.length} items out of ${total} total`);
 
     res.json({
       success: true,
       data: {
-        items: finalItems,
-        totalItems: finalItems.length,
-        aliasesApplied: Object.keys(aliasMap).length,
-        itemsMerged: groupedItems.length - finalItems.length
+        items,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
       }
     });
   } catch (error) {
@@ -1089,7 +1151,176 @@ router.get('/items/grouped', authenticate, async (req, res) => {
   }
 });
 
+// Get all invoice entries for a specific item (lazy loading for folder expansion)
+// ULTRA-OPTIMIZED: Filter first, then lookup aliases only for matching items
+router.get('/items/:itemName/invoices', authenticate, async (req, res) => {
+  try {
+    const { itemName } = req.params;
+    const { page = 1, limit = 100 } = req.query;
 
+    // Pre-compute pagination parameters
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    console.log(`[getInvoicesByItem] Starting ultra-optimized query for item: ${itemName}`);
+    console.time('[getInvoicesByItem] Total time');
+
+    const itemNameLower = itemName.toLowerCase();
+
+    // CRITICAL OPTIMIZATION: Do a quick alias lookup FIRST to get all variations
+    // This prevents doing expensive lookups on every line item
+    const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+    const aliasDoc = await RouteStarItemAlias.findOne({
+      isActive: true,
+      aliases: {
+        $elemMatch: {
+          name: { $regex: new RegExp(`^${itemName}$`, 'i') }
+        }
+      }
+    }).select('canonicalName aliases').lean();
+
+    // Build search array: if alias found, use all variations; otherwise just the item name
+    let searchNames;
+    let canonicalName;
+
+    if (aliasDoc) {
+      canonicalName = aliasDoc.canonicalName;
+      searchNames = aliasDoc.aliases.map(a => a.name.toLowerCase());
+    } else {
+      canonicalName = itemName;
+      searchNames = [itemNameLower];
+    }
+
+    console.log(`[getInvoicesByItem] Searching for ${searchNames.length} variations`);
+
+    // Ultra-optimized aggregation: Filter FIRST, then process
+    const result = await RouteStarInvoice.aggregate([
+      // Stage 1: Early filter - only invoices with matching items (CRITICAL!)
+      {
+        $match: {
+          'lineItems.0': { $exists: true },
+          'lineItems.name': {
+            $in: searchNames.map(name => new RegExp(`^${name}$`, 'i'))
+          }
+        }
+      },
+
+      // Stage 2: Project only needed fields early
+      {
+        $project: {
+          invoiceNumber: 1,
+          invoiceDate: 1,
+          invoiceType: 1,
+          customerName: { $ifNull: ['$customer.name', 'N/A'] },
+          status: 1,
+          stockProcessed: 1,
+          lineItems: 1
+        }
+      },
+
+      // Stage 3: Unwind line items
+      { $unwind: '$lineItems' },
+
+      // Stage 4: Filter to only matching line items
+      {
+        $match: {
+          $expr: {
+            $in: [
+              { $toLower: '$lineItems.name' },
+              searchNames
+            ]
+          }
+        }
+      },
+
+      // Stage 5: Project final structure
+      {
+        $project: {
+          _id: 1,
+          invoiceNumber: 1,
+          invoiceDate: 1,
+          invoiceType: 1,
+          customerName: 1,
+          status: 1,
+          stockProcessed: 1,
+          itemName: '$lineItems.name',
+          quantity: '$lineItems.quantity',
+          rate: '$lineItems.rate',
+          amount: '$lineItems.amount',
+          sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] }
+        }
+      },
+
+      // Stage 6: Sort by invoice date (newest first)
+      { $sort: { invoiceDate: -1 } },
+
+      // Stage 7: Paginate with $facet (single query for data + count)
+      {
+        $facet: {
+          metadata: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                totalQuantity: { $sum: '$quantity' }
+              }
+            }
+          ],
+          data: [
+            { $skip: skip },
+            { $limit: limitNum },
+            {
+              $project: {
+                _id: 0,
+                invoiceId: '$_id',
+                invoiceNumber: 1,
+                invoiceDate: 1,
+                invoiceType: 1,
+                customerName: 1,
+                status: 1,
+                stockProcessed: 1,
+                itemName: 1,
+                quantity: 1,
+                rate: 1,
+                amount: 1,
+                sku: 1
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    const metadata = result[0].metadata[0] || { total: 0, totalQuantity: 0 };
+    const entries = result[0].data || [];
+
+    console.timeEnd('[getInvoicesByItem] Total time');
+    console.log(`[getInvoicesByItem] Returned ${entries.length} entries out of ${metadata.total} total`);
+
+    res.json({
+      success: true,
+      data: {
+        itemName: canonicalName,
+        entries,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: metadata.total,
+          pages: Math.ceil(metadata.total / limitNum)
+        },
+        totalQuantity: metadata.totalQuantity
+      }
+    });
+  } catch (error) {
+    console.error('Get invoices by item error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch invoices for item',
+      error: error.message
+    });
+  }
+});
 
 
 
