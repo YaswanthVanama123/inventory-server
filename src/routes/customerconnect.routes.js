@@ -94,28 +94,43 @@ router.post('/sync/orders', authenticate, requireAdmin(), async (req, res) => {
 
 
 
+// DEPRECATED: Use /orders?includeRange=true instead
+// This endpoint is kept for backwards compatibility
 router.get('/order-range', authenticate, async (req, res) => {
   try {
-    const highestOrder = await CustomerConnectOrder.findOne()
-      .sort({ orderNumber: -1 })
-      .select('orderNumber orderDate')
-      .lean();
+    // Use the optimized aggregation from /orders endpoint
+    const result = await CustomerConnectOrder.aggregate([
+      {
+        $facet: {
+          metadata: [
+            { $count: 'total' }
+          ],
+          highest: [
+            { $sort: { orderNumber: -1 } },
+            { $limit: 1 },
+            { $project: { orderNumber: 1, orderDate: 1, _id: 0 } }
+          ],
+          lowest: [
+            { $sort: { orderNumber: 1 } },
+            { $limit: 1 },
+            { $project: { orderNumber: 1, orderDate: 1, _id: 0 } }
+          ]
+        }
+      }
+    ]);
 
-    const lowestOrder = await CustomerConnectOrder.findOne()
-      .sort({ orderNumber: 1 })
-      .select('orderNumber orderDate')
-      .lean();
-
-    const totalOrders = await CustomerConnectOrder.countDocuments();
+    const total = result[0]?.metadata[0]?.total || 0;
+    const highest = result[0]?.highest[0];
+    const lowest = result[0]?.lowest[0];
 
     res.json({
       success: true,
       data: {
-        highest: highestOrder?.orderNumber || null,
-        lowest: lowestOrder?.orderNumber || null,
-        highestDate: highestOrder?.orderDate || null,
-        lowestDate: lowestOrder?.orderDate || null,
-        totalOrders
+        highest: highest?.orderNumber || null,
+        lowest: lowest?.orderNumber || null,
+        highestDate: highest?.orderDate || null,
+        lowestDate: lowest?.orderDate || null,
+        totalOrders: total
       }
     });
   } catch (error) {
@@ -288,8 +303,11 @@ router.get('/orders', authenticate, async (req, res) => {
       vendor,
       startDate,
       endDate,
-      stockProcessed
+      stockProcessed,
+      includeRange = 'true'  // Allow clients to opt-out if needed
     } = req.query;
+
+    console.time('[Orders] Query time');
 
     const query = {};
 
@@ -303,29 +321,77 @@ router.get('/orders', authenticate, async (req, res) => {
       if (endDate) query.orderDate.$lte = new Date(endDate);
     }
 
-    const skip = (page - 1) * limit;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    const shouldIncludeRange = includeRange === 'true';
 
-    const [orders, total] = await Promise.all([
-      CustomerConnectOrder.find(query)
-        .sort({ orderNumber: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      CustomerConnectOrder.countDocuments(query)
+    // Build facet stages
+    const facetStages = {
+      metadata: [
+        { $count: 'total' }
+      ],
+      orders: [
+        { $sort: { orderNumber: -1 } },
+        { $skip: skip },
+        { $limit: limitNum }
+      ]
+    };
+
+    // Add range stages if requested
+    if (shouldIncludeRange) {
+      facetStages.highest = [
+        { $sort: { orderNumber: -1 } },
+        { $limit: 1 },
+        { $project: { orderNumber: 1, orderDate: 1, _id: 0 } }
+      ];
+      facetStages.lowest = [
+        { $sort: { orderNumber: 1 } },
+        { $limit: 1 },
+        { $project: { orderNumber: 1, orderDate: 1, _id: 0 } }
+      ];
+    }
+
+    // Single aggregation with $facet for orders + count + range
+    const result = await CustomerConnectOrder.aggregate([
+      { $match: query },
+      { $facet: facetStages }
     ]);
 
-    res.json({
+    const total = result[0]?.metadata[0]?.total || 0;
+    const orders = result[0]?.orders || [];
+
+    console.timeEnd('[Orders] Query time');
+
+    // Build response
+    const response = {
       success: true,
       data: {
         orders,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.ceil(total / limit)
+          pages: Math.ceil(total / limitNum)
         }
       }
-    });
+    };
+
+    // Add range if requested
+    if (shouldIncludeRange) {
+      const highest = result[0]?.highest[0];
+      const lowest = result[0]?.lowest[0];
+
+      response.data.range = {
+        highest: highest?.orderNumber || null,
+        lowest: lowest?.orderNumber || null,
+        highestDate: highest?.orderDate || null,
+        lowestDate: lowest?.orderDate || null,
+        totalOrders: total
+      };
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Get orders error:', error);
     res.status(500).json({

@@ -2,7 +2,7 @@ const StockDiscrepancy = require('../models/StockDiscrepancy');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 
-// Get all discrepancies with filters
+// Get all discrepancies with filters + summary - ULTRA OPTIMIZED COMBINED
 exports.getDiscrepancies = async (req, res, next) => {
   try {
     const {
@@ -11,50 +11,144 @@ exports.getDiscrepancies = async (req, res, next) => {
       startDate,
       endDate,
       page = 1,
-      limit = 50
+      limit = 50,
+      includeSummary = 'true'  // Allow clients to opt-out if needed
     } = req.query;
 
-    const query = {};
+    console.time('[Discrepancies] Query time');
+
+    // Build match query
+    const matchQuery = {};
 
     if (status) {
-      query.status = status;
+      matchQuery.status = status;
     }
 
     if (type) {
-      query.discrepancyType = type;
+      matchQuery.discrepancyType = type;
     }
 
     if (startDate || endDate) {
-      query.reportedAt = {};
-      if (startDate) query.reportedAt.$gte = new Date(startDate);
-      if (endDate) query.reportedAt.$lte = new Date(endDate);
+      matchQuery.reportedAt = {};
+      if (startDate) matchQuery.reportedAt.$gte = new Date(startDate);
+      if (endDate) matchQuery.reportedAt.$lte = new Date(endDate);
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    const shouldIncludeSummary = includeSummary === 'true';
 
-    const [discrepancies, total] = await Promise.all([
-      StockDiscrepancy.find(query)
-        .populate('reportedBy', 'username fullName')
-        .populate('resolvedBy', 'username fullName')
-        .sort({ reportedAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      StockDiscrepancy.countDocuments(query)
+    // Build facet stages
+    const facetStages = {
+      metadata: [
+        { $count: 'total' }
+      ],
+      data: [
+        { $skip: skip },
+        { $limit: limitNum },
+        // Lookup reportedBy user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'reportedBy',
+            foreignField: '_id',
+            pipeline: [
+              { $project: { username: 1, fullName: 1 } }
+            ],
+            as: 'reportedBy'
+          }
+        },
+        {
+          $unwind: {
+            path: '$reportedBy',
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        // Lookup resolvedBy user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'resolvedBy',
+            foreignField: '_id',
+            pipeline: [
+              { $project: { username: 1, fullName: 1 } }
+            ],
+            as: 'resolvedBy'
+          }
+        },
+        {
+          $unwind: {
+            path: '$resolvedBy',
+            preserveNullAndEmptyArrays: true
+          }
+        }
+      ]
+    };
+
+    // Add summary stages if requested
+    if (shouldIncludeSummary) {
+      facetStages.summaryByStatus = [
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalDifference: { $sum: '$difference' }
+          }
+        }
+      ];
+      facetStages.summaryByType = [
+        {
+          $group: {
+            _id: '$discrepancyType',
+            count: { $sum: 1 },
+            totalDifference: { $sum: '$difference' }
+          }
+        }
+      ];
+    }
+
+    // Single aggregation with $facet for data + count + summary
+    const result = await StockDiscrepancy.aggregate([
+      // Stage 1: Filter
+      { $match: matchQuery },
+
+      // Stage 2: Sort early
+      { $sort: { reportedAt: -1 } },
+
+      // Stage 3: Use $facet to run data + count + summary in parallel
+      { $facet: facetStages }
     ]);
 
-    res.status(200).json({
+    const total = result[0]?.metadata[0]?.total || 0;
+    const discrepancies = result[0]?.data || [];
+
+    console.timeEnd('[Discrepancies] Query time');
+
+    // Build response
+    const response = {
       success: true,
       data: {
         discrepancies,
         pagination: {
           total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum)
         }
       }
-    });
+    };
+
+    // Add summary if requested
+    if (shouldIncludeSummary) {
+      response.data.summary = {
+        byStatus: result[0]?.summaryByStatus || [],
+        byType: result[0]?.summaryByType || [],
+        total
+      };
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     console.error('Get discrepancies error:', error);
     next(error);
