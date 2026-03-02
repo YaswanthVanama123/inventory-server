@@ -426,12 +426,52 @@ router.get('/stats', authenticate, async (req, res) => {
 
 router.get('/items/grouped', authenticate, async (req, res) => {
   try {
-    
-    const groupedItems = await CustomerConnectOrder.aggregate([
-      
+    const {
+      page = 1,
+      limit = 100,
+      sortBy = 'name',
+      sortOrder = 'asc',
+      search = '',
+      minQuantity = 0
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    const sortDirection = sortOrder === 'desc' ? -1 : 1;
+    const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
+    const minQty = parseInt(minQuantity);
+
+    // Single optimized aggregation query with $facet
+    const result = await CustomerConnectOrder.aggregate([
+      // Stage 1: Filter only completed orders early
+      {
+        $match: {
+          status: { $in: ['Complete', 'Processing', 'Shipped'] }
+        }
+      },
+
+      // Stage 2: Project only needed fields before unwind (reduce memory)
+      {
+        $project: {
+          items: 1
+        }
+      },
+
+      // Stage 3: Unwind items array
       { $unwind: '$items' },
 
-      
+      // Stage 4: Search filter (if provided)
+      ...(search ? [{
+        $match: {
+          $or: [
+            { 'items.sku': { $regex: search, $options: 'i' } },
+            { 'items.name': { $regex: search, $options: 'i' } }
+          ]
+        }
+      }] : []),
+
+      // Stage 5: Group by SKU and name
       {
         $group: {
           _id: {
@@ -441,46 +481,55 @@ router.get('/items/grouped', authenticate, async (req, res) => {
           totalQuantity: { $sum: '$items.qty' },
           totalValue: { $sum: '$items.lineTotal' },
           avgUnitPrice: { $avg: '$items.unitPrice' },
-          orderCount: { $sum: 1 },
-          orders: {
-            $push: {
-              orderNumber: '$orderNumber',
-              poNumber: '$poNumber',
-              orderDate: '$orderDate',
-              status: '$status',
-              vendor: '$vendor.name',
-              qty: '$items.qty',
-              unitPrice: '$items.unitPrice',
-              lineTotal: '$items.lineTotal',
-              stockProcessed: '$stockProcessed'
-            }
-          }
+          orderCount: { $sum: 1 }
         }
       },
 
-      
-      { $sort: { '_id.name': 1 } },
+      // Stage 6: Filter by minimum quantity (if provided)
+      ...(minQty > 0 ? [{
+        $match: {
+          totalQuantity: { $gte: minQty }
+        }
+      }] : []),
 
-      
+      // Stage 7: Project final structure with rounded values
       {
         $project: {
           _id: 0,
           sku: '$_id.sku',
           name: '$_id.name',
           totalQuantity: 1,
-          totalValue: 1,
-          avgUnitPrice: 1,
-          orderCount: 1,
-          orders: 1
+          totalValue: { $round: ['$totalValue', 2] },
+          avgUnitPrice: { $round: ['$avgUnitPrice', 2] },
+          orderCount: 1
+        }
+      },
+
+      // Stage 8: Sort
+      { $sort: { [sortField]: sortDirection } },
+
+      // Stage 9: Single query for both data and count using $facet
+      {
+        $facet: {
+          metadata: [{ $count: 'total' }],
+          data: [{ $skip: skip }, { $limit: limitNum }]
         }
       }
     ]);
 
+    const total = result[0].metadata[0]?.total || 0;
+    const items = result[0].data || [];
+
     res.json({
       success: true,
       data: {
-        items: groupedItems,
-        totalItems: groupedItems.length
+        items,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
       }
     });
   } catch (error) {

@@ -11,7 +11,6 @@ const {
   getLowStockItems,
   getInventoryItemsForPOS,
   getInventoryItemsForTruckCheckout,
-  getCategories,
   uploadImages,
   deleteImage,
   setPrimaryImage,
@@ -35,7 +34,6 @@ router.get('/truck-checkout', requireEmployee(), getInventoryItemsForTruckChecko
 
 router.get('/', requireEmployee(), getInventoryItems);
 router.get('/low-stock', requireEmployee(), getLowStockItems);
-router.get('/categories', requireEmployee(), getCategories);
 router.get('/sync-source', requireEmployee(), getItemsBySyncSource);
 router.get('/stock-movements', requireEmployee(), getStockMovements);
 router.get('/sync-health', requireEmployee(), getSyncHealth);

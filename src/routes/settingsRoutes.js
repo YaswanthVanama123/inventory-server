@@ -7,15 +7,9 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 router.use(authenticate);
 
 
-router.get('/', settingsController.getSettings);
-router.get('/categories', settingsController.getAllCategories);
 router.get('/units', settingsController.getAllUnits);
 router.post('/generate-sku', settingsController.generateSKU);
 
-
-router.post('/categories', requireAdmin(), settingsController.addCategory);
-router.put('/categories/:id', requireAdmin(), settingsController.updateCategory);
-router.delete('/categories/:id', requireAdmin(), settingsController.deleteCategory);
 
 router.post('/units', requireAdmin(), settingsController.addUnit);
 router.put('/units/:id', requireAdmin(), settingsController.updateUnit);

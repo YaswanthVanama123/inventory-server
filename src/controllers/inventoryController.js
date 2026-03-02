@@ -1259,23 +1259,6 @@ const transformItemWithWeightedPrice = (item, weightedAvgPrice = null) => {
 };
 
 
-const getCategories = async (req, res, next) => {
-  try {
-    const categories = await Inventory.distinct('category');
-
-    res.status(200).json({
-      success: true,
-      data: { categories }
-    });
-  } catch (error) {
-    console.error('Get categories error:', error);
-    next(error);
-  }
-};
-
-
-
-
 const uploadImages = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ _id: req.params.id, isDeleted: false });
@@ -1990,7 +1973,6 @@ module.exports = {
   getLowStockItems,
   getInventoryItemsForPOS,
   getInventoryItemsForTruckCheckout,
-  getCategories,
   uploadImages,
   deleteImage,
   setPrimaryImage,

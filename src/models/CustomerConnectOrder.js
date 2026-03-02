@@ -145,6 +145,8 @@ customerConnectOrderSchema.index({ orderDate: -1, status: 1 });
 customerConnectOrderSchema.index({ 'vendor.name': 1, orderDate: -1 });
 customerConnectOrderSchema.index({ stockProcessed: 1, status: 1 });
 customerConnectOrderSchema.index({ lastSyncedAt: -1 });
+customerConnectOrderSchema.index({ 'items.sku': 1 }); // Optimize items grouping queries
+customerConnectOrderSchema.index({ 'items.sku': 1, status: 1 }); // Compound index for filtered grouping
 
 
 customerConnectOrderSchema.virtual('shouldProcessStock').get(function() {
