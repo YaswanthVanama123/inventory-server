@@ -161,323 +161,107 @@ const generateSyncWarnings = (syncStats) => {
 };
 
 
-const getSyncStatisticsOptimized = async () => {
-  try {
-    const [latestSync, last24HoursCount, weekSuccessRate] = await Promise.all([
-      SyncLog.findOne().sort({ startedAt: -1 }).select('startedAt status source recordsFound recordsInserted recordsUpdated recordsFailed duration').lean(),
-      SyncLog.countDocuments({ startedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-      SyncLog.aggregate([
-        { $match: { startedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            successful: {
-              $sum: {
-                $cond: [{ $in: ['$status', ['SUCCESS', 'completed']] }, 1, 0]
-              }
-            }
-          }
-        }
-      ])
-    ]);
-
-    const weekStats = weekSuccessRate[0] || { total: 0, successful: 0 };
-    const successRate = weekStats.total > 0 ? ((weekStats.successful / weekStats.total) * 100).toFixed(2) : 0;
-    const isDataStale = last24HoursCount === 0;
-
-    return {
-      lastSync: latestSync ? {
-        timestamp: latestSync.startedAt,
-        status: latestSync.status,
-        source: latestSync.source,
-        recordsFound: latestSync.recordsFound || 0,
-        recordsInserted: latestSync.recordsInserted || 0,
-        recordsUpdated: latestSync.recordsUpdated || 0,
-        recordsFailed: latestSync.recordsFailed || 0,
-        duration: latestSync.duration
-      } : null,
-      last24Hours: {
-        syncCount: last24HoursCount,
-        successful: 0,
-        failed: 0,
-        inProgress: 0
-      },
-      weeklyStats: {
-        totalSyncs: weekStats.total,
-        successRate: parseFloat(successRate),
-        averageDuration: 0
-      },
-      health: {
-        status: isDataStale ? 'critical' : 'healthy',
-        isDataStale,
-        hoursSinceLastSync: null,
-        pendingRecords: 0
-      },
-      warnings: isDataStale ? [{
-        level: 'critical',
-        message: 'No successful sync in the last 24 hours',
-        action: 'Investigate sync service and external API connections'
-      }] : []
-    };
-  } catch (error) {
-    console.error('Error getting sync statistics:', error);
-    return null;
-  }
-};
-
 const getDashboard = async (req, res, next) => {
   try {
-    const startTime = Date.now();
 
-    // SINGLE DATABASE OPERATION - All data fetched in one aggregation using $facet
-    const [dashboardData] = await Inventory.aggregate([
-      {
-        $facet: {
-          // 1. Inventory statistics
-          inventoryStats: [
-            { $match: { isActive: true, isDeleted: false } },
-            {
-              $group: {
-                _id: null,
-                totalItems: { $sum: 1 },
-                totalValue: { $sum: { $multiply: ['$pricing.sellingPrice', '$quantity.current'] } },
-                lowStockCount: {
-                  $sum: {
-                    $cond: [{ $lte: ['$quantity.current', '$quantity.minimum'] }, 1, 0]
-                  }
-                },
-                reorderCount: {
-                  $sum: {
-                    $cond: [{ $lte: ['$quantity.current', '$supplier.reorderPoint'] }, 1, 0]
-                  }
-                }
-              }
-            }
-          ],
+    const totalItems = await Inventory.countDocuments({ isActive: true, isDeleted: false });
 
-          // 2. Category statistics
-          categoryStats: [
-            { $match: { isActive: true, isDeleted: false } },
-            { $group: { _id: '$category', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 10 }
-          ],
 
-          // 3. Recent activity from AuditLog (using lookup)
-          recentActivity: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'auditlogs',
-                pipeline: [
-                  { $match: { resource: 'INVENTORY' } },
-                  { $sort: { timestamp: -1 } },
-                  { $limit: 5 },
-                  {
-                    $lookup: {
-                      from: 'users',
-                      localField: 'performedBy',
-                      foreignField: '_id',
-                      as: 'performedBy'
-                    }
-                  },
-                  { $unwind: { path: '$performedBy', preserveNullAndEmptyArrays: true } },
-                  {
-                    $project: {
-                      action: 1,
-                      resource: 1,
-                      resourceId: 1,
-                      details: 1,
-                      timestamp: 1,
-                      'performedBy.username': 1,
-                      'performedBy.fullName': 1
-                    }
-                  }
-                ],
-                as: 'activities'
-              }
-            },
-            { $unwind: '$activities' },
-            { $replaceRoot: { newRoot: '$activities' } }
-          ],
+    const items = await Inventory.find({ isActive: true, isDeleted: false });
+    const totalValue = items.reduce((sum, item) => {
+      return sum + (item.pricing.sellingPrice * item.quantity.current);
+    }, 0);
 
-          // 4. Sales data from RouteStarInvoice
-          salesTotals: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'routestarinvoices',
-                pipeline: [
-                  {
-                    $match: {
-                      status: { $ne: 'Cancelled' },
-                      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-                    }
-                  },
-                  {
-                    $group: {
-                      _id: null,
-                      totalRevenue: { $sum: '$total' },
-                      totalOrders: { $sum: 1 }
-                    }
-                  }
-                ],
-                as: 'totals'
-              }
-            },
-            { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
-            { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalRevenue: 0, totalOrders: 0 }] } } }
-          ],
 
-          // 5. Invoice status distribution
-          invoiceStatusStats: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'routestarinvoices',
-                pipeline: [
-                  {
-                    $match: {
-                      status: { $ne: 'Cancelled' },
-                      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-                    }
-                  },
-                  { $group: { _id: '$status', count: { $sum: 1 } } }
-                ],
-                as: 'statusStats'
-              }
-            },
-            { $unwind: '$statusStats' },
-            { $replaceRoot: { newRoot: '$statusStats' } }
-          ],
+    const lowStockCount = items.filter(item => item.isLowStock).length;
 
-          // 6. Sales by month
-          salesByMonth: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'routestarinvoices',
-                pipeline: [
-                  {
-                    $match: {
-                      status: { $ne: 'Cancelled' },
-                      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-                    }
-                  },
-                  {
-                    $group: {
-                      _id: {
-                        month: { $month: '$invoiceDate' },
-                        year: { $year: '$invoiceDate' }
-                      },
-                      revenue: { $sum: '$total' },
-                      orders: { $sum: 1 }
-                    }
-                  },
-                  { $sort: { '_id.year': 1, '_id.month': 1 } }
-                ],
-                as: 'monthlyData'
-              }
-            },
-            { $unwind: '$monthlyData' },
-            { $replaceRoot: { newRoot: '$monthlyData' } }
-          ],
 
-          // 7. Top selling items
-          topSellingItems: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'routestarinvoices',
-                pipeline: [
-                  {
-                    $match: {
-                      status: { $ne: 'Cancelled' },
-                      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-                    }
-                  },
-                  { $unwind: '$lineItems' },
-                  {
-                    $group: {
-                      _id: { sku: '$lineItems.sku', name: '$lineItems.name' },
-                      totalRevenue: { $sum: '$lineItems.amount' },
-                      totalQty: { $sum: '$lineItems.quantity' },
-                      orderCount: { $sum: 1 }
-                    }
-                  },
-                  { $sort: { totalRevenue: -1 } },
-                  { $limit: 5 }
-                ],
-                as: 'topItems'
-              }
-            },
-            { $unwind: '$topItems' },
-            { $replaceRoot: { newRoot: '$topItems' } }
-          ],
+    const reorderCount = items.filter(item => item.needsReorder).length;
 
-          // 8. Sync log statistics
-          syncStats: [
-            { $limit: 1 },
-            {
-              $lookup: {
-                from: 'synclogs',
-                pipeline: [
-                  { $sort: { startedAt: -1 } },
-                  { $limit: 1 },
-                  {
-                    $project: {
-                      startedAt: 1,
-                      status: 1,
-                      source: 1,
-                      recordsFound: 1,
-                      recordsInserted: 1,
-                      recordsUpdated: 1,
-                      recordsFailed: 1,
-                      duration: 1
-                    }
-                  }
-                ],
-                as: 'lastSync'
-              }
-            },
-            { $unwind: { path: '$lastSync', preserveNullAndEmptyArrays: true } },
-            { $replaceRoot: { newRoot: { $ifNull: ['$lastSync', {}] } } }
-          ]
-        }
-      }
+
+    const categoryStats = await Inventory.aggregate([
+      { $match: { isActive: true, isDeleted: false } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
     ]);
 
-    // Process results
-    const totals = dashboardData.inventoryStats[0] || {
-      totalItems: 0,
-      totalValue: 0,
-      lowStockCount: 0,
-      reorderCount: 0
-    };
 
-    const categoryStats = dashboardData.categoryStats || [];
-    const recentActivity = dashboardData.recentActivity || [];
-    const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
+    const recentActivity = await AuditLog.find({ resource: 'INVENTORY' })
+      .populate('performedBy', 'username fullName')
+      .sort({ timestamp: -1 })
+      .limit(10);
 
-    // Build invoice status stats
-    const invoiceStatusStats = {};
-    (dashboardData.invoiceStatusStats || []).forEach(s => {
-      invoiceStatusStats[s._id] = s.count;
+
+    const routeStarInvoices = await RouteStarInvoice.find({
+      status: { $ne: 'Cancelled' },
+      invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+    })
+      .sort({ invoiceDate: 1 })
+      .lean();
+
+    
+    const itemSalesMap = {};
+    routeStarInvoices.forEach(invoice => {
+      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        invoice.lineItems.forEach(item => {
+          const key = item.sku || item.name;
+          if (!itemSalesMap[key]) {
+            itemSalesMap[key] = {
+              sku: item.sku || '',
+              name: item.name || 'Unknown',
+              totalQty: 0,
+              totalRevenue: 0,
+              orderCount: 0
+            };
+          }
+          itemSalesMap[key].totalQty += item.quantity || 0;
+          itemSalesMap[key].totalRevenue += item.amount || 0;
+          itemSalesMap[key].orderCount += 1;
+        });
+      }
     });
 
-    // Build top selling items
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const topSellingItemsArray = (dashboardData.topSellingItems || []).map(item => ({
-      name: item._id.name || 'Unknown',
-      sku: item._id.sku || '',
-      totalRevenue: item.totalRevenue,
-      totalQty: item.totalQty,
-      orderCount: item.orderCount
-    }));
 
+    const customerConnectOrders = await CustomerConnectOrder.find({
+      status: 'Complete',
+      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+    })
+      .sort({ orderDate: 1 })
+      .lean();
+
+    // Add CustomerConnect order items to the sales map
+    customerConnectOrders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          const key = item.sku || item.name;
+          if (!itemSalesMap[key]) {
+            itemSalesMap[key] = {
+              sku: item.sku || '',
+              name: item.name || 'Unknown',
+              totalQty: 0,
+              totalRevenue: 0,
+              orderCount: 0
+            };
+          }
+          itemSalesMap[key].totalQty += item.qty || 0;
+          itemSalesMap[key].totalRevenue += item.lineTotal || 0;
+          itemSalesMap[key].orderCount += 1;
+        });
+      }
+    });
+
+    // Sort by revenue and take top 5
+    const topSellingItemsArray = Object.values(itemSalesMap)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 5);
+
+    console.log('Total unique items in sales map:', Object.keys(itemSalesMap).length);
+    console.log('Top selling items array:', topSellingItemsArray);
+
+    // Format for mobile react-native-chart-kit BarChart
     const topSellingItems = {
       labels: topSellingItemsArray.map(item => {
+        // Truncate long names for chart labels
         const name = item.name || 'Unknown';
         return name.length > 12 ? name.substring(0, 12) + '...' : name;
       }),
@@ -486,6 +270,7 @@ const getDashboard = async (req, res, next) => {
       }]
     };
 
+    // Keep detailed data for reference
     const topSellingItemsDetailed = topSellingItemsArray.map(item => ({
       itemName: item.name,
       skuCode: item.sku,
@@ -494,17 +279,112 @@ const getDashboard = async (req, res, next) => {
       orderCount: item.orderCount
     }));
 
-    // Build sales trend
-    const salesTrend = (dashboardData.salesByMonth || []).map(m => ({
-      month: monthNames[m._id.month - 1],
-      revenue: m.revenue,
-      profit: 0,
-      orders: m.orders
-    }));
+    console.log('=== DASHBOARD DEBUG (Automation Data) ===');
+    console.log('Total RouteStar invoices found:', routeStarInvoices.length);
+    console.log('Total CustomerConnect orders found:', customerConnectOrders.length);
+    console.log('Sample RouteStar invoice:', routeStarInvoices.length > 0 ? {
+      invoiceNumber: routeStarInvoices[0].invoiceNumber,
+      total: routeStarInvoices[0].total,
+      lineItemsCount: routeStarInvoices[0].lineItems?.length || 0
+    } : 'No invoices');
 
-    // Calculate changes
-    const lastMonthData = salesTrend[salesTrend.length - 1] || { revenue: 0, orders: 0 };
-    const prevMonthData = salesTrend[salesTrend.length - 2] || { revenue: 0, orders: 0 };
+
+    const totalRevenue = routeStarInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+    const totalOrders = routeStarInvoices.length;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+
+    const totalPurchaseAmount = customerConnectOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalPurchaseOrders = customerConnectOrders.length;
+    const avgPurchaseValue = totalPurchaseOrders > 0 ? totalPurchaseAmount / totalPurchaseOrders : 0;
+
+    console.log('Calculated totalRevenue (sales):', totalRevenue);
+    console.log('Calculated totalOrders (sales):', totalOrders);
+    console.log('Calculated totalPurchaseAmount:', totalPurchaseAmount);
+    console.log('Calculated totalPurchaseOrders:', totalPurchaseOrders);
+
+    // Calculate invoice status distribution
+    const invoiceStatusStats = {};
+    routeStarInvoices.forEach(inv => {
+      const status = inv.status || 'Unknown';
+      invoiceStatusStats[status] = (invoiceStatusStats[status] || 0) + 1;
+    });
+    console.log('Invoice status distribution:', invoiceStatusStats);
+
+
+    let totalProfit = 0;
+    let totalCost = 0;
+
+
+    routeStarInvoices.forEach(inv => {
+      if (inv.lineItems && Array.isArray(inv.lineItems)) {
+        inv.lineItems.forEach(item => {
+          const itemRevenue = item.amount || 0;
+
+          const matchingInventory = items.find(invItem =>
+            invItem.skuCode === item.sku || invItem.itemName === item.name
+          );
+
+          if (matchingInventory && matchingInventory.pricing) {
+            const itemCost = matchingInventory.pricing.purchasePrice * (item.quantity || 0);
+            totalCost += itemCost;
+            totalProfit += itemRevenue - itemCost;
+          }
+        });
+      }
+    });
+
+
+    const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
+
+
+    const salesByMonth = {};
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    routeStarInvoices.forEach(invoice => {
+      const date = new Date(invoice.invoiceDate);
+      const monthKey = `${monthNames[date.getMonth()]}`;
+
+      if (!salesByMonth[monthKey]) {
+        salesByMonth[monthKey] = {
+          month: monthKey,
+          revenue: 0,
+          profit: 0,
+          orders: 0
+        };
+      }
+
+      salesByMonth[monthKey].revenue += (invoice.total || 0);
+      salesByMonth[monthKey].orders += 1;
+
+
+      let invoiceProfit = 0;
+      if (invoice.items && Array.isArray(invoice.items)) {
+        invoice.items.forEach(item => {
+          const matchingInventory = items.find(invItem =>
+            invItem.skuCode === item.sku || invItem.itemName === item.name
+          );
+
+          if (matchingInventory && matchingInventory.pricing) {
+            const itemCost = matchingInventory.pricing.purchasePrice * (item.qty || 0);
+            const itemRevenue = (item.unitPrice || 0) * (item.qty || 0);
+            invoiceProfit += itemRevenue - itemCost;
+          }
+        });
+      }
+      salesByMonth[monthKey].profit += invoiceProfit;
+    });
+
+
+    const salesTrend = Object.values(salesByMonth);
+
+
+    const currentMonth = new Date().getMonth();
+    const lastMonthName = monthNames[currentMonth === 0 ? 11 : currentMonth - 1];
+    const prevMonthName = monthNames[currentMonth <= 1 ? (currentMonth === 0 ? 10 : 11) : currentMonth - 2];
+
+    const lastMonthData = salesByMonth[lastMonthName] || { revenue: 0, orders: 0 };
+    const prevMonthData = salesByMonth[prevMonthName] || { revenue: 0, orders: 0 };
 
     const revenueChange = prevMonthData.revenue > 0
       ? (((lastMonthData.revenue - prevMonthData.revenue) / prevMonthData.revenue) * 100).toFixed(1)
@@ -514,59 +394,49 @@ const getDashboard = async (req, res, next) => {
       ? (((lastMonthData.orders - prevMonthData.orders) / prevMonthData.orders) * 100).toFixed(1)
       : 0;
 
-    // Build sync status
-    const lastSync = dashboardData.syncStats[0] || null;
-    const syncStatus = lastSync ? {
-      lastSync: {
-        timestamp: lastSync.startedAt,
-        status: lastSync.status,
-        source: lastSync.source,
-        recordsFound: lastSync.recordsFound || 0,
-        recordsInserted: lastSync.recordsInserted || 0,
-        recordsUpdated: lastSync.recordsUpdated || 0,
-        recordsFailed: lastSync.recordsFailed || 0,
-        duration: lastSync.duration
-      },
-      last24Hours: {
-        syncCount: 0,
-        successful: 0,
-        failed: 0,
-        inProgress: 0
-      },
-      weeklyStats: {
-        totalSyncs: 0,
-        successRate: 0,
-        averageDuration: 0
-      },
-      health: {
-        status: 'healthy',
-        isDataStale: false,
-        hoursSinceLastSync: null,
-        pendingRecords: 0
-      },
-      warnings: []
-    } : null;
+
+    const currentMonthLowStock = lowStockCount;
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    const lastMonthItems = await Inventory.find({
+      isActive: true,
+      isDeleted: false,
+      updatedAt: { $lte: lastMonth }
+    });
+    const lastMonthLowStock = lastMonthItems.filter(item => item.isLowStock).length;
+    const lowStockChange = lastMonthLowStock > 0
+      ? (((currentMonthLowStock - lastMonthLowStock) / lastMonthLowStock) * 100).toFixed(1)
+      : 0;
+
+    const profitMarginChange = prevMonthData.revenue > 0 && lastMonthData.revenue > 0
+      ? (((lastMonthData.profit / lastMonthData.revenue) - (prevMonthData.profit / prevMonthData.revenue)) * 100).toFixed(1)
+      : 0;
+
+
+    const syncStats = await getSyncStatistics();
+    const syncWarnings = syncStats ? generateSyncWarnings(syncStats) : [];
 
     const responseData = {
       success: true,
       data: {
         summary: {
-          totalItems: totals.totalItems,
-          totalValue: totals.totalValue,
-          lowStockCount: totals.lowStockCount,
-          reorderCount: totals.reorderCount,
-          totalRevenue: salesTotals.totalRevenue,
-          totalOrders: salesTotals.totalOrders,
-          avgOrderValue: salesTotals.totalOrders > 0 ? salesTotals.totalRevenue / salesTotals.totalOrders : 0,
-          totalProfit: 0,
-          profitMargin: "0.00",
+          totalItems,
+          totalValue,
+          lowStockCount,
+          reorderCount,
+          totalRevenue,
+          totalOrders,
+          avgOrderValue,
+          totalProfit,
+          profitMargin,
           revenueChange,
           ordersChange,
-          lowStockChange: 0,
-          profitMarginChange: "0.0",
-          totalPurchaseAmount: 0,
-          totalPurchaseOrders: 0,
-          avgPurchaseValue: 0,
+          lowStockChange,
+          profitMarginChange,
+
+          totalPurchaseAmount,
+          totalPurchaseOrders,
+          avgPurchaseValue,
           dataSource: 'automation'
         },
         categoryStats,
@@ -575,12 +445,36 @@ const getDashboard = async (req, res, next) => {
         topSellingItemsDetailed,
         invoiceStatusStats,
         salesTrend,
-        syncStatus
+        syncStatus: syncStats ? {
+          lastSync: syncStats.lastSync,
+          last24Hours: syncStats.last24Hours,
+          weeklyStats: syncStats.weeklyStats,
+          health: {
+            status: syncWarnings.some(w => w.level === 'critical') ? 'critical' :
+                    syncWarnings.some(w => w.level === 'error') ? 'error' :
+                    syncWarnings.some(w => w.level === 'warning') ? 'warning' : 'healthy',
+            isDataStale: syncStats.health.isDataStale,
+            hoursSinceLastSync: syncStats.health.hoursSinceLastSync,
+            pendingRecords: syncStats.health.pendingRecords
+          },
+          warnings: syncWarnings
+        } : null
       }
     };
 
-    const elapsed = Date.now() - startTime;
-    console.log(`Dashboard API completed in ${elapsed}ms (SINGLE CONNECTION)`);
+    console.log('Final response summary:', {
+      totalRevenue: responseData.data.summary.totalRevenue,
+      totalOrders: responseData.data.summary.totalOrders,
+      totalPurchaseAmount: responseData.data.summary.totalPurchaseAmount,
+      totalPurchaseOrders: responseData.data.summary.totalPurchaseOrders,
+      profitMargin: responseData.data.summary.profitMargin,
+      salesTrendLength: responseData.data.salesTrend.length,
+      topSellingItemsLabels: responseData.data.topSellingItems.labels,
+      topSellingItemsDetailedCount: responseData.data.topSellingItemsDetailed.length,
+      syncStatus: responseData.data.syncStatus ? 'included' : 'not available',
+      dataSource: 'automation'
+    });
+    console.log('=== END DASHBOARD DEBUG ===');
 
     res.status(200).json(responseData);
   } catch (error) {
