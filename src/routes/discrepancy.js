@@ -12,6 +12,9 @@ router.get('/', discrepancyController.getDiscrepancies);
 // Get discrepancy summary
 router.get('/summary', discrepancyController.getDiscrepancySummary);
 
+// Get single discrepancy by ID
+router.get('/:id', discrepancyController.getDiscrepancyById);
+
 // Create new discrepancy
 router.post('/', discrepancyController.createDiscrepancy);
 

@@ -14,7 +14,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
   },
   invoiceType: {
     type: String,
-    enum: ['RouteStarInvoice', 'CustomerConnectOrder'],
+    enum: ['RouteStarInvoice', 'CustomerConnectOrder', 'TruckCheckout'],
     required: true
   },
 

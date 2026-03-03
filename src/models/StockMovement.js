@@ -21,7 +21,7 @@ const stockMovementSchema = new mongoose.Schema({
   refType: {
     type: String,
     required: [true, 'Reference type is required'],
-    enum: ['PURCHASE_ORDER', 'INVOICE', 'MANUAL', 'ADJUSTMENT'],
+    enum: ['PURCHASE_ORDER', 'INVOICE', 'MANUAL', 'ADJUSTMENT', 'TRUCK_CHECKOUT'],
     index: true
   },
   refId: {

@@ -1022,6 +1022,12 @@ class StockService {
     const checkouts = checkoutsResult;
     const rawDiscrepancies = discrepanciesResult;
 
+    // Helper function to get canonical category name from alias
+    const getCanonical = (name) => {
+      const nameLower = name.toLowerCase();
+      return aliasToCanonicalMap.get(nameLower) || name;
+    };
+
     // Process raw discrepancies and group by target category
     const discrepancyMap = new Map();
     rawDiscrepancies.forEach(disc => {
@@ -1070,11 +1076,6 @@ class StockService {
 
     // Step 3: Build result maps
     console.time('[StockSummary] Step 3: Build result maps');
-
-    const getCanonical = (name) => {
-      const nameLower = name.toLowerCase();
-      return aliasToCanonicalMap.get(nameLower) || name;
-    };
 
     // Build case-insensitive category lookup map
     const lowercaseToCategoryMap = new Map();

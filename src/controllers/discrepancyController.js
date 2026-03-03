@@ -172,6 +172,32 @@ exports.getDiscrepancySummary = async (req, res, next) => {
   }
 };
 
+// Get single discrepancy by ID
+exports.getDiscrepancyById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const discrepancy = await StockDiscrepancy.findById(id)
+      .populate('reportedBy', 'username fullName')
+      .populate('resolvedBy', 'username fullName');
+
+    if (!discrepancy) {
+      return res.status(404).json({
+        success: false,
+        message: 'Discrepancy not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: discrepancy
+    });
+  } catch (error) {
+    console.error('Get discrepancy by ID error:', error);
+    next(error);
+  }
+};
+
 // Create new discrepancy
 exports.createDiscrepancy = async (req, res, next) => {
   try {
