@@ -26,11 +26,48 @@ const truckCheckoutSchema = new mongoose.Schema({
     index: true
   },
 
-  // Items taken by employee
+  // Single item checkout (NEW STRUCTURE)
+  itemName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+
+  quantityTaking: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+
+  remainingQuantity: {
+    type: Number,
+    required: true
+  },
+
+  systemCalculatedRemaining: {
+    type: Number  // Expected remaining based on stock calculation
+  },
+
+  hasDiscrepancy: {
+    type: Boolean,
+    default: false
+  },
+
+  discrepancyAccepted: {
+    type: Boolean,
+    default: false
+  },
+
+  discrepancyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'StockDiscrepancy'
+  },
+
+  // Items taken by employee (DEPRECATED - kept for backwards compatibility)
   itemsTaken: [{
-    name: { type: String, required: true },
+    name: { type: String },
     sku: { type: String },
-    quantity: { type: Number, required: true, min: 0 },
+    quantity: { type: Number, min: 0 },
     notes: { type: String }
   }],
 

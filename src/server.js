@@ -156,8 +156,9 @@ app.use(errorHandler);
 
 
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+const HOST = '127.0.0.1'; // Bind to localhost only to avoid firewall issues
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
 
   
   if (process.env.AUTO_START_SCHEDULER === 'true') {
