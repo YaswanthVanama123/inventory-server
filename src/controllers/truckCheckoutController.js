@@ -228,6 +228,23 @@ class TruckCheckoutController {
       next(error);
     }
   }
+  /**
+   * Get checkout sales tracking
+   * GET /api/truck-checkout/sales-tracking
+   */
+  async getCheckoutSalesTracking(req, res, next) {
+    try {
+      const result = await truckCheckoutService.getCheckoutSalesTracking(req.query);
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Get checkout sales tracking error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new TruckCheckoutController();

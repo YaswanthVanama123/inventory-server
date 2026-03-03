@@ -319,6 +319,150 @@ class TruckCheckoutService {
       console.error(`   ✗ Failed to reverse stock for ${itemName}: ${error.message}`);
     }
   }
+
+  /**
+   * Get checkout sales tracking
+   * Matches checkouts with invoices to track what was sold vs checked out
+   * @param {Object} filters - Filter options
+   * @returns {Promise<Object>} Sales tracking data
+   */
+  async getCheckoutSalesTracking(filters = {}) {
+    const RouteStarInvoice = require('../models/RouteStarInvoice');
+
+    console.log('\n📊 Getting checkout sales tracking...');
+
+    try {
+      // Build query for checkouts
+      const query = { status: { $ne: 'cancelled' } };
+
+      if (filters.employeeName) {
+        query.employeeName = new RegExp(filters.employeeName, 'i');
+      }
+
+      if (filters.truckNumber) {
+        query.truckNumber = new RegExp(filters.truckNumber, 'i');
+      }
+
+      if (filters.startDate) {
+        query.checkoutDate = { $gte: new Date(filters.startDate) };
+      }
+
+      if (filters.endDate) {
+        query.checkoutDate = {
+          ...query.checkoutDate,
+          $lte: new Date(filters.endDate)
+        };
+      }
+
+      // Get checkouts
+      const checkouts = await TruckCheckout.find(query)
+        .sort({ checkoutDate: -1 })
+        .lean();
+
+      console.log(`✓ Found ${checkouts.length} checkouts to track`);
+
+      // For each checkout, find matching invoices
+      const trackingData = [];
+
+      for (const checkout of checkouts) {
+        // Only process new single-item checkouts (with itemName field)
+        if (!checkout.itemName) {
+          continue;
+        }
+
+        const checkoutDate = new Date(checkout.checkoutDate);
+        const itemName = checkout.itemName;
+        const truckNumber = checkout.truckNumber;
+        const quantityCheckedOut = checkout.quantityTaking || 0;
+
+        // Find matching invoices:
+        // - Invoice date >= checkout date
+        // - Truck number matches (if available)
+        // - Item name matches (using alias lookup)
+        const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
+
+        // Build invoice query
+        const invoiceQuery = {
+          invoiceDate: { $gte: checkoutDate },
+          'lineItems': { $exists: true, $ne: [] }
+        };
+
+        // Match truck number if available in invoice
+        if (truckNumber) {
+          invoiceQuery.$or = [
+            { truckNumber: new RegExp(truckNumber, 'i') },
+            { 'customer.name': new RegExp(truckNumber, 'i') }
+          ];
+        }
+
+        const matchedInvoices = await RouteStarInvoice.find(invoiceQuery).lean();
+
+        // Calculate total sold from matched invoices
+        let totalSold = 0;
+        const invoiceDetails = [];
+
+        for (const invoice of matchedInvoices) {
+          for (const lineItem of invoice.lineItems || []) {
+            const lineItemCanonical = await RouteStarItemAlias.getCanonicalName(lineItem.name);
+
+            // Check if item matches (by canonical name or direct name)
+            if (
+              lineItemCanonical === canonicalName ||
+              lineItem.name.toLowerCase() === itemName.toLowerCase() ||
+              lineItemCanonical === itemName
+            ) {
+              totalSold += lineItem.quantity || 0;
+              invoiceDetails.push({
+                invoiceNumber: invoice.invoiceNumber,
+                invoiceDate: invoice.invoiceDate,
+                quantity: lineItem.quantity,
+                itemName: lineItem.name
+              });
+            }
+          }
+        }
+
+        // Calculate remaining and status
+        const remaining = quantityCheckedOut - totalSold;
+        let status = 'Good';
+
+        if (remaining > 0) {
+          status = 'Shortage'; // Less sold than checked out (units still in truck or lost)
+        } else if (remaining < 0) {
+          status = 'Overage'; // More sold than checked out (possible theft or error)
+        }
+
+        trackingData.push({
+          checkoutId: checkout._id,
+          employeeName: checkout.employeeName,
+          truckNumber: checkout.truckNumber,
+          checkoutDate: checkout.checkoutDate,
+          itemName: checkout.itemName,
+          quantityCheckedOut,
+          totalSold,
+          remaining: Math.abs(remaining),
+          status,
+          matchedInvoices: invoiceDetails.length,
+          invoiceDetails: invoiceDetails.slice(0, 5) // Limit to first 5 for preview
+        });
+      }
+
+      console.log(`✓ Tracked ${trackingData.length} checkouts with sales data\n`);
+
+      return {
+        checkouts: trackingData,
+        total: trackingData.length,
+        summary: {
+          good: trackingData.filter(c => c.status === 'Good').length,
+          shortage: trackingData.filter(c => c.status === 'Shortage').length,
+          overage: trackingData.filter(c => c.status === 'Overage').length
+        }
+      };
+    } catch (error) {
+      console.error('Get checkout sales tracking error:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new TruckCheckoutService();

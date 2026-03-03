@@ -23,6 +23,9 @@ router.get('/employee/:employeeName', authenticate, truckCheckoutController.getC
 // Get employee stats
 router.get('/stats/employee/:employeeName', authenticate, truckCheckoutController.getEmployeeStats);
 
+// Get checkout sales tracking (matches checkouts with invoices)
+router.get('/sales-tracking', authenticate, truckCheckoutController.getCheckoutSalesTracking);
+
 // Create new checkout (NEW - recommended)
 router.post('/create-new', authenticate, truckCheckoutController.createCheckout);
 

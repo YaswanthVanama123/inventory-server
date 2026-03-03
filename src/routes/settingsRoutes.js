@@ -9,6 +9,7 @@ router.use(authenticate);
 
 router.get('/units', settingsController.getAllUnits);
 router.post('/generate-sku', settingsController.generateSKU);
+router.get('/stock-cutoff-date', settingsController.getStockCutoffDate);
 
 
 router.post('/units', requireAdmin(), settingsController.addUnit);
@@ -16,5 +17,6 @@ router.put('/units/:id', requireAdmin(), settingsController.updateUnit);
 router.delete('/units/:id', requireAdmin(), settingsController.deleteUnit);
 
 router.put('/sku-config', requireAdmin(), settingsController.updateSKUConfig);
+router.put('/stock-cutoff-date', requireAdmin(), settingsController.updateStockCutoffDate);
 
 module.exports = router;

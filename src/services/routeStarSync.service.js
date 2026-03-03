@@ -738,17 +738,41 @@ class RouteStarSyncService {
     await this.createSyncLog();
 
     try {
+      // Get stock calculation cutoff date from settings
+      const Settings = require('../models/Settings');
+      const settings = await Settings.getSettings();
+      const cutoffDate = settings.stockCalculationCutoffDate;
+
+      if (cutoffDate) {
+        console.log(`📅 Stock Cutoff Date: ${cutoffDate.toISOString().split('T')[0]}`);
+        console.log(`   - Invoices BEFORE: Stock will decrease (OLD)`);
+        console.log(`   - Invoices AFTER: Stock will NOT decrease (NEW)`);
+      } else {
+        console.log(`⚠️  No cutoff date set - processing all invoices`);
+      }
 
       const invoices = await RouteStarInvoice.getUnprocessedInvoices();
       console.log(`✓ Found ${invoices.length} unprocessed invoices`);
 
       let processed = 0;
       let skipped = 0;
+      let skippedDueToCutoff = 0;
       let itemsProcessed = 0;
       const errors = [];
 
       for (const invoice of invoices) {
         try {
+          // Check if invoice is before or after cutoff date
+          const invoiceDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date();
+          const shouldProcessStock = !cutoffDate || invoiceDate < cutoffDate;
+
+          if (!shouldProcessStock) {
+            // Invoice is after cutoff date - mark as processed but don't decrease stock
+            await invoice.markStockProcessed();
+            skippedDueToCutoff++;
+            console.log(`  ⊙ ${invoice.invoiceNumber} (${invoiceDate.toISOString().split('T')[0]}) - After cutoff`);
+            continue;
+          }
 
           if (!invoice.lineItems || invoice.lineItems.length === 0) {
             console.log(`  ⊗ Skipped ${invoice.invoiceNumber}: No line items`);
@@ -826,12 +850,13 @@ class RouteStarSyncService {
       });
 
       console.log(`\n✓ Stock movements completed:`);
-      console.log(`  - Invoices Processed: ${processed}`);
+      console.log(`  - Invoices Processed (stock decreased): ${processed}`);
+      console.log(`  - Invoices Skipped (after cutoff): ${skippedDueToCutoff}`);
       console.log(`  - Items Processed: ${itemsProcessed}`);
-      console.log(`  - Skipped: ${skipped}`);
+      console.log(`  - Skipped (errors): ${skipped}`);
       console.log(`  - Total: ${invoices.length}`);
 
-      return { processed, skipped, itemsProcessed, total: invoices.length, errors };
+      return { processed, skipped, skippedDueToCutoff, itemsProcessed, total: invoices.length, errors };
     } catch (error) {
       await this.updateSyncLog({
         error: error.message

@@ -86,7 +86,13 @@ const settingsSchema = new mongoose.Schema(
       },
     },
 
-    
+    stockCalculationCutoffDate: {
+      type: Date,
+      default: null,
+      index: true
+    },
+
+
     singleton: {
       type: Boolean,
       default: true,
