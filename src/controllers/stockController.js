@@ -1,15 +1,9 @@
 const stockCalculationService = require('../services/stockCalculation.service');
 const stockService = require('../services/stock.service');
 
-/**
- * Stock Controller
- * Handles HTTP requests for stock operations
- */
+
 class StockController {
-  /**
-   * Get SKUs for a category
-   * GET /api/stock/category/:categoryName/skus
-   */
+  
   async getCategorySkus(req, res, next) {
     try {
       const { categoryName } = req.params;
@@ -26,10 +20,7 @@ class StockController {
     }
   }
 
-  /**
-   * Get sales data for a category
-   * GET /api/stock/category/:categoryName/sales
-   */
+  
   async getCategorySales(req, res, next) {
     try {
       const { categoryName } = req.params;
@@ -46,10 +37,7 @@ class StockController {
     }
   }
 
-  /**
-   * Get forUse stock data
-   * GET /api/stock/use
-   */
+  
   async getUseStock(req, res, next) {
     try {
       const result = await stockService.getUseStock();
@@ -64,10 +52,7 @@ class StockController {
     }
   }
 
-  /**
-   * Get forSell stock data
-   * GET /api/stock/sell
-   */
+  
   async getSellStock(req, res, next) {
     try {
       const result = await stockService.getSellStock();
@@ -82,10 +67,7 @@ class StockController {
     }
   }
 
-  /**
-   * Get complete stock summary (use + sell)
-   * GET /api/stock/summary
-   */
+  
   async getStockSummary(req, res, next) {
     const controllerStartTime = Date.now();
     console.log('[TIMING] Controller started');

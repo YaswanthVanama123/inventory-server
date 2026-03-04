@@ -1786,42 +1786,39 @@ const getSyncInfo = async (req, res, next) => {
   }
 };
 
-/**
- * Get RouteStar items with alias mappings for truck checkout
- * Returns items with calculated stock (CustomerConnect purchases - RouteStar sales)
- */
+
 const getInventoryItemsForTruckCheckout = async (req, res, next) => {
   try {
     const ModelCategory = require('../models/ModelCategory');
 
-    // Get all RouteStar items for the item list structure
+    
     const routeStarItems = await RouteStarItem.find()
       .sort({ itemName: 1 })
       .lean();
 
-    // Get all RouteStar alias mappings
+    
     const aliasMappings = await RouteStarItemAlias.find({ isActive: true }).lean();
 
-    // Create lookup maps
-    const aliasToCanonicalMap = {}; // maps any name to canonical name
-    const canonicalToAliasesMap = {}; // maps canonical name to all its aliases
+    
+    const aliasToCanonicalMap = {}; 
+    const canonicalToAliasesMap = {}; 
 
     aliasMappings.forEach(mapping => {
       const canonical = mapping.canonicalName;
 
-      // Store the canonical name's aliases
+      
       canonicalToAliasesMap[canonical] = mapping.aliases.map(a => a.name);
 
-      // Map canonical name to itself
+      
       aliasToCanonicalMap[canonical.toLowerCase()] = canonical;
 
-      // Map each alias to the canonical name
+      
       mapping.aliases.forEach(alias => {
         aliasToCanonicalMap[alias.name.toLowerCase()] = canonical;
       });
     });
 
-    // Get ModelCategory mappings (SKU to category mapping)
+    
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
     mappings.forEach(mapping => {
@@ -1830,17 +1827,17 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       }
     });
 
-    // Get CustomerConnect orders (purchases)
+    
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
 
-    // Get RouteStar invoices (sales)
+    
     const invoices = await RouteStarInvoice.find({
       status: { $in: ['Completed', 'Closed', 'Pending'] }
     }).lean();
 
-    // Group RouteStar items by their canonical name and calculate stock
+    
     const groupedItems = {};
 
     routeStarItems.forEach(item => {
@@ -1866,11 +1863,11 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
         };
       }
 
-      // Add this item to the group
+      
       groupedItems[canonicalName].originalNames.push(item.itemName);
       groupedItems[canonicalName].items.push(item);
 
-      // Use the first item's metadata if not set
+      
       if (!groupedItems[canonicalName].salesPrice) {
         groupedItems[canonicalName].salesPrice = item.salesPrice;
       }
@@ -1879,7 +1876,7 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       }
     });
 
-    // Calculate purchases for each canonical name
+    
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
@@ -1893,7 +1890,7 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       }
     });
 
-    // Calculate sales for each canonical name (using alias mapping)
+    
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
@@ -1908,7 +1905,7 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       }
     });
 
-    // Transform to array and format for frontend
+    
     const itemsArray = Object.values(groupedItems).map((group, index) => {
       const calculatedQuantity = group.totalPurchased - group.totalSold;
 

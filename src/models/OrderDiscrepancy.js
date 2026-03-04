@@ -1,11 +1,8 @@
 const mongoose = require('mongoose');
 
-/**
- * OrderDiscrepancy Model
- * Tracks discrepancies found when verifying received purchase orders
- */
+
 const orderDiscrepancySchema = new mongoose.Schema({
-  // Reference to the order
+  
   orderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'PurchaseOrder',
@@ -19,7 +16,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     index: true
   },
 
-  // Item details
+  
   sku: {
     type: String,
     required: [true, 'SKU is required'],
@@ -33,7 +30,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Quantities
+  
   expectedQuantity: {
     type: Number,
     required: [true, 'Expected quantity is required'],
@@ -49,7 +46,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     required: [true, 'Discrepancy quantity is required']
   },
 
-  // Discrepancy type
+  
   discrepancyType: {
     type: String,
     required: [true, 'Discrepancy type is required'],
@@ -57,7 +54,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     index: true
   },
 
-  // Status
+  
   status: {
     type: String,
     required: [true, 'Status is required'],
@@ -66,7 +63,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     index: true
   },
 
-  // Who checked/reported
+  
   reportedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -78,7 +75,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     index: true
   },
 
-  // Who approved/rejected
+  
   resolvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -87,7 +84,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     type: Date
   },
 
-  // Notes
+  
   notes: {
     type: String,
     trim: true
@@ -97,7 +94,7 @@ const orderDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Stock processed flag
+  
   stockProcessed: {
     type: Boolean,
     default: false,
@@ -107,17 +104,17 @@ const orderDiscrepancySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for common queries
+
 orderDiscrepancySchema.index({ orderId: 1, sku: 1 });
 orderDiscrepancySchema.index({ status: 1, reportedAt: -1 });
 orderDiscrepancySchema.index({ discrepancyType: 1 });
 
-// Virtual for absolute discrepancy value
+
 orderDiscrepancySchema.virtual('absoluteDiscrepancy').get(function() {
   return Math.abs(this.discrepancyQuantity);
 });
 
-// Method to approve discrepancy
+
 orderDiscrepancySchema.methods.approve = async function(userId, notes) {
   this.status = 'approved';
   this.resolvedBy = userId;
@@ -126,7 +123,7 @@ orderDiscrepancySchema.methods.approve = async function(userId, notes) {
   return await this.save();
 };
 
-// Method to reject discrepancy
+
 orderDiscrepancySchema.methods.reject = async function(userId, notes) {
   this.status = 'rejected';
   this.resolvedBy = userId;
@@ -135,7 +132,7 @@ orderDiscrepancySchema.methods.reject = async function(userId, notes) {
   return await this.save();
 };
 
-// Static method to create discrepancy
+
 orderDiscrepancySchema.statics.createDiscrepancy = async function(data) {
   const discrepancyQuantity = data.receivedQuantity - data.expectedQuantity;
 
@@ -153,7 +150,7 @@ orderDiscrepancySchema.statics.createDiscrepancy = async function(data) {
   });
 };
 
-// Static method to get pending discrepancies
+
 orderDiscrepancySchema.statics.getPendingDiscrepancies = async function() {
   return await this.find({ status: 'pending' })
     .populate('reportedBy', 'username fullName email')
@@ -161,7 +158,7 @@ orderDiscrepancySchema.statics.getPendingDiscrepancies = async function() {
     .sort({ reportedAt: -1 });
 };
 
-// Static method to get discrepancies by order
+
 orderDiscrepancySchema.statics.getByOrderId = async function(orderId) {
   return await this.find({ orderId })
     .populate('reportedBy', 'username fullName email')

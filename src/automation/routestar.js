@@ -267,7 +267,7 @@ class RouteStarAutomation {
       await this.baseNavigator.dismissModals();
 
 
-      // Try to click the "Line Items" tab to ensure it's active
+      
       this.logger.info('Attempting to click Line Items tab');
       try {
         const lineItemsTab = await this.page.$('a[href="#tab_line_items"]');
@@ -295,7 +295,7 @@ class RouteStarAutomation {
         await this.baseNavigator.dismissModals();
 
 
-        // Try clicking the tab again
+        
         try {
           const lineItemsTab = await this.page.$('a[href="#tab_line_items"]');
           if (lineItemsTab) {
@@ -364,27 +364,27 @@ class RouteStarAutomation {
     if (!masterTable) {
       this.logger.error('Could not find invoice items table - table div not present');
       await this.takeScreenshot('table-not-found');
-      return items; // Return empty array instead of throwing
+      return items; 
     }
 
     const itemRows = await masterTable.$$('table.htCore tbody tr');
     this.logger.info('Found line item rows', { count: itemRows.length });
 
-    // Debug: Log the table structure
+    
     if (itemRows.length > 0) {
       this.logger.info('Checking first row structure');
 
-      // Get all tbody elements to see if we have the right one
+      
       const allTbodies = await this.page.$$('div.ht_master table.htCore tbody');
       this.logger.info('Total tbody elements found', { count: allTbodies.length });
 
-      // Check each tbody
+      
       for (let tbodyIdx = 0; tbodyIdx < allTbodies.length; tbodyIdx++) {
         const tbody = allTbodies[tbodyIdx];
         const rows = await tbody.$$('tr');
         this.logger.info(`Tbody ${tbodyIdx} has ${rows.length} rows`);
 
-        // Log first row of each tbody
+        
         if (rows.length > 0) {
           const firstRowText = await rows[0].textContent().catch(() => '[could not get text]');
           this.logger.info(`Tbody ${tbodyIdx} first row text: ${firstRowText.substring(0, 200)}`);
@@ -396,12 +396,12 @@ class RouteStarAutomation {
       const row = itemRows[i];
 
       try {
-        // Debug: Log all cell contents for troubleshooting
+        
         const cellTexts = await row.$$eval('td', cells =>
           cells.map((cell, idx) => ({
             index: idx + 1,
             text: cell.textContent.trim(),
-            innerHTML: cell.innerHTML.substring(0, 100) // First 100 chars
+            innerHTML: cell.innerHTML.substring(0, 100) 
           }))
         ).catch(() => []);
 
@@ -411,7 +411,7 @@ class RouteStarAutomation {
           firstCellText: cellTexts[0]?.text
         });
 
-        if (i === 0) { // Log first row details for debugging
+        if (i === 0) { 
           this.logger.debug('First row detailed cell contents', { cellTexts });
         }
 

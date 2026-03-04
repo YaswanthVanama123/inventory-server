@@ -11,24 +11,24 @@ async function addDashboardIndexes() {
     
     console.log('Adding indexes for dashboard optimization...');
 
-    // Inventory indexes
+    
     await Inventory.collection.createIndex({ isActive: 1, isDeleted: 1 });
     await Inventory.collection.createIndex({ category: 1, isActive: 1 });
     await Inventory.collection.createIndex({ 'quantity.current': 1 });
     
-    // RouteStarInvoice indexes
+    
     await RouteStarInvoice.collection.createIndex({ status: 1, invoiceDate: -1 });
     await RouteStarInvoice.collection.createIndex({ invoiceDate: -1 });
     
-    // CustomerConnectOrder indexes
+    
     await CustomerConnectOrder.collection.createIndex({ status: 1, orderDate: -1 });
     await CustomerConnectOrder.collection.createIndex({ orderDate: -1 });
     
-    // AuditLog indexes
+    
     await AuditLog.collection.createIndex({ resource: 1, timestamp: -1 });
     await AuditLog.collection.createIndex({ timestamp: -1 });
     
-    // SyncLog indexes
+    
     await SyncLog.collection.createIndex({ startedAt: -1 });
     await SyncLog.collection.createIndex({ status: 1, startedAt: -1 });
 

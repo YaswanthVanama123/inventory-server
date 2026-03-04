@@ -230,11 +230,11 @@ const getDashboard = async (req, res, next) => {
   try {
     const startTime = Date.now();
 
-    // SINGLE DATABASE OPERATION - All data fetched in one aggregation using $facet
+    
     const [dashboardData] = await Inventory.aggregate([
       {
         $facet: {
-          // 1. Inventory statistics
+          
           inventoryStats: [
             { $match: { isActive: true, isDeleted: false } },
             {
@@ -256,7 +256,7 @@ const getDashboard = async (req, res, next) => {
             }
           ],
 
-          // 2. Category statistics
+          
           categoryStats: [
             { $match: { isActive: true, isDeleted: false } },
             { $group: { _id: '$category', count: { $sum: 1 } } },
@@ -264,7 +264,7 @@ const getDashboard = async (req, res, next) => {
             { $limit: 10 }
           ],
 
-          // 3. Recent activity from AuditLog (using lookup)
+          
           recentActivity: [
             { $limit: 1 },
             {
@@ -302,7 +302,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: '$activities' } }
           ],
 
-          // 4. Sales data from RouteStarInvoice
+          
           salesTotals: [
             { $limit: 1 },
             {
@@ -330,7 +330,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalRevenue: 0, totalOrders: 0 }] } } }
           ],
 
-          // 5. Invoice status distribution
+          
           invoiceStatusStats: [
             { $limit: 1 },
             {
@@ -352,7 +352,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: '$statusStats' } }
           ],
 
-          // 6. Sales by month
+          
           salesByMonth: [
             { $limit: 1 },
             {
@@ -384,7 +384,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: '$monthlyData' } }
           ],
 
-          // 7. Top selling items
+          
           topSellingItems: [
             { $limit: 1 },
             {
@@ -416,7 +416,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: '$topItems' } }
           ],
 
-          // 8. Sync log statistics
+          
           syncStats: [
             { $limit: 1 },
             {
@@ -448,7 +448,7 @@ const getDashboard = async (req, res, next) => {
       }
     ]);
 
-    // Process results
+    
     const totals = dashboardData.inventoryStats[0] || {
       totalItems: 0,
       totalValue: 0,
@@ -460,13 +460,13 @@ const getDashboard = async (req, res, next) => {
     const recentActivity = dashboardData.recentActivity || [];
     const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
 
-    // Build invoice status stats
+    
     const invoiceStatusStats = {};
     (dashboardData.invoiceStatusStats || []).forEach(s => {
       invoiceStatusStats[s._id] = s.count;
     });
 
-    // Build top selling items
+    
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const topSellingItemsArray = (dashboardData.topSellingItems || []).map(item => ({
       name: item._id.name || 'Unknown',
@@ -494,7 +494,7 @@ const getDashboard = async (req, res, next) => {
       orderCount: item.orderCount
     }));
 
-    // Build sales trend
+    
     const salesTrend = (dashboardData.salesByMonth || []).map(m => ({
       month: monthNames[m._id.month - 1],
       revenue: m.revenue,
@@ -502,7 +502,7 @@ const getDashboard = async (req, res, next) => {
       orders: m.orders
     }));
 
-    // Calculate changes
+    
     const lastMonthData = salesTrend[salesTrend.length - 1] || { revenue: 0, orders: 0 };
     const prevMonthData = salesTrend[salesTrend.length - 2] || { revenue: 0, orders: 0 };
 
@@ -514,7 +514,7 @@ const getDashboard = async (req, res, next) => {
       ? (((lastMonthData.orders - prevMonthData.orders) / prevMonthData.orders) * 100).toFixed(1)
       : 0;
 
-    // Build sync status
+    
     const lastSync = dashboardData.syncStats[0] || null;
     const syncStatus = lastSync ? {
       lastSync: {

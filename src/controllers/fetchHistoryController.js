@@ -1,6 +1,6 @@
 const FetchHistory = require('../models/FetchHistory');
 
-// Get all fetch history with filters
+
 const getFetchHistory = async (req, res) => {
   try {
     const {
@@ -12,10 +12,10 @@ const getFetchHistory = async (req, res) => {
       days
     } = req.query;
 
-    // Build query
+    
     const query = {};
 
-    // Filter by date (last N days) - only if days is provided and not 'all'
+    
     if (days && days !== 'all') {
       const dateFilter = new Date();
       dateFilter.setDate(dateFilter.getDate() - parseInt(days));
@@ -45,7 +45,7 @@ const getFetchHistory = async (req, res) => {
       FetchHistory.countDocuments(query)
     ]);
 
-    // Calculate duration for in-progress items
+    
     const enrichedHistory = history.map(item => {
       if (item.status === 'in_progress' && !item.duration) {
         item.calculatedDuration = Date.now() - new Date(item.startedAt).getTime();
@@ -73,7 +73,7 @@ const getFetchHistory = async (req, res) => {
   }
 };
 
-// Get active/in-progress fetches
+
 const getActiveFetches = async (req, res) => {
   try {
     const { source } = req.query;
@@ -87,7 +87,7 @@ const getActiveFetches = async (req, res) => {
       .sort({ startedAt: -1 })
       .lean();
 
-    // Calculate current duration for each active fetch
+    
     const enrichedFetches = activeFetches.map(fetch => ({
       ...fetch,
       currentDuration: Date.now() - new Date(fetch.startedAt).getTime()
@@ -108,26 +108,26 @@ const getActiveFetches = async (req, res) => {
   }
 };
 
-// Get statistics
+
 const getStatistics = async (req, res) => {
   try {
     const { source, days } = req.query;
 
     const stats = await FetchHistory.getStatistics(source, days ? parseInt(days) : null);
 
-    // Get active fetches count
+    
     const activeQuery = { status: 'in_progress' };
     if (source) activeQuery.source = source;
     const activeCount = await FetchHistory.countDocuments(activeQuery);
 
-    // Get today's fetches
+    
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayQuery = { startedAt: { $gte: todayStart } };
     if (source) todayQuery.source = source;
     const todayCount = await FetchHistory.countDocuments(todayQuery);
 
-    // Get success rate
+    
     const totalQuery = {};
     if (source) totalQuery.source = source;
     const [completed, failed] = await Promise.all([
@@ -160,7 +160,7 @@ const getStatistics = async (req, res) => {
   }
 };
 
-// Get single fetch details
+
 const getFetchDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -174,7 +174,7 @@ const getFetchDetails = async (req, res) => {
       });
     }
 
-    // Calculate current duration if still in progress
+    
     if (fetch.status === 'in_progress') {
       fetch.currentDuration = Date.now() - new Date(fetch.startedAt).getTime();
     }
@@ -193,7 +193,7 @@ const getFetchDetails = async (req, res) => {
   }
 };
 
-// Cancel an in-progress fetch
+
 const cancelFetch = async (req, res) => {
   try {
     const { id } = req.params;
@@ -234,7 +234,7 @@ const cancelFetch = async (req, res) => {
   }
 };
 
-// Cleanup old records (manual trigger)
+
 const cleanupOldRecords = async (req, res) => {
   try {
     const { days = 10 } = req.query;
@@ -261,10 +261,7 @@ const cleanupOldRecords = async (req, res) => {
   }
 };
 
-/**
- * OPTIMIZED: Get page data (history, active fetches, and statistics) in one API call
- * Runs all three queries in parallel for maximum performance
- */
+
 const getPageData = async (req, res) => {
   try {
     const {
@@ -281,23 +278,23 @@ const getPageData = async (req, res) => {
     console.log('=== FETCH HISTORY PAGE DATA DEBUG ===');
     console.log('Query params:', { source, status, fetchType, limit, page, days, startDate, endDate });
 
-    // Build history query
+    
     const query = {};
 
-    // Handle date filtering
+    
     if (startDate && endDate) {
-      // Custom date range
+      
       query.startedAt = {
         $gte: new Date(startDate),
         $lte: new Date(endDate)
       };
     } else if (days && days !== '0' && days !== 'all') {
-      // Days filter (last N days)
+      
       const dateFilter = new Date();
       dateFilter.setDate(dateFilter.getDate() - parseInt(days));
       query.startedAt = { $gte: dateFilter };
     }
-    // If days is 0 or 'all', don't add date filter (show all time)
+    
 
     console.log('Built query:', JSON.stringify(query, null, 2));
 
@@ -310,44 +307,44 @@ const getPageData = async (req, res) => {
     console.log('Final query before DB call:', JSON.stringify(query, null, 2));
     console.log('Skip:', skip, 'Limit:', limit);
 
-    // First, let's check total documents in collection (without any filters)
+    
     const totalInCollection = await FetchHistory.countDocuments({});
     console.log('Total documents in FetchHistory collection:', totalInCollection);
 
-    // Build active fetches query
+    
     const activeQuery = { status: 'in_progress' };
     if (source) activeQuery.source = source;
 
-    // Run all queries in parallel
+    
     const [history, total, activeFetches, statsData] = await Promise.all([
-      // 1. Get history
+      
       FetchHistory.find(query)
         .sort({ startedAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
 
-      // 2. Count total records
+      
       FetchHistory.countDocuments(query),
 
-      // 3. Get active fetches
+      
       FetchHistory.find(activeQuery)
         .sort({ startedAt: -1 })
         .lean(),
 
-      // 4. Get statistics
+      
       (async () => {
-        // Get today's fetches
+        
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
         const todayQuery = { startedAt: { $gte: todayStart } };
         if (source) todayQuery.source = source;
 
-        // Get success rate counts - use same date filter as main query
+        
         const totalQuery = {};
         if (source) totalQuery.source = source;
 
-        // Apply same date filter for stats
+        
         if (startDate && endDate) {
           totalQuery.startedAt = {
             $gte: new Date(startDate),
@@ -386,7 +383,7 @@ const getPageData = async (req, res) => {
     console.log('- Active fetches:', activeFetches.length);
     console.log('- Stats:', JSON.stringify(statsData, null, 2));
 
-    // Calculate duration for in-progress items in history
+    
     const enrichedHistory = history.map(item => {
       if (item.status === 'in_progress' && !item.duration) {
         item.calculatedDuration = Date.now() - new Date(item.startedAt).getTime();
@@ -394,7 +391,7 @@ const getPageData = async (req, res) => {
       return item;
     });
 
-    // Calculate current duration for active fetches
+    
     const enrichedActiveFetches = activeFetches.map(fetch => ({
       ...fetch,
       currentDuration: Date.now() - new Date(fetch.startedAt).getTime()

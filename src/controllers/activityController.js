@@ -485,10 +485,7 @@ exports.getDeleteActivities = async (req, res) => {
 };
 
 
-/**
- * OPTIMIZED: Get page data (activities, stats, and users) in one API call
- * Runs all three queries in parallel for maximum performance
- */
+
 exports.getPageData = async (req, res) => {
   try {
     const {
@@ -502,7 +499,7 @@ exports.getPageData = async (req, res) => {
       search,
     } = req.query;
 
-    // Build activity query
+    
     const activityQuery = {};
     if (employeeId) activityQuery.performedBy = employeeId;
     if (action) activityQuery.action = action;
@@ -521,7 +518,7 @@ exports.getPageData = async (req, res) => {
       ];
     }
 
-    // Build stats date filter
+    
     const statsDateFilter = {};
     if (startDate || endDate) {
       statsDateFilter.timestamp = {};
@@ -533,9 +530,9 @@ exports.getPageData = async (req, res) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Run all queries in parallel for maximum performance
+    
     const [activities, total, users, stats] = await Promise.all([
-      // 1. Get activities
+      
       AuditLog.find(activityQuery)
         .populate('performedBy', 'username fullName email role')
         .sort({ timestamp: -1 })
@@ -543,16 +540,16 @@ exports.getPageData = async (req, res) => {
         .limit(parseInt(limit))
         .lean(),
 
-      // 2. Count total activities
+      
       AuditLog.countDocuments(activityQuery),
 
-      // 3. Get users list
+      
       User.find({ isDeleted: false })
         .select('_id username fullName email role')
         .sort({ fullName: 1 })
         .lean(),
 
-      // 4. Get stats using aggregation
+      
       (async () => {
         const [
           mostActiveEmployees,
@@ -561,7 +558,7 @@ exports.getPageData = async (req, res) => {
           dailyTrend,
           totalActivities
         ] = await Promise.all([
-          // Most active employees
+          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -591,7 +588,7 @@ exports.getPageData = async (req, res) => {
             },
           ]),
 
-          // Action breakdown
+          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -603,7 +600,7 @@ exports.getPageData = async (req, res) => {
             { $sort: { count: -1 } },
           ]),
 
-          // Resource breakdown
+          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -615,7 +612,7 @@ exports.getPageData = async (req, res) => {
             { $sort: { count: -1 } },
           ]),
 
-          // Daily trend (last 7 days)
+          
           AuditLog.aggregate([
             {
               $match: {
@@ -633,7 +630,7 @@ exports.getPageData = async (req, res) => {
             { $sort: { _id: 1 } },
           ]),
 
-          // Total activities count
+          
           AuditLog.countDocuments(statsDateFilter),
         ]);
 

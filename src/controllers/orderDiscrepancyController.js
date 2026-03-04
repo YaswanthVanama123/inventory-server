@@ -4,14 +4,9 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 
-/**
- * Order Discrepancy Controller
- * Handles order verification and discrepancy tracking
- */
 
-/**
- * Get all order discrepancies with filters
- */
+
+
 exports.getOrderDiscrepancies = async (req, res, next) => {
   try {
     const {
@@ -68,9 +63,7 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
   }
 };
 
-/**
- * Get order discrepancies by order ID
- */
+
 exports.getOrderDiscrepanciesByOrderId = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -87,18 +80,15 @@ exports.getOrderDiscrepanciesByOrderId = async (req, res, next) => {
   }
 };
 
-/**
- * Verify/Check order items
- * Allows marking as "all good" or recording discrepancies
- */
+
 exports.verifyOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
     const { items, allGood, notes } = req.body;
 
-    // items: [{ sku, itemName, expectedQuantity, receivedQuantity }]
+    
 
-    // Try to find CustomerConnectOrder first
+    
     const order = await CustomerConnectOrder.findById(orderId);
     if (!order) {
       return res.status(404).json({
@@ -107,8 +97,8 @@ exports.verifyOrder = async (req, res, next) => {
       });
     }
 
-    // Check if already verified by looking for a custom verified flag
-    // Since CustomerConnectOrder doesn't have 'received' status, we'll add a custom field
+    
+    
     if (order.verified) {
       return res.status(400).json({
         success: false,
@@ -119,10 +109,10 @@ exports.verifyOrder = async (req, res, next) => {
     const createdDiscrepancies = [];
 
     if (allGood) {
-      // Mark all items as received with no discrepancies
+      
       console.log(`✓ Order ${order.orderNumber} verified - All Good`);
 
-      // Update order - mark as verified
+      
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
@@ -138,13 +128,13 @@ exports.verifyOrder = async (req, res, next) => {
       });
     }
 
-    // Check each item for discrepancies
+    
     for (const item of items) {
       const expectedQuantity = parseFloat(item.expectedQuantity);
       const receivedQuantity = parseFloat(item.receivedQuantity);
 
       if (receivedQuantity !== expectedQuantity) {
-        // Create discrepancy
+        
         const discrepancy = await OrderDiscrepancy.createDiscrepancy({
           orderId: order._id,
           orderNumber: order.orderNumber,
@@ -154,7 +144,7 @@ exports.verifyOrder = async (req, res, next) => {
           receivedQuantity,
           reportedBy: req.user._id,
           notes: item.notes || notes,
-          status: 'pending' // Will be approved/rejected by admin
+          status: 'pending' 
         });
 
         createdDiscrepancies.push(discrepancy);
@@ -163,7 +153,7 @@ exports.verifyOrder = async (req, res, next) => {
       }
     }
 
-    // Update order - mark as verified
+    
     order.verified = true;
     order.verifiedAt = new Date();
     order.verifiedBy = req.user._id;
@@ -185,10 +175,7 @@ exports.verifyOrder = async (req, res, next) => {
   }
 };
 
-/**
- * Approve order discrepancy
- * Creates stock movement to adjust for the discrepancy
- */
+
 exports.approveOrderDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -209,10 +196,10 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // Approve the discrepancy
+    
     await discrepancy.approve(req.user._id, notes);
 
-    // Create stock movement to adjust for the discrepancy
+    
     if (!discrepancy.stockProcessed) {
       const movementType = discrepancy.discrepancyType === 'Shortage' ? 'OUT' : 'IN';
       const movementQty = Math.abs(discrepancy.discrepancyQuantity);
@@ -229,7 +216,7 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
         createdBy: req.user._id
       });
 
-      // Update stock summary
+      
       const stockSummary = await StockSummary.findOne({ sku: discrepancy.sku });
       if (stockSummary) {
         if (movementType === 'IN') {
@@ -257,9 +244,7 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
   }
 };
 
-/**
- * Reject order discrepancy
- */
+
 exports.rejectOrderDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -295,9 +280,7 @@ exports.rejectOrderDiscrepancy = async (req, res, next) => {
   }
 };
 
-/**
- * Get single order discrepancy
- */
+
 exports.getOrderDiscrepancyById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -324,9 +307,7 @@ exports.getOrderDiscrepancyById = async (req, res, next) => {
   }
 };
 
-/**
- * Get order discrepancy statistics
- */
+
 exports.getOrderDiscrepancyStats = async (req, res, next) => {
   try {
     const [

@@ -1,14 +1,8 @@
 const modelCategoryService = require('../services/modelCategory.service');
 
-/**
- * Model Category Controller
- * Handles HTTP requests for model category mapping operations
- */
+
 class ModelCategoryController {
-  /**
-   * Get unique models from orders with mapping status
-   * GET /api/model-category/unique-models
-   */
+  
   async getUniqueModels(req, res, next) {
     try {
       const data = await modelCategoryService.getUniqueModels();
@@ -27,10 +21,7 @@ class ModelCategoryController {
     }
   }
 
-  /**
-   * Get RouteStarItems with mapping status
-   * GET /api/model-category/routestar-items
-   */
+  
   async getRouteStarItems(req, res, next) {
     try {
       const data = await modelCategoryService.getRouteStarItems();
@@ -49,10 +40,7 @@ class ModelCategoryController {
     }
   }
 
-  /**
-   * Create or update a model category mapping
-   * POST /api/model-category/mapping
-   */
+  
   async saveMapping(req, res, next) {
     try {
       const mapping = await modelCategoryService.saveMapping(
@@ -83,10 +71,7 @@ class ModelCategoryController {
     }
   }
 
-  /**
-   * Delete a model category mapping
-   * DELETE /api/model-category/mapping/:modelNumber
-   */
+  
   async deleteMapping(req, res, next) {
     try {
       const result = await modelCategoryService.deleteMapping(req.params.modelNumber);
@@ -114,10 +99,7 @@ class ModelCategoryController {
     }
   }
 
-  /**
-   * Get all model category mappings
-   * GET /api/model-category/mappings
-   */
+  
   async getAllMappings(req, res, next) {
     try {
       const data = await modelCategoryService.getAllMappings();

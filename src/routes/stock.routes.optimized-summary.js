@@ -1,12 +1,12 @@
-// ULTRA-OPTIMIZED /summary endpoint
-// This is the new optimized version - will replace the old one in stock.routes.js
+
+
 
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
 async function getOptimizedSummary() {
   console.time('[StockSummary] Total time');
 
-  // Step 1: Get forUse and forSell items with aliases (parallel)
+  
   console.time('[StockSummary] Step 1: Get items + aliases');
   const [forUseItems, forSellItems, aliasMap, mappings] = await Promise.all([
     RouteStarItem.find({ forUse: true }).select('itemName').lean(),
@@ -16,11 +16,11 @@ async function getOptimizedSummary() {
   ]);
   console.timeEnd('[StockSummary] Step 1: Get items + aliases');
 
-  // Build allowed category sets
+  
   const useAllowedCategories = forUseItems.map(item => item.itemName);
   const sellAllowedCategories = forSellItems.map(item => item.itemName);
 
-  // Build SKU to category map
+  
   const skuToCategoryMap = {};
   mappings.forEach(m => {
     if (m.modelNumber && m.categoryItemName) {
@@ -28,7 +28,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Get all SKUs for allowed categories
+  
   const useSKUs = [];
   const sellSKUs = [];
   mappings.forEach(m => {
@@ -45,13 +45,13 @@ async function getOptimizedSummary() {
   console.log(`[StockSummary] Use categories: ${useAllowedCategories.length}, SKUs: ${useSKUs.length}`);
   console.log(`[StockSummary] Sell categories: ${sellAllowedCategories.length}, SKUs: ${sellSKUs.length}`);
 
-  // Step 2: Run parallel aggregations for purchases (orders)
+  
   console.time('[StockSummary] Step 2: Aggregate purchases');
 
   const [usePurchases, sellPurchases] = await Promise.all([
-    // Use stock purchases
+    
     CustomerConnectOrder.aggregate([
-      // Filter early
+      
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
@@ -79,9 +79,9 @@ async function getOptimizedSummary() {
       }
     ]),
 
-    // Sell stock purchases
+    
     CustomerConnectOrder.aggregate([
-      // Filter early
+      
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
@@ -112,12 +112,12 @@ async function getOptimizedSummary() {
 
   console.timeEnd('[StockSummary] Step 2: Aggregate purchases');
 
-  // Step 3: Build variation arrays for invoices/checkouts lookup
+  
   console.time('[StockSummary] Step 3: Build variations');
   const sellVariations = [];
   sellAllowedCategories.forEach(category => {
     sellVariations.push(category);
-    // Add all alias variations
+    
     Object.keys(aliasMap).forEach(alias => {
       if (aliasMap[alias] === category && alias !== category.toLowerCase()) {
         sellVariations.push(alias);
@@ -127,11 +127,11 @@ async function getOptimizedSummary() {
   console.log(`[StockSummary] Sell variations for lookup: ${sellVariations.length}`);
   console.timeEnd('[StockSummary] Step 3: Build variations');
 
-  // Step 4: Aggregate sales and checkouts in parallel
+  
   console.time('[StockSummary] Step 4: Aggregate sales + checkouts + discrepancies');
 
   const [sales, checkouts, discrepancies] = await Promise.all([
-    // Sales aggregation
+    
     RouteStarInvoice.aggregate([
       {
         $match: {
@@ -170,7 +170,7 @@ async function getOptimizedSummary() {
       }
     ]),
 
-    // Checkouts aggregation
+    
     TruckCheckout.aggregate([
       {
         $match: {
@@ -204,7 +204,7 @@ async function getOptimizedSummary() {
       }
     ]),
 
-    // Discrepancies
+    
     StockDiscrepancy.aggregate([
       {
         $match: {
@@ -246,19 +246,19 @@ async function getOptimizedSummary() {
 
   console.timeEnd('[StockSummary] Step 4: Aggregate sales + checkouts + discrepancies');
 
-  // Step 5: Build result maps
+  
   console.time('[StockSummary] Step 5: Build result maps');
 
-  // Map canonical names helper
+  
   const getCanonical = (name) => {
     const nameLower = name.toLowerCase();
     return aliasMap[nameLower] || name;
   };
 
-  // Build USE stock map
+  
   const useStockMap = {};
 
-  // Add purchases
+  
   usePurchases.forEach(p => {
     const category = skuToCategoryMap[p._id];
     if (category && useAllowedCategories.includes(category)) {
@@ -276,7 +276,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Ensure all forUse items have entry
+  
   forUseItems.forEach(item => {
     if (!useStockMap[item.itemName]) {
       useStockMap[item.itemName] = {
@@ -288,10 +288,10 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Build SELL stock map
+  
   const sellStockMap = {};
 
-  // Add purchases
+  
   sellPurchases.forEach(p => {
     const category = skuToCategoryMap[p._id];
     if (category && sellAllowedCategories.includes(category)) {
@@ -316,7 +316,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Add sales
+  
   sales.forEach(s => {
     const canonical = getCanonical(s.itemName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -341,7 +341,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Add checkouts
+  
   checkouts.forEach(c => {
     const canonical = getCanonical(c.itemName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -364,7 +364,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Add discrepancies
+  
   discrepancies.forEach(d => {
     const canonical = getCanonical(d.categoryName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -386,7 +386,7 @@ async function getOptimizedSummary() {
       sellStockMap[canonical].totalDiscrepancies += d.totalDiscrepancies || 0;
       sellStockMap[canonical].totalDiscrepancyDifference += d.totalDiscrepancyDifference || 0;
 
-      // Calculate stock remaining with approved adjustments
+      
       const adjustment = d.approvedAdjustment || 0;
       sellStockMap[canonical].stockRemaining =
         sellStockMap[canonical].totalPurchased -
@@ -396,7 +396,7 @@ async function getOptimizedSummary() {
     }
   });
 
-  // Ensure all forSell items have entry and calculate stockRemaining
+  
   forSellItems.forEach(item => {
     if (!sellStockMap[item.itemName]) {
       sellStockMap[item.itemName] = {
@@ -413,7 +413,7 @@ async function getOptimizedSummary() {
         stockRemaining: 0
       };
     } else if (sellStockMap[item.itemName].stockRemaining === 0) {
-      // Calculate if not already calculated by discrepancies
+      
       sellStockMap[item.itemName].stockRemaining =
         sellStockMap[item.itemName].totalPurchased -
         sellStockMap[item.itemName].totalSold -
@@ -423,7 +423,7 @@ async function getOptimizedSummary() {
 
   console.timeEnd('[StockSummary] Step 5: Build result maps');
 
-  // Step 6: Sort and calculate totals
+  
   console.time('[StockSummary] Step 6: Sort and totals');
 
   const useStock = Object.values(useStockMap).sort((a, b) =>

@@ -1,16 +1,9 @@
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const User = require('../models/User');
 
-/**
- * Service for handling employee-specific data filtered by truck number
- */
+
 class EmployeeDataService {
-  /**
-   * Get employee's invoices by truck number (class field in line items)
-   * @param {String} truckNumber - The employee's truck number
-   * @param {Object} options - Query options (page, limit, status, dateRange)
-   * @returns {Promise<Object>} Invoices and pagination
-   */
+  
   async getEmployeeInvoices(truckNumber, options = {}) {
     const {
       page = 1,
@@ -23,7 +16,7 @@ class EmployeeDataService {
       sortOrder = 'desc'
     } = options;
 
-    // Build query to find invoices containing line items with this truck number
+    
     const query = {
       'lineItems.class': truckNumber.toUpperCase()
     };
@@ -65,13 +58,7 @@ class EmployeeDataService {
     };
   }
 
-  /**
-   * Get employee statistics by truck number
-   * @param {String} truckNumber - The employee's truck number
-   * @param {Date} startDate - Start date for statistics
-   * @param {Date} endDate - End date for statistics
-   * @returns {Promise<Object>} Employee statistics
-   */
+  
   async getEmployeeStatistics(truckNumber, startDate, endDate) {
     const matchQuery = {
       'lineItems.class': truckNumber.toUpperCase(),
@@ -133,12 +120,7 @@ class EmployeeDataService {
     };
   }
 
-  /**
-   * Get employee's recent activity
-   * @param {String} truckNumber - The employee's truck number
-   * @param {Number} limit - Number of recent activities to fetch
-   * @returns {Promise<Array>} Recent invoices
-   */
+  
   async getEmployeeRecentActivity(truckNumber, limit = 10) {
     const query = {
       'lineItems.class': truckNumber.toUpperCase()
@@ -150,7 +132,7 @@ class EmployeeDataService {
       .select('invoiceNumber invoiceDate status customer.name total lineItems')
       .lean();
 
-    // Filter line items to only show those for this truck
+    
     return recentInvoices.map(invoice => ({
       ...invoice,
       lineItems: invoice.lineItems.filter(
@@ -159,13 +141,7 @@ class EmployeeDataService {
     }));
   }
 
-  /**
-   * Get employee's performance metrics
-   * @param {String} truckNumber - The employee's truck number
-   * @param {Date} startDate - Start date
-   * @param {Date} endDate - End date
-   * @returns {Promise<Object>} Performance metrics
-   */
+  
   async getEmployeePerformance(truckNumber, startDate, endDate) {
     const matchQuery = {
       'lineItems.class': truckNumber.toUpperCase(),
@@ -175,7 +151,7 @@ class EmployeeDataService {
       }
     };
 
-    // Daily revenue trend
+    
     const dailyRevenue = await RouteStarInvoice.aggregate([
       { $match: matchQuery },
       { $unwind: '$lineItems' },
@@ -203,7 +179,7 @@ class EmployeeDataService {
       { $sort: { date: 1 } }
     ]);
 
-    // Top services/items
+    
     const topItems = await RouteStarInvoice.aggregate([
       { $match: matchQuery },
       { $unwind: '$lineItems' },
@@ -238,11 +214,7 @@ class EmployeeDataService {
     };
   }
 
-  /**
-   * Get employee by truck number
-   * @param {String} truckNumber - The truck number
-   * @returns {Promise<Object>} User object
-   */
+  
   async getEmployeeByTruckNumber(truckNumber) {
     return await User.findOne({
       truckNumber: truckNumber.toUpperCase(),
@@ -250,10 +222,7 @@ class EmployeeDataService {
     }).select('-password');
   }
 
-  /**
-   * Get all employees with truck numbers
-   * @returns {Promise<Array>} List of employees with truck numbers
-   */
+  
   async getAllTruckAssignments() {
     return await User.find({
       truckNumber: { $exists: true, $ne: null, $ne: '' },

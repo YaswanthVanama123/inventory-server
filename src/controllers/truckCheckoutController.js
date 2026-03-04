@@ -1,15 +1,9 @@
 const truckCheckoutService = require('../services/truckCheckout.service');
 const stockCalculationService = require('../services/stockCalculation.service');
 
-/**
- * Truck Checkout Controller
- * Handles HTTP requests for truck checkout operations
- */
+
 class TruckCheckoutController {
-  /**
-   * Create new checkout
-   * POST /api/truck-checkout/create-new
-   */
+  
   async createCheckout(req, res, next) {
     try {
       const result = await truckCheckoutService.createCheckout(
@@ -36,10 +30,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get all checkouts with filtering
-   * GET /api/truck-checkout
-   */
+  
   async getCheckouts(req, res, next) {
     try {
       const filters = {
@@ -66,10 +57,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get checkout by ID
-   * GET /api/truck-checkout/:id
-   */
+  
   async getCheckoutById(req, res, next) {
     try {
       const checkout = await truckCheckoutService.getCheckoutById(req.params.id);
@@ -90,10 +78,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Delete checkout
-   * DELETE /api/truck-checkout/:id
-   */
+  
   async deleteCheckout(req, res, next) {
     try {
       const result = await truckCheckoutService.deleteCheckout(req.params.id);
@@ -111,10 +96,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Search items for checkout dropdown
-   * GET /api/truck-checkout/items/search
-   */
+  
   async searchItems(req, res, next) {
     try {
       const options = {
@@ -135,10 +117,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get current stock for an item
-   * GET /api/truck-checkout/stock/:itemName
-   */
+  
   async getItemStock(req, res, next) {
     try {
       const stock = await stockCalculationService.getCurrentStock(req.params.itemName);
@@ -153,10 +132,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get active checkouts
-   * GET /api/truck-checkout/active
-   */
+  
   async getActiveCheckouts(req, res, next) {
     try {
       const result = await truckCheckoutService.getCheckouts(
@@ -174,10 +150,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get checkouts by employee
-   * GET /api/truck-checkout/employee/:employeeName
-   */
+  
   async getCheckoutsByEmployee(req, res, next) {
     try {
       const limit = parseInt(req.query.limit) || 50;
@@ -197,10 +170,7 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get employee stats
-   * GET /api/truck-checkout/stats/employee/:employeeName
-   */
+  
   async getEmployeeStats(req, res, next) {
     try {
       const TruckCheckout = require('../models/TruckCheckout');
@@ -228,10 +198,7 @@ class TruckCheckoutController {
       next(error);
     }
   }
-  /**
-   * Get checkout sales tracking
-   * GET /api/truck-checkout/sales-tracking
-   */
+  
   async getCheckoutSalesTracking(req, res, next) {
     try {
       const result = await truckCheckoutService.getCheckoutSalesTracking(req.query);

@@ -1,17 +1,11 @@
 const routeStarItemsService = require('../services/routeStarItems.service');
 
-// Sync state management
+
 let isSyncing = false;
 
-/**
- * RouteStar Items Controller
- * Handles HTTP requests for RouteStar items operations
- */
+
 class RouteStarItemsController {
-  /**
-   * Get item statistics
-   * GET /api/routestar-items/stats
-   */
+  
   async getItemStats(req, res, next) {
     try {
       const data = await routeStarItemsService.getItemStats();
@@ -30,10 +24,7 @@ class RouteStarItemsController {
     }
   }
 
-  /**
-   * Get items with filtering and pagination
-   * GET /api/routestar-items
-   */
+  
   async getItems(req, res, next) {
     try {
       const filters = {
@@ -68,10 +59,7 @@ class RouteStarItemsController {
     }
   }
 
-  /**
-   * Update item flags
-   * PATCH /api/routestar-items/:id/flags
-   */
+  
   async updateItemFlags(req, res, next) {
     try {
       const item = await routeStarItemsService.updateItemFlags(
@@ -102,10 +90,7 @@ class RouteStarItemsController {
     }
   }
 
-  /**
-   * Delete all items
-   * DELETE /api/routestar-items/all
-   */
+  
   async deleteAllItems(req, res, next) {
     try {
       const result = await routeStarItemsService.deleteAllItems();
@@ -125,12 +110,9 @@ class RouteStarItemsController {
     }
   }
 
-  /**
-   * Sync items from RouteStar
-   * POST /api/routestar-items/sync
-   */
+  
   async syncItems(req, res, next) {
-    // Check if sync is already in progress
+    
     if (isSyncing) {
       return res.status(409).json({
         success: false,
@@ -139,7 +121,7 @@ class RouteStarItemsController {
       });
     }
 
-    // Set sync flag
+    
     isSyncing = true;
 
     try {
@@ -158,15 +140,12 @@ class RouteStarItemsController {
         error: error.message
       });
     } finally {
-      // Reset sync flag
+      
       isSyncing = false;
     }
   }
 
-  /**
-   * Get sales report
-   * GET /api/routestar-items/sales-report
-   */
+  
   async getSalesReport(req, res, next) {
     try {
       const data = await routeStarItemsService.getSalesReport();
@@ -185,11 +164,7 @@ class RouteStarItemsController {
     }
   }
 
-  /**
-   * OPTIMIZED: Get items with stats in one call
-   * GET /api/routestar-items/page-data
-   * Combines items list and stats into single response
-   */
+  
   async getItemsWithStats(req, res, next) {
     try {
       const filters = {

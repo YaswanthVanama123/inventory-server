@@ -356,7 +356,7 @@ class RouteStarSyncService {
             console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
           }
 
-          // Check if invoice needs details and fetch them immediately
+          
           const needsDetails = !result.lineItems || result.lineItems.length === 0;
           if (needsDetails) {
             try {
@@ -365,11 +365,11 @@ class RouteStarSyncService {
               detailsFetched++;
               console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
 
-              // Rate limiting to avoid overwhelming the server
+              
               await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (detailError) {
               console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
-              // Don't fail the whole sync, just log the error
+              
             }
           }
         } catch (error) {
@@ -382,15 +382,15 @@ class RouteStarSyncService {
         }
       }
 
-      // Delete pending invoices that are no longer in RouteStar (only when fetching ALL)
+      
       let deleted = 0;
       if (fetchAll) {
         console.log(`\n🗑️  Checking for pending invoices to delete...`);
 
-        // Get all invoice numbers that were fetched
+        
         const fetchedInvoiceNumbers = invoices.map(inv => inv.invoiceNumber);
 
-        // Find all pending invoices in our DB that were NOT in the fetched list
+        
         const invoicesToDelete = await RouteStarInvoice.find({
           invoiceType: 'pending',
           invoiceNumber: { $nin: fetchedInvoiceNumbers }
@@ -399,7 +399,7 @@ class RouteStarSyncService {
         if (invoicesToDelete.length > 0) {
           console.log(`  Found ${invoicesToDelete.length} pending invoices no longer in RouteStar - deleting...`);
 
-          // Delete them
+          
           const deleteResult = await RouteStarInvoice.deleteMany({
             invoiceType: 'pending',
             invoiceNumber: { $nin: fetchedInvoiceNumbers }
@@ -407,7 +407,7 @@ class RouteStarSyncService {
 
           deleted = deleteResult.deletedCount;
 
-          // Log each deleted invoice
+          
           invoicesToDelete.forEach(inv => {
             console.log(`  ✗ Deleted: ${inv.invoiceNumber} (no longer pending)`);
           });
@@ -532,7 +532,7 @@ class RouteStarSyncService {
             console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
           }
 
-          // Check if invoice needs details and fetch them immediately
+          
           const needsDetails = !result.lineItems || result.lineItems.length === 0;
           if (needsDetails) {
             try {
@@ -541,11 +541,11 @@ class RouteStarSyncService {
               detailsFetched++;
               console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
 
-              // Rate limiting to avoid overwhelming the server
+              
               await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (detailError) {
               console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
-              // Don't fail the whole sync, just log the error
+              
             }
           }
         } catch (error) {
@@ -593,10 +593,10 @@ class RouteStarSyncService {
         throw new Error(`Invoice ${invoiceNumber} not found in database`);
       }
 
-      // If invoice doesn't have detailUrl, construct it from invoice number
+      
       let detailUrl = invoice.detailUrl;
       if (!detailUrl) {
-        // Construct the detail URL using the RouteStar URL pattern
+        
         const baseUrl = routestarConfig.baseUrl;
         detailUrl = `${baseUrl}/web/invoicedetails/${invoiceNumber}`;
         console.log(`  ⚠️  No detailUrl in database, using constructed URL: ${detailUrl}`);
@@ -665,7 +665,7 @@ class RouteStarSyncService {
 
       let queryFilter = {};
 
-      // If not forcing all, only get invoices without details
+      
       if (!forceAll) {
         queryFilter = {
           $or: [
@@ -675,7 +675,7 @@ class RouteStarSyncService {
         };
       }
 
-      // Filter by invoice type
+      
       if (invoiceType) {
         queryFilter.status = invoiceType;
       }
@@ -693,13 +693,13 @@ class RouteStarSyncService {
 
       for (const invoice of invoicesToSync) {
         try {
-          // Note: We no longer skip invoices without detailUrl
-          // The syncInvoiceDetails method will construct the URL if needed
+          
+          
 
           await this.syncInvoiceDetails(invoice.invoiceNumber);
           synced++;
 
-          // Rate limiting
+          
           await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
           errors.push({
@@ -738,7 +738,7 @@ class RouteStarSyncService {
     await this.createSyncLog();
 
     try {
-      // Get stock calculation cutoff date from settings
+      
       const Settings = require('../models/Settings');
       const settings = await Settings.getSettings();
       const cutoffDate = settings.stockCalculationCutoffDate;
@@ -762,12 +762,12 @@ class RouteStarSyncService {
 
       for (const invoice of invoices) {
         try {
-          // Check if invoice is before or after cutoff date
+          
           const invoiceDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date();
           const shouldProcessStock = !cutoffDate || invoiceDate < cutoffDate;
 
           if (!shouldProcessStock) {
-            // Invoice is after cutoff date - mark as processed but don't decrease stock
+            
             await invoice.markStockProcessed();
             skippedDueToCutoff++;
             console.log(`  ⊙ ${invoice.invoiceNumber} (${invoiceDate.toISOString().split('T')[0]}) - After cutoff`);

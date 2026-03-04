@@ -201,7 +201,7 @@ const getAllInvoices = async (req, res, next) => {
     } = req.query;
 
 
-    // Query for regular invoices
+    
     const invoiceQuery = { isDeleted: false };
 
 
@@ -251,7 +251,7 @@ const getAllInvoices = async (req, res, next) => {
       ];
     }
 
-    // Query for RouteStar invoices (both pending and closed)
+    
     const routeStarQuery = {};
 
     if (customer) {
@@ -275,7 +275,7 @@ const getAllInvoices = async (req, res, next) => {
       ];
     }
 
-    // Fetch both types of invoices in parallel
+    
     const [regularInvoices, routeStarInvoices] = await Promise.all([
       Invoice.find(invoiceQuery)
         .select('_id invoiceNumber invoiceDate customer.name customer.email totalAmount status paymentStatus syncMetadata.source items')
@@ -285,7 +285,7 @@ const getAllInvoices = async (req, res, next) => {
         .lean()
     ]);
 
-    // Transform regular invoices
+    
     const transformedRegularInvoices = regularInvoices.map(invoice => ({
       _id: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
@@ -307,7 +307,7 @@ const getAllInvoices = async (req, res, next) => {
       }
     }));
 
-    // Transform RouteStar invoices to match Invoice format
+    
     const transformedRouteStarInvoices = routeStarInvoices.map(invoice => ({
       _id: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
@@ -331,10 +331,10 @@ const getAllInvoices = async (req, res, next) => {
       }
     }));
 
-    // Combine all invoices
+    
     let allInvoices = [...transformedRegularInvoices, ...transformedRouteStarInvoices];
 
-    // Sort combined results
+    
     const sortField = sortBy === 'createdAt' ? 'createdAt' : sortBy;
     allInvoices.sort((a, b) => {
       const aValue = a[sortField] || a.invoiceDate || a.createdAt;
@@ -346,7 +346,7 @@ const getAllInvoices = async (req, res, next) => {
       return aValue < bValue ? 1 : -1;
     });
 
-    // Apply pagination on combined results
+    
     const total = allInvoices.length;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const paginatedInvoices = allInvoices.slice(skip, skip + parseInt(limit));

@@ -111,7 +111,7 @@ const customerConnectOrderSchema = new mongoose.Schema({
   stockProcessedAt: Date,
   stockProcessingError: String,
 
-  // Order verification tracking
+  
   verified: {
     type: Boolean,
     default: false,
@@ -161,7 +161,7 @@ customerConnectOrderSchema.index({ lastSyncedAt: -1 });
 customerConnectOrderSchema.index({ 'items.sku': 1 });
 customerConnectOrderSchema.index({ 'items.sku': 1, status: 1 });
 
-// Optimized compound index for getOrders list view with all common filters
+
 customerConnectOrderSchema.index(
   { status: 1, stockProcessed: 1, verified: 1, orderNumber: -1 },
   { name: 'orders_list_filter_index' }

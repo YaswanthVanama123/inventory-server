@@ -1,15 +1,9 @@
 const CustomerConnectSyncService = require('../services/customerConnectSync.service');
 const customerConnectService = require('../services/customerConnect.service');
 
-/**
- * CustomerConnect Controller
- * Handles HTTP requests for CustomerConnect operations
- */
+
 class CustomerConnectController {
-  /**
-   * Sync orders from CustomerConnect
-   * POST /api/customerconnect/sync/orders
-   */
+  
   async syncOrders(req, res, next) {
     try {
       const options = {
@@ -32,10 +26,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get order range (highest/lowest) - DEPRECATED
-   * GET /api/customerconnect/order-range
-   */
+  
   async getOrderRange(req, res, next) {
     try {
       const range = await customerConnectService.getOrderRange();
@@ -50,10 +41,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Sync single order details
-   * POST /api/customerconnect/sync/details/:orderNumber
-   */
+  
   async syncOrderDetails(req, res, next) {
     try {
       const { orderNumber } = req.params;
@@ -71,10 +59,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Sync all order details
-   * POST /api/customerconnect/sync/all-details
-   */
+  
   async syncAllOrderDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
@@ -92,10 +77,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Process stock movements
-   * POST /api/customerconnect/sync/stock
-   */
+  
   async syncStock(req, res, next) {
     try {
       const results = await customerConnectService.syncStock();
@@ -111,10 +93,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Full sync (orders + details + stock)
-   * POST /api/customerconnect/sync/full
-   */
+  
   async fullSync(req, res, next) {
     try {
       const options = {
@@ -136,10 +115,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get orders with pagination and filtering
-   * GET /api/customerconnect/orders
-   */
+  
   async getOrders(req, res, next) {
     try {
       const filters = {
@@ -154,7 +130,7 @@ class CustomerConnectController {
       const options = {
         page: parseInt(req.query.page) || 1,
         limit: parseInt(req.query.limit) || 50,
-        includeRange: req.query.includeRange !== 'false' // Default to true, only false if explicitly set
+        includeRange: req.query.includeRange !== 'false' 
       };
 
       const result = await customerConnectService.getOrders(filters, options);
@@ -169,10 +145,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get single order by order number
-   * GET /api/customerconnect/orders/:orderNumber
-   */
+  
   async getOrderByNumber(req, res, next) {
     try {
       const { orderNumber } = req.params;
@@ -196,10 +169,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get purchase statistics
-   * GET /api/customerconnect/stats
-   */
+  
   async getStats(req, res, next) {
     try {
       const { startDate, endDate, vendor } = req.query;
@@ -216,10 +186,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get grouped items
-   * GET /api/customerconnect/items/grouped
-   */
+  
   async getGroupedItems(req, res, next) {
     try {
       const options = {
@@ -243,10 +210,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Bulk delete orders by SKUs
-   * POST /api/customerconnect/orders/bulk-delete
-   */
+  
   async bulkDeleteBySKUs(req, res, next) {
     try {
       const { skus } = req.body;
@@ -271,10 +235,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Bulk delete orders by order numbers
-   * POST /api/customerconnect/orders/bulk-delete-by-numbers
-   */
+  
   async bulkDeleteByOrderNumbers(req, res, next) {
     try {
       const { orderNumbers } = req.body;
@@ -299,10 +260,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Get orders for specific SKU
-   * GET /api/customerconnect/items/:sku/orders
-   */
+  
   async getOrdersBySKU(req, res, next) {
     try {
       const { sku } = req.params;
@@ -319,10 +277,7 @@ class CustomerConnectController {
     }
   }
 
-  /**
-   * Delete all orders
-   * DELETE /api/customerconnect/orders/all
-   */
+  
   async deleteAllOrders(req, res, next) {
     try {
       const result = await customerConnectService.deleteAllOrders();

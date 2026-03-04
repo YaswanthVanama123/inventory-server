@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const jwtConfig = require('../config/jwt');
 
-// Simple in-memory user cache (10 second TTL)
+
 const userCache = new Map();
 const userCacheTTL = new Map();
 
@@ -11,7 +11,7 @@ function getCachedUser(userId) {
   if (ttl && Date.now() < ttl) {
     return userCache.get(userId);
   }
-  // Expired or missing
+  
   userCache.delete(userId);
   userCacheTTL.delete(userId);
   return null;
@@ -19,7 +19,7 @@ function getCachedUser(userId) {
 
 function setCachedUser(userId, user) {
   userCache.set(userId, user);
-  userCacheTTL.set(userId, Date.now() + 10000); // 10 seconds
+  userCacheTTL.set(userId, Date.now() + 10000); 
 }
 
 const authenticate = async (req, res, next) => {
@@ -51,14 +51,14 @@ const authenticate = async (req, res, next) => {
 
       const dbStartTime = Date.now();
 
-      // Try cache first
+      
       let user = getCachedUser(decoded.id);
       let cacheHit = !!user;
 
       if (!user) {
         user = await User.findById(decoded.id)
           .select('name email role isActive passwordChangedAt')
-          .lean(); // Use lean() for faster queries
+          .lean(); 
         if (user) {
           setCachedUser(decoded.id, user);
         }
@@ -90,7 +90,7 @@ const authenticate = async (req, res, next) => {
       }
 
 
-      // Check password change with lean object
+      
       if (user.passwordChangedAt) {
         const passwordChangedTimestamp = parseInt(user.passwordChangedAt.getTime() / 1000, 10);
         if (passwordChangedTimestamp > decoded.iat) {

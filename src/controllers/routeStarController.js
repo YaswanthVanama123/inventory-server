@@ -1,14 +1,8 @@
 const routeStarService = require('../services/routeStar.service');
 
-/**
- * RouteStar Controller
- * Handles HTTP requests for RouteStar sync operations
- */
+
 class RouteStarController {
-  /**
-   * Sync items from RouteStar
-   * POST /api/routestar/sync/items
-   */
+  
   async syncItems(req, res, next) {
     try {
       const { limit = 0, triggeredBy = 'manual' } = req.body;
@@ -32,10 +26,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync pending invoices
-   * POST /api/routestar/sync/pending
-   */
+  
   async syncPending(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
@@ -59,10 +50,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get invoice range
-   * GET /api/routestar/invoice-range
-   */
+  
   async getInvoiceRange(req, res, next) {
     try {
       const range = await routeStarService.getInvoiceRange();
@@ -77,10 +65,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync closed invoices
-   * POST /api/routestar/sync/closed
-   */
+  
   async syncClosed(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
@@ -104,10 +89,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync single invoice details
-   * POST /api/routestar/sync/details/:invoiceNumber
-   */
+  
   async syncInvoiceDetails(req, res, next) {
     try {
       const { invoiceNumber } = req.params;
@@ -125,10 +107,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync all invoice details
-   * POST /api/routestar/sync/all-details
-   */
+  
   async syncAllDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
@@ -146,10 +125,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync pending invoice details
-   * POST /api/routestar/sync/pending-details
-   */
+  
   async syncPendingDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
@@ -167,10 +143,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync closed invoice details
-   * POST /api/routestar/sync/closed-details
-   */
+  
   async syncClosedDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
@@ -188,10 +161,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync pending invoices with details
-   * POST /api/routestar/sync/pending-with-details
-   */
+  
   async syncPendingWithDetails(req, res, next) {
     try {
       const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
@@ -214,10 +184,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Sync closed invoices with details
-   * POST /api/routestar/sync/closed-with-details
-   */
+  
   async syncClosedWithDetails(req, res, next) {
     try {
       const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
@@ -240,10 +207,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Check pending invoices
-   * GET /api/routestar/check-pending
-   */
+  
   async checkPending(req, res, next) {
     try {
       const result = await routeStarService.checkPending();
@@ -258,10 +222,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Process stock movements
-   * POST /api/routestar/sync/stock
-   */
+  
   async syncStock(req, res, next) {
     try {
       const results = await routeStarService.syncStock();
@@ -277,10 +238,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Full sync
-   * POST /api/routestar/sync/full
-   */
+  
   async fullSync(req, res, next) {
     try {
       const options = {
@@ -303,10 +261,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get invoices with pagination
-   * GET /api/routestar/invoices
-   */
+  
   async getInvoices(req, res, next) {
     try {
       const filters = {
@@ -325,7 +280,7 @@ class RouteStarController {
 
       const result = await routeStarService.getInvoices(filters, options);
 
-      // Service already returns { success, data }, don't wrap it again
+      
       res.json(result);
     } catch (error) {
       console.error('Get invoices error:', error);
@@ -333,10 +288,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get single invoice by number
-   * GET /api/routestar/invoices/:invoiceNumber
-   */
+  
   async getInvoiceByNumber(req, res, next) {
     try {
       const { invoiceNumber } = req.params;
@@ -360,10 +312,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get statistics
-   * GET /api/routestar/stats
-   */
+  
   async getStats(req, res, next) {
     try {
       const { startDate, endDate, status } = req.query;
@@ -380,10 +329,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Delete all pending invoices
-   * DELETE /api/routestar/invoices/pending/all
-   */
+  
   async deleteAllPending(req, res, next) {
     try {
       const result = await routeStarService.deleteAllPending();
@@ -399,10 +345,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Delete all closed invoices
-   * DELETE /api/routestar/invoices/closed/all
-   */
+  
   async deleteAllClosed(req, res, next) {
     try {
       const result = await routeStarService.deleteAllClosed();
@@ -418,10 +361,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get grouped items
-   * GET /api/routestar/items/grouped
-   */
+  
   async getGroupedItems(req, res, next) {
     try {
       const options = {
@@ -445,10 +385,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get invoices for specific item
-   * GET /api/routestar/items/:itemName/invoices
-   */
+  
   async getInvoicesByItem(req, res, next) {
     try {
       const { itemName } = req.params;
@@ -465,10 +402,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Bulk delete invoices
-   * POST /api/routestar/invoices/bulk-delete
-   */
+  
   async bulkDeleteInvoices(req, res, next) {
     try {
       const { items } = req.body;
@@ -493,10 +427,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Bulk delete invoices by invoice numbers
-   * POST /api/routestar/invoices/bulk-delete-by-numbers
-   */
+  
   async bulkDeleteByNumbers(req, res, next) {
     try {
       const { invoiceNumbers } = req.body;
@@ -521,10 +452,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get all items
-   * GET /api/routestar/items
-   */
+  
   async getItems(req, res, next) {
     try {
       const options = {
@@ -547,10 +475,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get low stock items
-   * GET /api/routestar/items/low-stock
-   */
+  
   async getLowStockItems(req, res, next) {
     try {
       const items = await routeStarService.getLowStockItems();
@@ -565,10 +490,7 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Delete all items
-   * DELETE /api/routestar/items/all
-   */
+  
   async deleteAllItems(req, res, next) {
     try {
       const result = await routeStarService.deleteAllItems();
@@ -584,15 +506,12 @@ class RouteStarController {
     }
   }
 
-  /**
-   * Get item invoice usage stats
-   * GET /api/routestar/items/invoice-usage
-   */
+  
   async getItemInvoiceUsage(req, res, next) {
     try {
       const result = await routeStarService.getItemInvoiceUsage();
 
-      // Service already returns { success, data }, so just send it directly
+      
       res.json(result);
     } catch (error) {
       console.error('Get item invoice usage error:', error);

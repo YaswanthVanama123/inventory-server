@@ -1,14 +1,8 @@
 const inventorySchedulerService = require('../services/inventoryScheduler.service');
 
-/**
- * Inventory Scheduler Controller
- * Handles HTTP requests for inventory scheduler operations
- */
+
 class InventorySchedulerController {
-  /**
-   * Get scheduler status
-   * GET /api/inventory-scheduler/status
-   */
+  
   async getStatus(req, res, next) {
     try {
       const status = inventorySchedulerService.getStatus();
@@ -27,10 +21,7 @@ class InventorySchedulerController {
     }
   }
 
-  /**
-   * Start scheduler
-   * POST /api/inventory-scheduler/start
-   */
+  
   async startScheduler(req, res, next) {
     try {
       const status = inventorySchedulerService.startScheduler(req.body);
@@ -50,10 +41,7 @@ class InventorySchedulerController {
     }
   }
 
-  /**
-   * Stop scheduler
-   * POST /api/inventory-scheduler/stop
-   */
+  
   async stopScheduler(req, res, next) {
     try {
       const status = inventorySchedulerService.stopScheduler();
@@ -73,10 +61,7 @@ class InventorySchedulerController {
     }
   }
 
-  /**
-   * Run scheduler immediately
-   * POST /api/inventory-scheduler/run-now
-   */
+  
   async runNow(req, res, next) {
     try {
       const result = inventorySchedulerService.runNow(req.body);

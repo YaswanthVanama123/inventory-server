@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const stockDiscrepancySchema = new mongoose.Schema({
-  // Invoice reference
+  
   invoiceNumber: {
     type: String,
     required: true,
@@ -18,7 +18,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
     required: true
   },
 
-  // Item details
+  
   itemName: {
     type: String,
     required: true,
@@ -31,10 +31,10 @@ const stockDiscrepancySchema = new mongoose.Schema({
   categoryName: {
     type: String,
     trim: true,
-    index: true  // Add index for faster queries
+    index: true  
   },
 
-  // Stock counts
+  
   systemQuantity: {
     type: Number,
     required: true,
@@ -49,7 +49,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
     type: Number
   },
 
-  // Discrepancy details
+  
   discrepancyType: {
     type: String,
     enum: ['Overage', 'Shortage', 'Damage', 'Missing'],
@@ -64,7 +64,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Status
+  
   status: {
     type: String,
     enum: ['Pending', 'Approved', 'Rejected', 'Resolved'],
@@ -72,7 +72,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
     index: true
   },
 
-  // Resolution
+  
   resolvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -80,7 +80,7 @@ const stockDiscrepancySchema = new mongoose.Schema({
   resolvedAt: Date,
   resolutionNotes: String,
 
-  // Audit fields
+  
   reportedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -95,22 +95,22 @@ const stockDiscrepancySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for efficient queries
+
 stockDiscrepancySchema.index({ status: 1, reportedAt: -1 });
 stockDiscrepancySchema.index({ invoiceNumber: 1, itemName: 1 });
 stockDiscrepancySchema.index({ reportedBy: 1, reportedAt: -1 });
 
-// Virtual for discrepancy percentage
+
 stockDiscrepancySchema.virtual('discrepancyPercentage').get(function() {
   if (this.systemQuantity === 0) return 0;
   return ((this.difference / this.systemQuantity) * 100).toFixed(2);
 });
 
-// Pre-save middleware to calculate difference
+
 stockDiscrepancySchema.pre('save', function(next) {
   this.difference = this.actualQuantity - this.systemQuantity;
 
-  // Auto-set discrepancy type based on difference
+  
   if (!this.discrepancyType) {
     if (this.difference > 0) {
       this.discrepancyType = 'Overage';
@@ -122,7 +122,7 @@ stockDiscrepancySchema.pre('save', function(next) {
   next();
 });
 
-// Static method to get pending discrepancies
+
 stockDiscrepancySchema.statics.getPendingDiscrepancies = function(options = {}) {
   const query = { status: 'Pending' };
 
@@ -139,7 +139,7 @@ stockDiscrepancySchema.statics.getPendingDiscrepancies = function(options = {}) 
     .sort({ reportedAt: -1 });
 };
 
-// Static method to get discrepancy summary
+
 stockDiscrepancySchema.statics.getSummary = async function(startDate, endDate) {
   const matchStage = {};
 
@@ -180,7 +180,7 @@ stockDiscrepancySchema.statics.getSummary = async function(startDate, endDate) {
   };
 };
 
-// Method to approve and resolve
+
 stockDiscrepancySchema.methods.approve = function(userId, notes = '') {
   this.status = 'Approved';
   this.resolvedBy = userId;
@@ -189,7 +189,7 @@ stockDiscrepancySchema.methods.approve = function(userId, notes = '') {
   return this.save();
 };
 
-// Method to reject
+
 stockDiscrepancySchema.methods.reject = function(userId, notes = '') {
   this.status = 'Rejected';
   this.resolvedBy = userId;

@@ -2,21 +2,16 @@ const CustomerConnectSyncService = require('./customerConnectSync.service');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const FetchHistory = require('../models/FetchHistory');
 
-// Simple in-memory cache for order range (updates every 30 seconds)
+
 let rangeCache = {
   data: null,
   timestamp: null,
-  ttl: 30000 // 30 seconds
+  ttl: 30000 
 };
 
-/**
- * CustomerConnect Service
- * Business logic for CustomerConnect operations
- */
+
 class CustomerConnectService {
-  /**
-   * Sync orders from CustomerConnect
-   */
+  
   async syncOrders(options) {
     let syncService = null;
     let fetchRecord = null;
@@ -24,7 +19,7 @@ class CustomerConnectService {
     try {
       let { limit = 0, direction = 'new', triggeredBy = 'manual' } = options;
 
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('customer_connect', 'all', {
         limit: limit,
         direction: direction,
@@ -56,7 +51,7 @@ class CustomerConnectService {
 
       const results = await syncService.syncOrders(limit);
 
-      // Mark fetch as completed
+      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
@@ -72,7 +67,7 @@ class CustomerConnectService {
         fetchId: fetchRecord._id
       };
     } catch (error) {
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -84,9 +79,7 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Get order range (highest/lowest)
-   */
+  
   async getOrderRange() {
     const result = await CustomerConnectOrder.aggregate([
       {
@@ -121,9 +114,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Sync single order details
-   */
+  
   async syncOrderDetails(orderNumber) {
     let syncService = null;
 
@@ -141,9 +132,7 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Sync all order details
-   */
+  
   async syncAllOrderDetails(limit) {
     let syncService = null;
 
@@ -161,9 +150,7 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Process stock movements
-   */
+  
   async syncStock() {
     let syncService = null;
 
@@ -181,9 +168,7 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Full sync (orders + details + stock)
-   */
+  
   async fullSync(options) {
     let syncService = null;
 
@@ -211,9 +196,7 @@ class CustomerConnectService {
     }
   }
 
-  /**
-   * Get orders with pagination and filtering
-   */
+  
   async getOrders(filters, options) {
     console.time('[Orders] Query time');
 
@@ -238,12 +221,12 @@ class CustomerConnectService {
     if (vendor) query['vendor.name'] = new RegExp(vendor, 'i');
     if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
 
-    // Handle verified filter - treat missing field as false (not verified)
+    
     if (verified !== undefined) {
       if (verified === 'true') {
         query.verified = true;
       } else {
-        // For "not verified", match both false and missing field
+        
         query.$or = [
           { verified: false },
           { verified: { $exists: false } }
@@ -261,7 +244,7 @@ class CustomerConnectService {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build optimized facet stages
+    
     const facetStages = {
       metadata: [
         { $count: 'total' }
@@ -270,7 +253,7 @@ class CustomerConnectService {
         { $sort: { orderNumber: -1 } },
         { $skip: skip },
         { $limit: limitNum },
-        // Project only fields needed for list view to reduce payload size
+        
         {
           $project: {
             _id: 1,
@@ -287,11 +270,11 @@ class CustomerConnectService {
       ]
     };
 
-    // Check if we should use cached range
+    
     const now = Date.now();
     const shouldFetchRange = includeRange && (!rangeCache.timestamp || (now - rangeCache.timestamp > rangeCache.ttl));
 
-    // Only fetch range if needed and cache is stale
+    
     if (shouldFetchRange) {
       facetStages.highest = [
         { $sort: { orderNumber: -1 } },
@@ -305,7 +288,7 @@ class CustomerConnectService {
       ];
     }
 
-    // Single aggregation with $facet
+    
     const result = await CustomerConnectOrder.aggregate([
       { $match: query },
       { $facet: facetStages }
@@ -314,7 +297,7 @@ class CustomerConnectService {
     const total = result[0]?.metadata[0]?.total || 0;
     const orders = result[0]?.orders || [];
 
-    // Update range cache if we fetched new data
+    
     if (shouldFetchRange) {
       const highest = result[0]?.highest[0];
       const lowest = result[0]?.lowest[0];
@@ -331,7 +314,7 @@ class CustomerConnectService {
 
     console.timeEnd('[Orders] Query time');
 
-    // Build response
+    
     const response = {
       orders,
       pagination: {
@@ -342,7 +325,7 @@ class CustomerConnectService {
       }
     };
 
-    // Add range from cache if requested
+    
     if (includeRange && rangeCache.data) {
       response.range = rangeCache.data;
     }
@@ -350,17 +333,13 @@ class CustomerConnectService {
     return response;
   }
 
-  /**
-   * Get single order by order number
-   */
+  
   async getOrderByNumber(orderNumber) {
     const order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
     return order;
   }
 
-  /**
-   * Get purchase statistics
-   */
+  
   async getStats(options) {
     const { startDate, endDate, vendor } = options;
 
@@ -395,9 +374,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Get grouped items with aggregation
-   */
+  
   async getGroupedItems(options) {
     const {
       page = 1,
@@ -415,26 +392,26 @@ class CustomerConnectService {
     const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
     const minQty = parseInt(minQuantity);
 
-    // Single optimized aggregation
+    
     const result = await CustomerConnectOrder.aggregate([
-      // Filter completed orders
+      
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] }
         }
       },
 
-      // Project needed fields
+      
       {
         $project: {
           items: 1
         }
       },
 
-      // Unwind items
+      
       { $unwind: '$items' },
 
-      // Search filter
+      
       ...(search ? [{
         $match: {
           $or: [
@@ -444,7 +421,7 @@ class CustomerConnectService {
         }
       }] : []),
 
-      // Group by SKU and name
+      
       {
         $group: {
           _id: {
@@ -458,14 +435,14 @@ class CustomerConnectService {
         }
       },
 
-      // Filter by min quantity
+      
       ...(minQty > 0 ? [{
         $match: {
           totalQuantity: { $gte: minQty }
         }
       }] : []),
 
-      // Project final structure
+      
       {
         $project: {
           _id: 0,
@@ -478,10 +455,10 @@ class CustomerConnectService {
         }
       },
 
-      // Sort
+      
       { $sort: { [sortField]: sortDirection } },
 
-      // Facet for data + count
+      
       {
         $facet: {
           metadata: [{ $count: 'total' }],
@@ -504,9 +481,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Bulk delete orders by SKUs
-   */
+  
   async bulkDeleteBySKUs(skus) {
     console.log(`[Bulk Delete] Deleting orders with SKUs: ${skus.join(', ')}`);
 
@@ -522,9 +497,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Bulk delete orders by order numbers
-   */
+  
   async bulkDeleteByOrderNumbers(orderNumbers) {
     console.log(`[Bulk Delete Orders] Deleting orders with numbers: ${orderNumbers.join(', ')}`);
 
@@ -540,9 +513,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Get orders for specific SKU
-   */
+  
   async getOrdersBySKU(sku) {
     console.log(`[getOrdersBySKU] Looking for SKU: ${sku}`);
 
@@ -552,7 +523,7 @@ class CustomerConnectService {
 
     console.log(`[getOrdersBySKU] Found ${orders.length} orders`);
 
-    // Extract matching items
+    
     const orderEntries = orders.map(order => {
       const matchingItems = order.items.filter(item =>
         item.sku.toLowerCase() === sku.toLowerCase()
@@ -583,9 +554,7 @@ class CustomerConnectService {
     };
   }
 
-  /**
-   * Delete all orders
-   */
+  
   async deleteAllOrders() {
     const count = await CustomerConnectOrder.countDocuments();
 

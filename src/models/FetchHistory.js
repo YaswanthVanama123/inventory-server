@@ -34,7 +34,7 @@ const fetchHistorySchema = new mongoose.Schema({
   },
 
   duration: {
-    type: Number, // in milliseconds
+    type: Number, 
   },
 
   results: {
@@ -68,16 +68,16 @@ const fetchHistorySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for efficient querying
+
 fetchHistorySchema.index({ startedAt: -1 });
 fetchHistorySchema.index({ source: 1, startedAt: -1 });
 fetchHistorySchema.index({ status: 1, startedAt: -1 });
 
-// DISABLED: Auto-delete was removing historical data
-// If you want to enable auto-cleanup, use the manual cleanup endpoint instead
-// fetchHistorySchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 }); // 10 days in seconds
 
-// Virtual for calculating duration if not set
+
+
+
+
 fetchHistorySchema.virtual('calculatedDuration').get(function() {
   if (this.duration) return this.duration;
   if (this.completedAt && this.startedAt) {
@@ -89,7 +89,7 @@ fetchHistorySchema.virtual('calculatedDuration').get(function() {
   return null;
 });
 
-// Method to mark as completed
+
 fetchHistorySchema.methods.markCompleted = function(results) {
   this.status = 'completed';
   this.completedAt = new Date();
@@ -100,7 +100,7 @@ fetchHistorySchema.methods.markCompleted = function(results) {
   return this.save();
 };
 
-// Method to mark as failed
+
 fetchHistorySchema.methods.markFailed = function(errorMessage, errorDetails) {
   this.status = 'failed';
   this.completedAt = new Date();
@@ -112,7 +112,7 @@ fetchHistorySchema.methods.markFailed = function(errorMessage, errorDetails) {
   return this.save();
 };
 
-// Static method to create new fetch record
+
 fetchHistorySchema.statics.startFetch = async function(source, fetchType, metadata = {}) {
   return await this.create({
     source,
@@ -124,7 +124,7 @@ fetchHistorySchema.statics.startFetch = async function(source, fetchType, metada
   });
 };
 
-// Static method to get recent history
+
 fetchHistorySchema.statics.getRecentHistory = async function(source = null, limit = 50) {
   const query = source ? { source } : {};
   return await this.find(query)
@@ -133,7 +133,7 @@ fetchHistorySchema.statics.getRecentHistory = async function(source = null, limi
     .lean();
 };
 
-// Static method to get active fetches
+
 fetchHistorySchema.statics.getActiveFetches = async function(source = null) {
   const query = { status: 'in_progress' };
   if (source) {
@@ -142,7 +142,7 @@ fetchHistorySchema.statics.getActiveFetches = async function(source = null) {
   return await this.find(query).lean();
 };
 
-// Static method to get statistics
+
 fetchHistorySchema.statics.getStatistics = async function(source = null, days = 10) {
   const dateFilter = new Date();
   dateFilter.setDate(dateFilter.getDate() - days);

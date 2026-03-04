@@ -1,18 +1,13 @@
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 
-/**
- * Stock Reconciliation Service
- * Handles all business logic for stock reconciliation operations
- */
+
 class StockReconciliationService {
-  /**
-   * Get stock reconciliation report
-   */
+  
   async getReconciliation() {
     console.log('[Stock Reconciliation] Starting aggregation...');
 
-    // Get purchased items from CustomerConnect orders
+    
     const purchasedItems = await CustomerConnectOrder.aggregate([
       { $match: { 'items.0': { $exists: true } } },
       { $unwind: '$items' },
@@ -41,7 +36,7 @@ class StockReconciliationService {
       }
     ]);
 
-    // Get sold items from RouteStar invoices
+    
     const soldItemsBySKU = await RouteStarInvoice.aggregate([
       { $match: { 'lineItems.0': { $exists: true } } },
       { $unwind: '$lineItems' },
@@ -67,13 +62,13 @@ class StockReconciliationService {
       }
     ]);
 
-    // Create map of sold items
+    
     const soldMap = {};
     soldItemsBySKU.forEach(item => {
       soldMap[item.sku] = item;
     });
 
-    // Reconcile purchased vs sold
+    
     const reconciliation = purchasedItems.map(purchase => {
       const sold = soldMap[purchase.sku] || {
         totalSold: 0,
@@ -110,10 +105,10 @@ class StockReconciliationService {
       };
     });
 
-    // Sort by current stock (lowest first to highlight issues)
+    
     reconciliation.sort((a, b) => a.stock.current - b.stock.current);
 
-    // Find unmatched sales (sold without purchase record)
+    
     const unmatchedSales = soldItemsBySKU
       .filter(sold => !purchasedItems.find(p => p.sku === sold.sku))
       .map(sold => ({
@@ -135,7 +130,7 @@ class StockReconciliationService {
 
     const allItems = [...reconciliation, ...unmatchedSales];
 
-    // Calculate summary
+    
     const summary = {
       totalItems: allItems.length,
       inStock: allItems.filter(i => i.stock.current > 0).length,

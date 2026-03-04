@@ -33,10 +33,10 @@ app.use(cors());
 
 app.use(helmet());
 
-// Enable gzip compression for all responses (50-70% size reduction)
+
 app.use(compression({
-  level: 6, // Compression level (0-9, 6 is default balance)
-  threshold: 1024, // Only compress responses larger than 1KB
+  level: 6, 
+  threshold: 1024, 
   filter: (req, res) => {
     if (req.headers['x-no-compression']) {
       return false;
@@ -45,7 +45,7 @@ app.use(compression({
   }
 }));
 
-// Performance timing middleware
+
 app.use((req, res, next) => {
   const startTime = Date.now();
   req._startTime = startTime;
@@ -187,7 +187,7 @@ app.use(errorHandler);
 
 
 const PORT = process.env.PORT || 5000;
-const HOST = '127.0.0.1'; // Bind to localhost only to avoid firewall issues
+const HOST = '127.0.0.1'; 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
 

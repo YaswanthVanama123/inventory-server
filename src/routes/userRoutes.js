@@ -12,10 +12,10 @@ const {
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { userValidation, validate } = require('../middleware/validation');
 
-// Employee can update their own truck number
+
 router.put('/me/truck-number', authenticate, updateOwnTruckNumber);
 
-// All other routes require admin
+
 router.use(authenticate);
 router.use(requireAdmin());
 

@@ -2,7 +2,7 @@ const StockDiscrepancy = require('../models/StockDiscrepancy');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 
-// Get all discrepancies with filters + summary - ULTRA OPTIMIZED COMBINED
+
 exports.getDiscrepancies = async (req, res, next) => {
   try {
     const {
@@ -12,12 +12,12 @@ exports.getDiscrepancies = async (req, res, next) => {
       endDate,
       page = 1,
       limit = 50,
-      includeSummary = 'true'  // Allow clients to opt-out if needed
+      includeSummary = 'true'  
     } = req.query;
 
     console.time('[Discrepancies] Query time');
 
-    // Build match query
+    
     const matchQuery = {};
 
     if (status) {
@@ -39,7 +39,7 @@ exports.getDiscrepancies = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
     const shouldIncludeSummary = includeSummary === 'true';
 
-    // Build facet stages
+    
     const facetStages = {
       metadata: [
         { $count: 'total' }
@@ -47,7 +47,7 @@ exports.getDiscrepancies = async (req, res, next) => {
       data: [
         { $skip: skip },
         { $limit: limitNum },
-        // Lookup reportedBy user
+        
         {
           $lookup: {
             from: 'users',
@@ -65,7 +65,7 @@ exports.getDiscrepancies = async (req, res, next) => {
             preserveNullAndEmptyArrays: true
           }
         },
-        // Lookup resolvedBy user
+        
         {
           $lookup: {
             from: 'users',
@@ -86,7 +86,7 @@ exports.getDiscrepancies = async (req, res, next) => {
       ]
     };
 
-    // Add summary stages if requested
+    
     if (shouldIncludeSummary) {
       facetStages.summaryByStatus = [
         {
@@ -108,15 +108,15 @@ exports.getDiscrepancies = async (req, res, next) => {
       ];
     }
 
-    // Single aggregation with $facet for data + count + summary
+    
     const result = await StockDiscrepancy.aggregate([
-      // Stage 1: Filter
+      
       { $match: matchQuery },
 
-      // Stage 2: Sort early
+      
       { $sort: { reportedAt: -1 } },
 
-      // Stage 3: Use $facet to run data + count + summary in parallel
+      
       { $facet: facetStages }
     ]);
 
@@ -125,7 +125,7 @@ exports.getDiscrepancies = async (req, res, next) => {
 
     console.timeEnd('[Discrepancies] Query time');
 
-    // Build response
+    
     const response = {
       success: true,
       data: {
@@ -139,7 +139,7 @@ exports.getDiscrepancies = async (req, res, next) => {
       }
     };
 
-    // Add summary if requested
+    
     if (shouldIncludeSummary) {
       response.data.summary = {
         byStatus: result[0]?.summaryByStatus || [],
@@ -155,7 +155,7 @@ exports.getDiscrepancies = async (req, res, next) => {
   }
 };
 
-// Get discrepancy summary
+
 exports.getDiscrepancySummary = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
@@ -172,7 +172,7 @@ exports.getDiscrepancySummary = async (req, res, next) => {
   }
 };
 
-// Get single discrepancy by ID
+
 exports.getDiscrepancyById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -198,7 +198,7 @@ exports.getDiscrepancyById = async (req, res, next) => {
   }
 };
 
-// Create new discrepancy
+
 exports.createDiscrepancy = async (req, res, next) => {
   try {
     const {
@@ -215,7 +215,7 @@ exports.createDiscrepancy = async (req, res, next) => {
       notes
     } = req.body;
 
-    // Validate required fields - invoiceNumber is optional
+    
     if (!itemName || systemQuantity === undefined || actualQuantity === undefined) {
       return res.status(400).json({
         success: false,
@@ -223,22 +223,22 @@ exports.createDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // Build discrepancy data object
+    
     const discrepancyData = {
       invoiceNumber: invoiceNumber || 'N/A',
       invoiceType: invoiceType || 'RouteStarInvoice',
       itemName,
       itemSku,
-      categoryName: categoryName || itemName,  // Use categoryName if provided, otherwise fall back to itemName
+      categoryName: categoryName || itemName,  
       systemQuantity,
       actualQuantity,
       discrepancyType,
       reason,
       notes,
-      reportedBy: req.user.id  // Use req.user.id, not req.user._id
+      reportedBy: req.user.id  
     };
 
-    // Only include invoiceId if it has a value
+    
     if (invoiceId && invoiceId.trim() !== '') {
       discrepancyData.invoiceId = invoiceId;
     }
@@ -257,7 +257,7 @@ exports.createDiscrepancy = async (req, res, next) => {
   }
 };
 
-// Update discrepancy
+
 exports.updateDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -302,7 +302,7 @@ exports.updateDiscrepancy = async (req, res, next) => {
   }
 };
 
-// Approve discrepancy
+
 exports.approveDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -331,7 +331,7 @@ exports.approveDiscrepancy = async (req, res, next) => {
   }
 };
 
-// Reject discrepancy
+
 exports.rejectDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -360,7 +360,7 @@ exports.rejectDiscrepancy = async (req, res, next) => {
   }
 };
 
-// Bulk approve discrepancies
+
 exports.bulkApproveDiscrepancies = async (req, res, next) => {
   try {
     const { discrepancyIds, notes } = req.body;
@@ -397,7 +397,7 @@ exports.bulkApproveDiscrepancies = async (req, res, next) => {
   }
 };
 
-// Delete discrepancy (allowing all statuses for testing)
+
 exports.deleteDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -411,13 +411,13 @@ exports.deleteDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // TODO: In production, uncomment this to only allow deleting pending discrepancies
-    // if (discrepancy.status !== 'Pending') {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: 'Can only delete pending discrepancies'
-    //   });
-    // }
+    
+    
+    
+    
+    
+    
+    
 
     await discrepancy.deleteOne();
 

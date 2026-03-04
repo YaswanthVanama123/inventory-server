@@ -1,14 +1,8 @@
 const stockReconciliationService = require('../services/stockReconciliation.service');
 
-/**
- * Stock Reconciliation Controller
- * Handles HTTP requests for stock reconciliation operations
- */
+
 class StockReconciliationController {
-  /**
-   * Get stock reconciliation report
-   * GET /api/stock-reconciliation
-   */
+  
   async getReconciliation(req, res, next) {
     try {
       const data = await stockReconciliationService.getReconciliation();

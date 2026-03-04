@@ -1,14 +1,8 @@
 const routeStarItemAliasService = require('../services/routeStarItemAlias.service');
 
-/**
- * RouteStar Item Alias Controller
- * Handles HTTP requests for item alias mapping operations
- */
+
 class RouteStarItemAliasController {
-  /**
-   * Get all active mappings
-   * GET /api/routestar-item-alias/mappings
-   */
+  
   async getAllMappings(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getAllMappings();
@@ -27,10 +21,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Get unique items with mapping status
-   * GET /api/routestar-item-alias/unique-items
-   */
+  
   async getUniqueItems(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getUniqueItems();
@@ -49,10 +40,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Create or update a mapping
-   * POST /api/routestar-item-alias/mapping
-   */
+  
   async createMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.createMapping(
@@ -91,10 +79,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Update a mapping
-   * PUT /api/routestar-item-alias/mapping/:id
-   */
+  
   async updateMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.updateMapping(
@@ -126,10 +111,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Add alias to existing mapping
-   * POST /api/routestar-item-alias/mapping/:id/add-alias
-   */
+  
   async addAlias(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.addAlias(
@@ -167,10 +149,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Remove alias from mapping
-   * DELETE /api/routestar-item-alias/mapping/:id/alias/:aliasName
-   */
+  
   async removeAlias(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.removeAlias(
@@ -201,10 +180,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Delete a mapping
-   * DELETE /api/routestar-item-alias/mapping/:id
-   */
+  
   async deleteMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.deleteMapping(req.params.id);
@@ -232,10 +208,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Get lookup map
-   * GET /api/routestar-item-alias/lookup-map
-   */
+  
   async getLookupMap(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getLookupMap();
@@ -254,10 +227,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Get suggested mappings
-   * GET /api/routestar-item-alias/suggested-mappings
-   */
+  
   async getSuggestedMappings(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getSuggestedMappings();
@@ -276,10 +246,7 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Get statistics
-   * GET /api/routestar-item-alias/stats
-   */
+  
   async getStats(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getStats();
@@ -298,15 +265,10 @@ class RouteStarItemAliasController {
     }
   }
 
-  /**
-   * Get all data for item alias mapping page (combined endpoint)
-   * GET /api/routestar-item-alias/page-data
-   * Returns: { mappings, uniqueItems, stats }
-   * OPTIMIZED: Uses single service method that builds lookup map once
-   */
+  
   async getPageData(req, res, next) {
     try {
-      // Use optimized service method that fetches all data efficiently
+      
       const data = await routeStarItemAliasService.getPageDataOptimized();
 
       res.json({

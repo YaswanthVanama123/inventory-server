@@ -229,7 +229,7 @@ const getDashboard = async (req, res, next) => {
       .sort({ orderDate: 1 })
       .lean();
 
-    // Add CustomerConnect order items to the sales map
+    
     customerConnectOrders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
@@ -250,7 +250,7 @@ const getDashboard = async (req, res, next) => {
       }
     });
 
-    // Sort by revenue and take top 5
+    
     const topSellingItemsArray = Object.values(itemSalesMap)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
@@ -258,10 +258,10 @@ const getDashboard = async (req, res, next) => {
     console.log('Total unique items in sales map:', Object.keys(itemSalesMap).length);
     console.log('Top selling items array:', topSellingItemsArray);
 
-    // Format for mobile react-native-chart-kit BarChart
+    
     const topSellingItems = {
       labels: topSellingItemsArray.map(item => {
-        // Truncate long names for chart labels
+        
         const name = item.name || 'Unknown';
         return name.length > 12 ? name.substring(0, 12) + '...' : name;
       }),
@@ -270,7 +270,7 @@ const getDashboard = async (req, res, next) => {
       }]
     };
 
-    // Keep detailed data for reference
+    
     const topSellingItemsDetailed = topSellingItemsArray.map(item => ({
       itemName: item.name,
       skuCode: item.sku,
@@ -303,7 +303,7 @@ const getDashboard = async (req, res, next) => {
     console.log('Calculated totalPurchaseAmount:', totalPurchaseAmount);
     console.log('Calculated totalPurchaseOrders:', totalPurchaseOrders);
 
-    // Calculate invoice status distribution
+    
     const invoiceStatusStats = {};
     routeStarInvoices.forEach(inv => {
       const status = inv.status || 'Unknown';

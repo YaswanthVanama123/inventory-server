@@ -5,18 +5,13 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const FetchHistory = require('../models/FetchHistory');
 
 class RouteStarService {
-  /**
-   * Sync items from RouteStar
-   * @param {number} limit - Number of items to sync (0 or Infinity for all)
-   * @param {string} triggeredBy - Who/what triggered the sync (default: 'manual')
-   * @returns {Promise<Object>} - Sync results and fetchId
-   */
+  
   async syncItems(limit, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
 
     try {
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('routestar_items', 'items', {
         limit: limit,
         triggeredBy: triggeredBy
@@ -40,7 +35,7 @@ class RouteStarService {
 
       const results = await syncService.syncItems(limit);
 
-      // Mark fetch as completed
+      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
@@ -64,7 +59,7 @@ class RouteStarService {
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
 
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -79,19 +74,13 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync pending invoices from RouteStar
-   * @param {number} limit - Number of invoices to sync (0 or Infinity for all)
-   * @param {string} direction - Direction to sync ('new' or 'old')
-   * @param {string} triggeredBy - Who/what triggered the sync (default: 'manual')
-   * @returns {Promise<Object>} - Sync results and fetchId
-   */
+  
   async syncPending(limit, direction = 'new', triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
 
     try {
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending', {
         limit: limit,
         direction: direction,
@@ -116,7 +105,7 @@ class RouteStarService {
 
       const results = await syncService.syncPendingInvoices(limit);
 
-      // Mark fetch as completed
+      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
@@ -143,7 +132,7 @@ class RouteStarService {
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
 
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -158,11 +147,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get invoice range (highest and lowest invoice numbers)
-   * @param {string} invoiceType - Optional invoice type filter
-   * @returns {Promise<Object>} - Invoice range data
-   */
+  
   async getInvoiceRange(invoiceType) {
     try {
       const query = invoiceType ? { invoiceType } : {};
@@ -196,19 +181,13 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync closed invoices from RouteStar
-   * @param {number} limit - Number of invoices to sync (0 or Infinity for all)
-   * @param {string} direction - Direction to sync ('new' or 'old')
-   * @param {string} triggeredBy - Who/what triggered the sync (default: 'manual')
-   * @returns {Promise<Object>} - Sync results and fetchId
-   */
+  
   async syncClosed(limit, direction = 'new', triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
 
     try {
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
         limit: limit,
         direction: direction,
@@ -226,7 +205,7 @@ class RouteStarService {
 
       const results = await syncService.syncClosedInvoices(limit);
 
-      // Mark fetch as completed
+      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
@@ -244,7 +223,7 @@ class RouteStarService {
     } catch (error) {
       console.error('Closed invoices sync error:', error);
 
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -257,11 +236,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync details for a specific invoice
-   * @param {string} invoiceNumber - Invoice number to sync details for
-   * @returns {Promise<Object>} - Invoice data
-   */
+  
   async syncInvoiceDetails(invoiceNumber) {
     let syncService = null;
 
@@ -286,11 +261,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync details for all invoices
-   * @param {number} limit - Number of invoices to sync details for (0 for all)
-   * @returns {Promise<Object>} - Sync results
-   */
+  
   async syncAllDetails(limit = 0) {
     let syncService = null;
 
@@ -333,11 +304,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync details for pending invoices only
-   * @param {number} limit - Number of invoices to sync details for (0 for all)
-   * @returns {Promise<Object>} - Sync results
-   */
+  
   async syncPendingDetails(limit = 0) {
     let syncService = null;
 
@@ -380,11 +347,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync details for closed invoices only
-   * @param {number} limit - Number of invoices to sync details for (0 for all)
-   * @returns {Promise<Object>} - Sync results
-   */
+  
   async syncClosedDetails(limit = 0) {
     let syncService = null;
 
@@ -427,13 +390,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync pending invoices with their details
-   * @param {number} invoicesLimit - Number of invoices to sync (0 for all)
-   * @param {number} detailsLimit - Number of details to sync (0 for all)
-   * @param {string} triggeredBy - Who/what triggered the sync (default: 'manual')
-   * @returns {Promise<Object>} - Combined sync results and fetchId
-   */
+  
   async syncPendingWithDetails(invoicesLimit = 0, detailsLimit = 0, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
@@ -441,7 +398,7 @@ class RouteStarService {
     try {
       const direction = 'new';
 
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending_with_details', {
         limit: invoicesLimit,
         direction: direction,
@@ -463,11 +420,11 @@ class RouteStarService {
       const invoiceResults = await syncService.syncPendingInvoices(invoicesLimit, direction);
       console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
 
-      // Sync details only for invoices that don't have line items yet (catch any that weren't fetched inline)
+      
       const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Pending');
       console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
 
-      // Mark fetch as completed - combine inline and batch detail counts
+      
       const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
       await fetchRecord.markCompleted({
         totalFetched: invoiceResults.total || 0,
@@ -496,7 +453,7 @@ class RouteStarService {
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
 
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -511,13 +468,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync closed invoices with their details
-   * @param {number} invoicesLimit - Number of invoices to sync (0 for all)
-   * @param {number} detailsLimit - Number of details to sync (0 for all)
-   * @param {string} triggeredBy - Who/what triggered the sync (default: 'manual')
-   * @returns {Promise<Object>} - Combined sync results and fetchId
-   */
+  
   async syncClosedWithDetails(invoicesLimit = 0, detailsLimit = 0, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
@@ -525,7 +476,7 @@ class RouteStarService {
     try {
       const direction = 'new';
 
-      // Create fetch history record
+      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed_with_details', {
         limit: invoicesLimit,
         direction: direction,
@@ -547,11 +498,11 @@ class RouteStarService {
       const invoiceResults = await syncService.syncClosedInvoices(invoicesLimit, direction);
       console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
 
-      // Sync details only for invoices that don't have line items yet (catch any that weren't fetched inline)
+      
       const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Closed', false);
       console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
 
-      // Mark fetch as completed - combine inline and batch detail counts
+      
       const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
       await fetchRecord.markCompleted({
         totalFetched: invoiceResults.total || 0,
@@ -580,7 +531,7 @@ class RouteStarService {
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
 
-      // Mark fetch as failed
+      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
@@ -595,10 +546,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Check pending invoices in RouteStar
-   * @returns {Promise<Object>} - Check results
-   */
+  
   async checkPending() {
     let syncService = null;
 
@@ -638,10 +586,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Sync stock movements
-   * @returns {Promise<Object>} - Stock sync results
-   */
+  
   async syncStock() {
     let syncService = null;
 
@@ -666,14 +611,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Perform a full sync (pending, closed, and stock)
-   * @param {Object} options - Sync options
-   * @param {number} options.pendingLimit - Number of pending invoices to sync
-   * @param {number} options.closedLimit - Number of closed invoices to sync
-   * @param {boolean} options.processStock - Whether to process stock movements
-   * @returns {Promise<Object>} - Full sync results
-   */
+  
   async fullSync(options = {}) {
     let syncService = null;
 
@@ -708,12 +646,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get invoices with filters and pagination
-   * @param {Object} filters - Query filters
-   * @param {Object} options - Pagination and other options
-   * @returns {Promise<Object>} - Invoices and pagination info
-   */
+  
   async getInvoices(filters = {}, options = {}) {
     try {
       const {
@@ -752,7 +685,7 @@ class RouteStarService {
         RouteStarInvoice.countDocuments(query)
       ]);
 
-      // Transform invoices to include itemCount instead of full lineItems
+      
       const transformedInvoices = invoices.map(invoice => ({
         _id: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
@@ -792,11 +725,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get invoice by invoice number
-   * @param {string} invoiceNumber - Invoice number to retrieve
-   * @returns {Promise<Object>} - Invoice data
-   */
+  
   async getInvoiceByNumber(invoiceNumber) {
     try {
       const invoice = await RouteStarInvoice.findByInvoiceNumber(invoiceNumber);
@@ -819,11 +748,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get sales statistics
-   * @param {Object} options - Filter options
-   * @returns {Promise<Object>} - Statistics data
-   */
+  
   async getStats(options = {}) {
     try {
       const { startDate, endDate, customer, assignedTo } = options;
@@ -863,10 +788,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Delete all pending invoices
-   * @returns {Promise<Object>} - Delete results
-   */
+  
   async deleteAllPending() {
     try {
       const result = await RouteStarInvoice.deleteMany({ invoiceType: 'pending' });
@@ -884,10 +806,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Delete all closed invoices
-   * @returns {Promise<Object>} - Delete results
-   */
+  
   async deleteAllClosed() {
     try {
       const result = await RouteStarInvoice.deleteMany({ invoiceType: 'closed' });
@@ -905,11 +824,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get grouped items from invoices
-   * @param {Object} options - Query and pagination options
-   * @returns {Promise<Object>} - Grouped items and pagination
-   */
+  
   async getGroupedItems(options = {}) {
     try {
       const {
@@ -921,7 +836,7 @@ class RouteStarService {
         minQuantity = 0
       } = options;
 
-      // Pre-compute all parameters
+      
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       const skip = (pageNum - 1) * limitNum;
@@ -932,26 +847,26 @@ class RouteStarService {
       console.log('[getGroupedRouteStarItems] Starting ultra-optimized aggregation...');
       console.time('[getGroupedRouteStarItems] Total time');
 
-      // Ultra-optimized: Group first, then lookup aliases only on unique names
+      
       const result = await RouteStarInvoice.aggregate([
-        // Stage 1: Filter early
+        
         {
           $match: {
             'lineItems.0': { $exists: true }
           }
         },
 
-        // Stage 2: Project only needed fields
+        
         {
           $project: {
             lineItems: 1
           }
         },
 
-        // Stage 3: Unwind
+        
         { $unwind: '$lineItems' },
 
-        // Stage 4: Filter invalid items and search
+        
         {
           $match: {
             'lineItems.name': { $exists: true, $ne: null, $ne: '' },
@@ -964,7 +879,7 @@ class RouteStarService {
           }
         },
 
-        // Stage 5: Group by ORIGINAL name first (before alias lookup)
+        
         {
           $group: {
             _id: '$lineItems.name',
@@ -976,14 +891,14 @@ class RouteStarService {
           }
         },
 
-        // Stage 6: Add lowercase for lookup (only once per unique item now!)
+        
         {
           $addFields: {
             nameLower: { $toLower: '$_id' }
           }
         },
 
-        // Stage 7: Lookup aliases (much faster - only on unique items, not every line item!)
+        
         {
           $lookup: {
             from: 'routestaritemaliases',
@@ -1010,7 +925,7 @@ class RouteStarService {
           }
         },
 
-        // Stage 8: Determine canonical name
+        
         {
           $addFields: {
             canonicalName: {
@@ -1023,7 +938,7 @@ class RouteStarService {
           }
         },
 
-        // Stage 9: Regroup by canonical name (merging aliases)
+        
         {
           $group: {
             _id: '$canonicalName',
@@ -1035,14 +950,14 @@ class RouteStarService {
           }
         },
 
-        // Stage 10: Filter by minimum quantity
+        
         ...(minQty > 0 ? [{
           $match: {
             totalQuantity: { $gte: minQty }
           }
         }] : []),
 
-        // Stage 11: Format output with calculated average
+        
         {
           $project: {
             _id: 0,
@@ -1060,10 +975,10 @@ class RouteStarService {
           }
         },
 
-        // Stage 12: Sort
+        
         { $sort: { [sortField]: sortDirection } },
 
-        // Stage 13: Paginate with $facet
+        
         {
           $facet: {
             metadata: [{ $count: 'total' }],
@@ -1096,17 +1011,12 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get all invoice entries for a specific item
-   * @param {string} itemName - Item name to search for
-   * @param {Object} options - Pagination options
-   * @returns {Promise<Object>} - Invoice entries and pagination
-   */
+  
   async getInvoicesByItem(itemName, options = {}) {
     try {
       const { page = 1, limit = 100 } = options;
 
-      // Pre-compute pagination parameters
+      
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       const skip = (pageNum - 1) * limitNum;
@@ -1116,8 +1026,8 @@ class RouteStarService {
 
       const itemNameLower = itemName.toLowerCase();
 
-      // CRITICAL OPTIMIZATION: Do a quick alias lookup FIRST to get all variations
-      // This prevents doing expensive lookups on every line item
+      
+      
       const aliasDoc = await RouteStarItemAlias.findOne({
         isActive: true,
         aliases: {
@@ -1127,7 +1037,7 @@ class RouteStarService {
         }
       }).select('canonicalName aliases').lean();
 
-      // Build search array: if alias found, use all variations; otherwise just the item name
+      
       let searchNames;
       let canonicalName;
 
@@ -1141,9 +1051,9 @@ class RouteStarService {
 
       console.log(`[getInvoicesByItem] Searching for ${searchNames.length} variations`);
 
-      // Ultra-optimized aggregation: Filter FIRST, then process
+      
       const result = await RouteStarInvoice.aggregate([
-        // Stage 1: Early filter - only invoices with matching items (CRITICAL!)
+        
         {
           $match: {
             'lineItems.0': { $exists: true },
@@ -1153,7 +1063,7 @@ class RouteStarService {
           }
         },
 
-        // Stage 2: Project only needed fields early
+        
         {
           $project: {
             invoiceNumber: 1,
@@ -1166,10 +1076,10 @@ class RouteStarService {
           }
         },
 
-        // Stage 3: Unwind line items
+        
         { $unwind: '$lineItems' },
 
-        // Stage 4: Filter to only matching line items
+        
         {
           $match: {
             $expr: {
@@ -1181,7 +1091,7 @@ class RouteStarService {
           }
         },
 
-        // Stage 5: Project final structure
+        
         {
           $project: {
             _id: 1,
@@ -1199,10 +1109,10 @@ class RouteStarService {
           }
         },
 
-        // Stage 6: Sort by invoice date (newest first)
+        
         { $sort: { invoiceDate: -1 } },
 
-        // Stage 7: Paginate with $facet (single query for data + count)
+        
         {
           $facet: {
             metadata: [
@@ -1265,11 +1175,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Bulk delete invoices by SKUs
-   * @param {Array<string>} items - Array of SKUs to delete
-   * @returns {Promise<Object>} - Delete results
-   */
+  
   async bulkDeleteInvoices(items) {
     try {
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -1302,11 +1208,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Bulk delete invoices by invoice numbers
-   * @param {Array<string>} invoiceNumbers - Array of invoice numbers to delete
-   * @returns {Promise<Object>} - Delete results
-   */
+  
   async bulkDeleteByNumbers(invoiceNumbers) {
     try {
       if (!invoiceNumbers || !Array.isArray(invoiceNumbers) || invoiceNumbers.length === 0) {
@@ -1339,11 +1241,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get items with filters and pagination
-   * @param {Object} options - Query and pagination options
-   * @returns {Promise<Object>} - Items and pagination
-   */
+  
   async getItems(options = {}) {
     try {
       const {
@@ -1399,11 +1297,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get low stock items
-   * @param {number} threshold - Stock threshold (default: 10)
-   * @returns {Promise<Object>} - Low stock items
-   */
+  
   async getLowStockItems(threshold = 10) {
     try {
       const items = await RouteStarItem.getLowStock(parseInt(threshold));
@@ -1422,10 +1316,7 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Delete all items
-   * @returns {Promise<Object>} - Delete results
-   */
+  
   async deleteAllItems() {
     try {
       const result = await RouteStarItem.deleteMany({});
@@ -1443,19 +1334,16 @@ class RouteStarService {
     }
   }
 
-  /**
-   * Get all item names with their invoice usage in a folder structure
-   * @returns {Promise<Object>} - Items with invoice usage
-   */
+  
   async getItemInvoiceUsage() {
     try {
       console.time('getItemInvoiceUsage');
 
-      // STEP 1: Get alias map (cached in the model)
+      
       console.time('Step 1: Get aliases');
       const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-      // Build reverse map for aliases
+      
       const aliasDocs = await RouteStarItemAlias.find({ isActive: true }).lean();
       const canonicalToOriginalAliases = {};
       aliasDocs.forEach(doc => {
@@ -1470,22 +1358,22 @@ class RouteStarService {
       });
       console.timeEnd('Step 1: Get aliases');
 
-      // STEP 2: Use aggregation pipeline to get ALL item stats in ONE query
+      
       console.time('Step 2: Aggregation query');
       const itemStats = await RouteStarInvoice.aggregate([
-        // Unwind line items to process each item separately
+        
         { $unwind: '$lineItems' },
 
-        // Filter out null/undefined item names
+        
         { $match: { 'lineItems.name': { $ne: null, $exists: true } } },
 
-        // Group by item name (case-sensitive for now)
+        
         {
           $group: {
-            _id: '$lineItems.name', // Item name
-            invoiceCount: { $sum: 1 }, // Count of invoices
+            _id: '$lineItems.name', 
+            invoiceCount: { $sum: 1 }, 
             totalQuantitySold: { $sum: { $ifNull: ['$lineItems.quantity', 0] } },
-            // Collect invoice details
+            
             invoices: {
               $push: {
                 invoiceNumber: '$invoiceNumber',
@@ -1502,14 +1390,14 @@ class RouteStarService {
           }
         },
 
-        // Sort by item name
+        
         { $sort: { _id: 1 } }
       ]);
       console.timeEnd('Step 2: Aggregation query');
 
-      // STEP 3: Process aggregation results and map to canonical names
+      
       console.time('Step 3: Process results');
-      const mappedItems = new Map(); // canonical name -> item data
+      const mappedItems = new Map(); 
       const uniqueItems = [];
 
       itemStats.forEach(stat => {
@@ -1520,7 +1408,7 @@ class RouteStarService {
         const canonical = aliasMap[nameLower];
 
         if (canonical) {
-          // This is a mapped item - merge with existing canonical entry
+          
           if (!mappedItems.has(canonical)) {
             mappedItems.set(canonical, {
               itemName: canonical,
@@ -1536,7 +1424,7 @@ class RouteStarService {
           item.invoiceCount += stat.invoiceCount;
           item.totalQuantitySold += stat.totalQuantitySold;
 
-          // Add invoices and transform to expected format
+          
           stat.invoices.forEach(inv => {
             item.invoices.push({
               invoiceNumber: inv.invoiceNumber,
@@ -1548,7 +1436,7 @@ class RouteStarService {
             });
           });
         } else {
-          // This is a unique (unmapped) item
+          
           uniqueItems.push({
             itemName: itemName,
             type: 'unique',
@@ -1567,18 +1455,18 @@ class RouteStarService {
         }
       });
 
-      // Convert mapped items to array and clean up aliases
+      
       const mappedItemsArray = Array.from(mappedItems.values()).map(item => ({
         ...item,
         aliases: Array.from(item.aliases)
       }));
 
-      // Combine and sort all items
+      
       const allItems = [...mappedItemsArray, ...uniqueItems];
       allItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
       console.timeEnd('Step 3: Process results');
 
-      // Calculate totals
+      
       const totals = {
         totalMappedItems: mappedItemsArray.length,
         totalUniqueItems: uniqueItems.length,

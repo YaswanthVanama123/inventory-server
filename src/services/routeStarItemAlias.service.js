@@ -1,14 +1,9 @@
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
 
-/**
- * RouteStar Item Alias Service
- * Handles all business logic for item alias mapping operations
- */
+
 class RouteStarItemAliasService {
-  /**
-   * Get all active mappings
-   */
+  
   async getAllMappings() {
     const mappings = await RouteStarItemAlias.getAllActiveMappings();
 
@@ -18,9 +13,7 @@ class RouteStarItemAliasService {
     };
   }
 
-  /**
-   * Get unique items with mapping status
-   */
+  
   async getUniqueItems() {
     const routeStarItems = await RouteStarItem.find()
       .select('itemName itemParent description qtyOnHand')
@@ -56,9 +49,7 @@ class RouteStarItemAliasService {
     };
   }
 
-  /**
-   * Create or update a mapping
-   */
+  
   async createMapping(mappingData, userId) {
     const { canonicalName, aliases, description, autoMerge = true } = mappingData;
 
@@ -66,7 +57,7 @@ class RouteStarItemAliasService {
       throw new Error('Canonical name and at least one alias are required');
     }
 
-    // Check for conflicts
+    
     const existingMappings = await RouteStarItemAlias.find({
       'aliases.name': { $in: aliases.map(a => typeof a === 'string' ? a : a.name) },
       canonicalName: { $ne: canonicalName },
@@ -91,9 +82,7 @@ class RouteStarItemAliasService {
     return mapping;
   }
 
-  /**
-   * Update a mapping
-   */
+  
   async updateMapping(mappingId, updates, userId) {
     const { canonicalName, aliases, description, autoMerge, isActive } = updates;
 
@@ -117,9 +106,7 @@ class RouteStarItemAliasService {
     return mapping;
   }
 
-  /**
-   * Add alias to existing mapping
-   */
+  
   async addAlias(mappingId, aliasData) {
     const { aliasName, notes } = aliasData;
 
@@ -138,9 +125,7 @@ class RouteStarItemAliasService {
     return mapping;
   }
 
-  /**
-   * Remove alias from mapping
-   */
+  
   async removeAlias(mappingId, aliasName) {
     const mapping = await RouteStarItemAlias.findById(mappingId);
 
@@ -153,9 +138,7 @@ class RouteStarItemAliasService {
     return mapping;
   }
 
-  /**
-   * Delete a mapping
-   */
+  
   async deleteMapping(mappingId) {
     const mapping = await RouteStarItemAlias.findByIdAndDelete(mappingId);
 
@@ -166,9 +149,7 @@ class RouteStarItemAliasService {
     return mapping;
   }
 
-  /**
-   * Get lookup map
-   */
+  
   async getLookupMap() {
     const lookupMap = await RouteStarItemAlias.buildLookupMap();
 
@@ -178,9 +159,7 @@ class RouteStarItemAliasService {
     };
   }
 
-  /**
-   * Get suggested mappings
-   */
+  
   async getSuggestedMappings() {
     const suggestions = await RouteStarItemAlias.getSuggestedMappings();
 
@@ -214,9 +193,7 @@ class RouteStarItemAliasService {
     };
   }
 
-  /**
-   * Get statistics
-   */
+  
   async getStats() {
     const [totalMappings, activeMappings, lookupMap, uniqueItemsCount] = await Promise.all([
       RouteStarItemAlias.countDocuments(),
@@ -238,12 +215,9 @@ class RouteStarItemAliasService {
     };
   }
 
-  /**
-   * OPTIMIZED: Get all page data in one efficient operation
-   * Builds lookup map once and reuses it for both unique items and stats
-   */
+  
   async getPageDataOptimized() {
-    // Run all base queries in parallel
+    
     const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings] = await Promise.all([
       RouteStarItemAlias.getAllActiveMappings(),
       RouteStarItem.find()
@@ -257,7 +231,7 @@ class RouteStarItemAliasService {
 
     console.log(`[page-data-optimized] Found ${routeStarItems.length} RouteStarItems, ${mappings.length} mappings`);
 
-    // Build items with mapping status (reusing lookupMap)
+    
     const itemsWithMappingStatus = routeStarItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
@@ -269,7 +243,7 @@ class RouteStarItemAliasService {
       totalQuantity: item.qtyOnHand || 0
     }));
 
-    // Calculate stats (reusing computed values)
+    
     const totalAliases = Object.keys(lookupMap).length;
     const mappedItemsCount = itemsWithMappingStatus.filter(i => i.isMapped).length;
     const unmappedItemsCount = itemsWithMappingStatus.filter(i => !i.isMapped).length;

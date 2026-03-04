@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const truckCheckoutSchema = new mongoose.Schema({
-  // Employee information
+  
   employeeName: {
     type: String,
     required: true,
@@ -18,7 +18,7 @@ const truckCheckoutSchema = new mongoose.Schema({
     trim: true
   },
 
-  // Checkout details
+  
   checkoutDate: {
     type: Date,
     required: true,
@@ -26,7 +26,7 @@ const truckCheckoutSchema = new mongoose.Schema({
     index: true
   },
 
-  // Single item checkout (NEW STRUCTURE)
+  
   itemName: {
     type: String,
     required: true,
@@ -45,7 +45,7 @@ const truckCheckoutSchema = new mongoose.Schema({
   },
 
   systemCalculatedRemaining: {
-    type: Number  // Expected remaining based on stock calculation
+    type: Number  
   },
 
   hasDiscrepancy: {
@@ -63,7 +63,7 @@ const truckCheckoutSchema = new mongoose.Schema({
     ref: 'StockDiscrepancy'
   },
 
-  // Items taken by employee (DEPRECATED - kept for backwards compatibility)
+  
   itemsTaken: [{
     name: { type: String },
     sku: { type: String },
@@ -71,12 +71,12 @@ const truckCheckoutSchema = new mongoose.Schema({
     notes: { type: String }
   }],
 
-  // Notes about the checkout
+  
   notes: {
     type: String
   },
 
-  // Status tracking
+  
   status: {
     type: String,
     enum: ['checked_out', 'completed', 'cancelled'],
@@ -84,25 +84,25 @@ const truckCheckoutSchema = new mongoose.Schema({
     index: true
   },
 
-  // Completion details (filled when employee returns)
+  
   completedDate: {
     type: Date
   },
 
-  // Invoice numbers entered by employee after sales
+  
   invoiceNumbers: [{
     type: String,
     trim: true
   }],
 
-  // Type of invoices (pending or closed)
+  
   invoiceType: {
     type: String,
     enum: ['pending', 'closed'],
     default: 'closed'
   },
 
-  // Fetched invoice data from RouteStar
+  
   fetchedInvoices: [{
     invoiceNumber: String,
     customer: String,
@@ -115,7 +115,7 @@ const truckCheckoutSchema = new mongoose.Schema({
     fetchedAt: Date
   }],
 
-  // Tally results (comparison between taken and sold)
+  
   tallyResults: {
     itemsTaken: [{
       name: String,
@@ -132,14 +132,14 @@ const truckCheckoutSchema = new mongoose.Schema({
       sku: String,
       quantityTaken: Number,
       quantitySold: Number,
-      difference: Number, // negative means sold more than taken, positive means returned
-      status: String // 'matched', 'shortage', 'excess'
+      difference: Number, 
+      status: String 
     }],
     tallyDate: Date,
     talliedBy: String
   },
 
-  // Stock movement tracking
+  
   stockProcessed: {
     type: Boolean,
     default: false
@@ -153,7 +153,7 @@ const truckCheckoutSchema = new mongoose.Schema({
     type: String
   },
 
-  // Audit trail
+  
   createdBy: {
     type: String
   },
@@ -166,25 +166,25 @@ const truckCheckoutSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for efficient querying
+
 truckCheckoutSchema.index({ employeeName: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ status: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ invoiceNumbers: 1 });
-truckCheckoutSchema.index({ 'itemsTaken.name': 1 }); // Optimize old structure queries
-truckCheckoutSchema.index({ itemName: 1, status: 1 }); // Optimize new structure queries
+truckCheckoutSchema.index({ 'itemsTaken.name': 1 }); 
+truckCheckoutSchema.index({ itemName: 1, status: 1 }); 
 
-// Virtual to calculate total items taken
+
 truckCheckoutSchema.virtual('totalItemsTaken').get(function() {
   return this.itemsTaken.reduce((sum, item) => sum + item.quantity, 0);
 });
 
-// Virtual to calculate total items sold
+
 truckCheckoutSchema.virtual('totalItemsSold').get(function() {
   if (!this.tallyResults || !this.tallyResults.itemsSold) return 0;
   return this.tallyResults.itemsSold.reduce((sum, item) => sum + item.quantitySold, 0);
 });
 
-// Method to mark as completed
+
 truckCheckoutSchema.methods.markCompleted = function(invoiceNumbers, invoiceType, completedBy) {
   this.status = 'completed';
   this.completedDate = new Date();
@@ -194,14 +194,14 @@ truckCheckoutSchema.methods.markCompleted = function(invoiceNumbers, invoiceType
   return this.save();
 };
 
-// Method to mark as cancelled
+
 truckCheckoutSchema.methods.markCancelled = function(reason) {
   this.status = 'cancelled';
   this.notes = this.notes ? `${this.notes}\n\nCancelled: ${reason}` : `Cancelled: ${reason}`;
   return this.save();
 };
 
-// Method to save tally results
+
 truckCheckoutSchema.methods.saveTallyResults = function(tallyResults, talliedBy) {
   this.tallyResults = {
     ...tallyResults,
@@ -211,7 +211,7 @@ truckCheckoutSchema.methods.saveTallyResults = function(tallyResults, talliedBy)
   return this.save();
 };
 
-// Method to mark stock as processed
+
 truckCheckoutSchema.methods.markStockProcessed = function(error = null) {
   this.stockProcessed = true;
   this.stockProcessedAt = new Date();
@@ -221,20 +221,20 @@ truckCheckoutSchema.methods.markStockProcessed = function(error = null) {
   return this.save();
 };
 
-// Static method to get checkouts by employee
+
 truckCheckoutSchema.statics.getByEmployee = async function(employeeName, limit = 50) {
   return await this.find({ employeeName })
     .sort({ checkoutDate: -1 })
     .limit(limit);
 };
 
-// Static method to get active checkouts (not completed or cancelled)
+
 truckCheckoutSchema.statics.getActiveCheckouts = async function() {
   return await this.find({ status: 'checked_out' })
     .sort({ checkoutDate: -1 });
 };
 
-// Static method to get checkouts needing stock processing
+
 truckCheckoutSchema.statics.getNeedingStockProcessing = async function() {
   return await this.find({
     status: 'completed',
@@ -242,7 +242,7 @@ truckCheckoutSchema.statics.getNeedingStockProcessing = async function() {
   }).sort({ completedDate: 1 });
 };
 
-// Static method to get employee statistics
+
 truckCheckoutSchema.statics.getEmployeeStats = async function(employeeName, startDate, endDate) {
   const matchStage = { employeeName };
 

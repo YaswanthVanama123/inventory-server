@@ -211,7 +211,7 @@ exports.updateSKUConfig = async (req, res) => {
 
     await settings.save();
 
-    // Audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'SKU Configuration',
@@ -233,7 +233,7 @@ exports.updateSKUConfig = async (req, res) => {
   }
 };
 
-// Get Stock Calculation Cutoff Date
+
 exports.getStockCutoffDate = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
@@ -253,7 +253,7 @@ exports.getStockCutoffDate = async (req, res) => {
   }
 };
 
-// Update Stock Calculation Cutoff Date
+
 exports.updateStockCutoffDate = async (req, res) => {
   try {
     const { cutoffDate } = req.body;
@@ -269,7 +269,7 @@ exports.updateStockCutoffDate = async (req, res) => {
     settings.stockCalculationCutoffDate = new Date(cutoffDate);
     await settings.save();
 
-    // Audit log
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'Stock Calculation Cutoff Date',

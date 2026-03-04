@@ -4,15 +4,12 @@ const AuditLog = require('../models/AuditLog');
 
 
 
-/**
- * Get all users - OPTIMIZED
- * Runs count and find queries in parallel
- */
+
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
 
-    // Build query
+    
     const query = { isDeleted: false };
     if (role) query.role = role;
     if (search) {
@@ -25,7 +22,7 @@ const getUsers = async (req, res, next) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Run count and find queries in parallel for better performance
+    
     const [users, total] = await Promise.all([
       User.find(query)
         .select('-password')
@@ -58,10 +55,7 @@ const getUsers = async (req, res, next) => {
 
 
 
-/**
- * Get single user - OPTIMIZED
- * Uses lean() for better performance
- */
+
 const getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false })
@@ -120,7 +114,7 @@ const createUser = async (req, res, next) => {
       createdBy: req.user.id
     };
 
-    // Add truckNumber if provided
+    
     if (truckNumber) {
       userData.truckNumber = truckNumber;
     }
@@ -316,7 +310,7 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-// Update own truck number (for employees)
+
 const updateOwnTruckNumber = async (req, res, next) => {
   try {
     const { truckNumber } = req.body;
@@ -333,11 +327,11 @@ const updateOwnTruckNumber = async (req, res, next) => {
       });
     }
 
-    // Update truck number
+    
     user.truckNumber = truckNumber || null;
     await user.save();
 
-    // Log action
+    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'USER',

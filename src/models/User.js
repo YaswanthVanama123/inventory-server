@@ -42,7 +42,7 @@ const userSchema = new mongoose.Schema({
     trim: true,
     uppercase: true,
     index: true,
-    sparse: true  // Allow multiple users without truck numbers, but unique if set
+    sparse: true  
   },
   isActive: {
     type: Boolean,
@@ -83,14 +83,14 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Compound indexes for optimal query performance
-userSchema.index({ isDeleted: 1, createdAt: -1 }); // For getUsers with sort
-userSchema.index({ isDeleted: 1, role: 1 }); // For filtering by role
-userSchema.index({ isDeleted: 1, username: 1 }); // For username search
-userSchema.index({ isDeleted: 1, email: 1 }); // For email search
-userSchema.index({ isDeleted: 1, fullName: 1 }); // For fullName search
 
-// Pre-save middleware for password hashing
+userSchema.index({ isDeleted: 1, createdAt: -1 }); 
+userSchema.index({ isDeleted: 1, role: 1 }); 
+userSchema.index({ isDeleted: 1, username: 1 }); 
+userSchema.index({ isDeleted: 1, email: 1 }); 
+userSchema.index({ isDeleted: 1, fullName: 1 }); 
+
+
 userSchema.pre('save', async function(next) {
   
   if (!this.isModified('password')) return next();

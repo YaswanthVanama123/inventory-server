@@ -3,50 +3,47 @@ const router = express.Router();
 const truckCheckoutController = require('../controllers/truckCheckoutController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-/**
- * Truck Checkout Routes
- * Clean routes with no business logic - delegates to controller
- */
 
-// Search items for dropdown
+
+
 router.get('/items/search', authenticate, truckCheckoutController.searchItems);
 
-// Get current stock for an item
+
 router.get('/stock/:itemName', authenticate, truckCheckoutController.getItemStock);
 
-// Get active checkouts
+
 router.get('/active', authenticate, truckCheckoutController.getActiveCheckouts);
 
-// Get checkouts by employee
+
 router.get('/employee/:employeeName', authenticate, truckCheckoutController.getCheckoutsByEmployee);
 
-// Get employee stats
+
 router.get('/stats/employee/:employeeName', authenticate, truckCheckoutController.getEmployeeStats);
 
-// Get checkout sales tracking (matches checkouts with invoices)
+
 router.get('/sales-tracking', authenticate, truckCheckoutController.getCheckoutSalesTracking);
 
-// Create new checkout (NEW - recommended)
+
 router.post('/create-new', authenticate, truckCheckoutController.createCheckout);
 
-// Get all checkouts with filtering
+
 router.get('/', authenticate, truckCheckoutController.getCheckouts);
 
-// Get checkout by ID
+
 router.get('/:id', authenticate, truckCheckoutController.getCheckoutById);
 
-// Delete checkout
+
 router.delete('/:id', authenticate, requireAdmin(), truckCheckoutController.deleteCheckout);
 
-// ===== OLD ENDPOINTS (Kept for backwards compatibility) =====
-// These should be migrated to use the new structure
+
+
 
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarSyncService = require('../services/routeStarSync.service');
 const TruckCheckout = require('../models/TruckCheckout');
 const StockMovement = require('../models/StockMovement');
 
-// OLD: Create checkout with multiple items (DEPRECATED)
+
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
@@ -76,7 +73,7 @@ router.post('/', authenticate, async (req, res) => {
       status: 'checked_out'
     });
 
-    // Create stock movements for checked out items
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const StockSummary = require('../models/StockSummary');
 
@@ -136,7 +133,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Complete checkout with invoice numbers
+
 router.post('/:id/complete', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -165,7 +162,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       });
     }
 
-    // Validation: Check for duplicate invoices
+    
     const duplicateCheckouts = await TruckCheckout.find({
       _id: { $ne: checkout._id },
       invoiceNumbers: { $in: invoiceNumbers },
@@ -215,7 +212,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
   }
 });
 
-// Check work endpoint (tally before completing)
+
 router.post('/:id/check-work', authenticate, async (req, res) => {
   let syncService = null;
 
@@ -246,7 +243,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       });
     }
 
-    // Fetch and compare invoices
+    
     console.log(`\n📊 Starting check work for checkout ${id}`);
     console.log(`   Fetching ${invoiceNumbers.length} ${invoiceType} invoices...`);
 
@@ -277,7 +274,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       }
     }
 
-    // Fetch missing invoices from RouteStar if needed
+    
     if (missingInvoices.length > 0) {
       console.log(`   ${missingInvoices.length} invoices need to be fetched from RouteStar...`);
 
@@ -309,7 +306,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       }
     }
 
-    // Tally items
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
@@ -420,7 +417,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
   }
 });
 
-// Cancel checkout
+
 router.post('/:id/cancel', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -461,13 +458,13 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
   }
 });
 
-// Update checkout
+
 router.patch('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
-    // Don't allow updating critical fields
+    
     delete updates._id;
     delete updates.createdAt;
     delete updates.updatedAt;

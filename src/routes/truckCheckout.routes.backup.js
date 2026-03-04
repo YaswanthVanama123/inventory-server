@@ -7,7 +7,7 @@ const StockMovement = require('../models/StockMovement');
 const StockDiscrepancy = require('../models/StockDiscrepancy');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-// Helper function to calculate current stock for an item
+
 async function getCurrentStock(itemName) {
   const RouteStarItemAlias = require('../models/RouteStarItemAlias');
   const StockSummary = require('../models/StockSummary');
@@ -17,16 +17,16 @@ async function getCurrentStock(itemName) {
   const ModelCategory = require('../models/ModelCategory');
 
   try {
-    // Get canonical name
+    
     const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
     const sku = (canonicalName || itemName).toUpperCase();
 
-    // Get StockSummary for this SKU
+    
     let stockSummary = await StockSummary.findOne({ sku });
 
     if (!stockSummary) {
-      // If no StockSummary, calculate from scratch
-      // Get purchases from CustomerConnect
+      
+      
       const mappings = await ModelCategory.find({ categoryItemName: canonicalName }).lean();
       const skus = mappings.map(m => m.modelNumber);
 
@@ -46,7 +46,7 @@ async function getCurrentStock(itemName) {
         });
       }
 
-      // Get sales from RouteStarInvoice
+      
       const aliasMap = await RouteStarItemAlias.buildLookupMap();
       const variations = [canonicalName, canonicalName.toLowerCase()];
       Object.keys(aliasMap).forEach(alias => {
@@ -70,7 +70,7 @@ async function getCurrentStock(itemName) {
         });
       });
 
-      // Get checkouts
+      
       const checkouts = await TruckCheckout.find({
         status: 'checked_out',
         itemName: { $in: variations }
@@ -90,7 +90,7 @@ async function getCurrentStock(itemName) {
         }
       });
 
-      // Get approved discrepancies
+      
       const discrepancies = await StockDiscrepancy.find({
         categoryName: canonicalName,
         status: 'Approved'
@@ -127,7 +127,7 @@ async function getCurrentStock(itemName) {
   }
 }
 
-// NEW: Create checkout with single item and stock validation
+
 router.post('/create-new', authenticate, async (req, res) => {
   try {
     const {
@@ -139,10 +139,10 @@ router.post('/create-new', authenticate, async (req, res) => {
       remainingQuantity,
       notes,
       checkoutDate,
-      acceptDiscrepancy = false  // Flag to accept discrepancy
+      acceptDiscrepancy = false  
     } = req.body;
 
-    // Validation
+    
     if (!employeeName || !itemName || quantityTaking === undefined || remainingQuantity === undefined) {
       return res.status(400).json({
         success: false,
@@ -160,20 +160,20 @@ router.post('/create-new', authenticate, async (req, res) => {
     console.log(`\n📦 Creating new checkout for ${employeeName}`);
     console.log(`   Item: ${itemName}, Taking: ${quantityTaking}, Remaining: ${remainingQuantity}`);
 
-    // Step 1: Calculate current stock
+    
     const currentStock = await getCurrentStock(itemName);
     console.log(`   Current stock: ${currentStock.availableQty}`);
 
-    // Step 2: Calculate expected remaining
+    
     const systemCalculatedRemaining = currentStock.availableQty - quantityTaking;
     console.log(`   Expected remaining: ${systemCalculatedRemaining}`);
 
-    // Step 3: Check for discrepancy
+    
     const hasDiscrepancy = remainingQuantity !== systemCalculatedRemaining;
     const discrepancyDifference = remainingQuantity - systemCalculatedRemaining;
 
     if (hasDiscrepancy && !acceptDiscrepancy) {
-      // Return discrepancy info for user confirmation
+      
       return res.status(200).json({
         success: false,
         requiresConfirmation: true,
@@ -190,7 +190,7 @@ router.post('/create-new', authenticate, async (req, res) => {
       });
     }
 
-    // Step 4: Create checkout
+    
     const checkout = await TruckCheckout.create({
       employeeName,
       employeeId,
@@ -205,12 +205,12 @@ router.post('/create-new', authenticate, async (req, res) => {
       checkoutDate: checkoutDate || new Date(),
       createdBy: req.user?.username || 'system',
       status: 'checked_out',
-      itemsTaken: []  // Empty for new structure
+      itemsTaken: []  
     });
 
     console.log(`   ✓ Checkout created: ${checkout._id}`);
 
-    // Step 5: If discrepancy exists and was accepted, create StockDiscrepancy
+    
     if (hasDiscrepancy && acceptDiscrepancy) {
       const discrepancy = await StockDiscrepancy.create({
         invoiceNumber: `CHECKOUT-${checkout._id}`,
@@ -223,7 +223,7 @@ router.post('/create-new', authenticate, async (req, res) => {
         reason: 'Truck checkout stock validation',
         notes: `Checkout by ${employeeName} - Truck ${truckNumber || 'N/A'}. System expected ${systemCalculatedRemaining}, user entered ${remainingQuantity}.`,
         reportedBy: req.user?.id,
-        status: 'Approved'  // Auto-approve checkout discrepancies
+        status: 'Approved'  
       });
 
       checkout.discrepancyId = discrepancy._id;
@@ -232,7 +232,7 @@ router.post('/create-new', authenticate, async (req, res) => {
       console.log(`   ✓ Discrepancy created and auto-approved: ${discrepancy._id}`);
     }
 
-    // Step 6: Create stock movement
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const StockSummary = require('../models/StockSummary');
 
@@ -250,7 +250,7 @@ router.post('/create-new', authenticate, async (req, res) => {
       notes: `Checked out to truck: ${employeeName}${notes ? ` (${notes})` : ''}`
     });
 
-    // Step 7: Update StockSummary
+    
     let stockSummary = await StockSummary.findOne({ sku });
     if (!stockSummary) {
       stockSummary = await StockSummary.create({
@@ -263,17 +263,17 @@ router.post('/create-new', authenticate, async (req, res) => {
       });
     }
 
-    // Remove the quantity taken
+    
     stockSummary.removeStock(quantityTaking);
 
-    // If there's a discrepancy adjustment, apply it
+    
     if (hasDiscrepancy && acceptDiscrepancy) {
       if (discrepancyDifference > 0) {
-        // Overage - add stock
+        
         stockSummary.addStock(discrepancyDifference);
         console.log(`   ✓ Discrepancy adjustment: +${discrepancyDifference}`);
       } else {
-        // Shortage - remove additional stock
+        
         stockSummary.removeStock(Math.abs(discrepancyDifference));
         console.log(`   ✓ Discrepancy adjustment: ${discrepancyDifference}`);
       }
@@ -309,7 +309,7 @@ router.post('/create-new', authenticate, async (req, res) => {
   }
 });
 
-// Get RouteStarItem names for searchable dropdown
+
 router.get('/items/search', authenticate, async (req, res) => {
   try {
     const { q = '', forSell = 'true' } = req.query;
@@ -331,7 +331,7 @@ router.get('/items/search', authenticate, async (req, res) => {
       .limit(100)
       .lean();
 
-    // For each item, get current stock
+    
     const itemsWithStock = await Promise.all(
       items.map(async (item) => {
         try {
@@ -367,7 +367,7 @@ router.get('/items/search', authenticate, async (req, res) => {
   }
 });
 
-// Get current stock for a specific item
+
 router.get('/stock/:itemName', authenticate, async (req, res) => {
   try {
     const { itemName } = req.params;
@@ -388,7 +388,7 @@ router.get('/stock/:itemName', authenticate, async (req, res) => {
   }
 });
 
-// Create new checkout (DEPRECATED - use /create-new instead)
+
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
@@ -418,7 +418,7 @@ router.post('/', authenticate, async (req, res) => {
       status: 'checked_out'
     });
 
-    // Create stock movements for checked out items
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const StockSummary = require('../models/StockSummary');
 
@@ -429,11 +429,11 @@ router.post('/', authenticate, async (req, res) => {
       if (item.quantity <= 0) continue;
 
       try {
-        // Get canonical name and SKU using alias mapping
+        
         const canonicalName = await RouteStarItemAlias.getCanonicalName(item.name);
         const sku = (item.sku || canonicalName || item.name).toUpperCase();
 
-        // Create OUT movement for checkout
+        
         await StockMovement.create({
           sku: sku,
           type: 'OUT',
@@ -445,7 +445,7 @@ router.post('/', authenticate, async (req, res) => {
           notes: `Checked out to truck: ${employeeName}${item.notes ? ` (${item.notes})` : ''}`
         });
 
-        // Update StockSummary
+        
         let stockSummary = await StockSummary.findOne({ sku });
         if (!stockSummary) {
           stockSummary = await StockSummary.create({
@@ -463,7 +463,7 @@ router.post('/', authenticate, async (req, res) => {
         console.log(`  ✓ OUT movement created for ${sku}: -${item.quantity}`);
       } catch (error) {
         console.error(`  ✗ Failed to create stock movement for ${item.name}: ${error.message}`);
-        // Continue with other items even if one fails
+        
       }
     }
 
@@ -482,7 +482,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Get all checkouts with filtering
+
 router.get('/', authenticate, async (req, res) => {
   try {
     const {
@@ -538,7 +538,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Get active checkouts
+
 router.get('/active', authenticate, async (req, res) => {
   try {
     const checkouts = await TruckCheckout.getActiveCheckouts();
@@ -557,7 +557,7 @@ router.get('/active', authenticate, async (req, res) => {
   }
 });
 
-// Get checkouts by employee
+
 router.get('/employee/:employeeName', authenticate, async (req, res) => {
   try {
     const { employeeName } = req.params;
@@ -579,7 +579,7 @@ router.get('/employee/:employeeName', authenticate, async (req, res) => {
   }
 });
 
-// Get employee stats
+
 router.get('/stats/employee/:employeeName', authenticate, async (req, res) => {
   try {
     const { employeeName } = req.params;
@@ -611,7 +611,7 @@ router.get('/stats/employee/:employeeName', authenticate, async (req, res) => {
   }
 });
 
-// Get single checkout by ID
+
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -639,7 +639,7 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Complete checkout with invoice numbers
+
 router.post('/:id/complete', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -668,7 +668,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       });
     }
 
-    // VALIDATION: Check if any of these invoices are already linked to another checkout
+    
     const duplicateCheckouts = await TruckCheckout.find({
       _id: { $ne: checkout._id },
       invoiceNumbers: { $in: invoiceNumbers },
@@ -701,7 +701,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
       req.user?.username || 'system'
     );
 
-    // Record stock movements for the invoices (marked as already processed to avoid double-decrease)
+    
     await recordStockMovementsForCheckout(checkout);
 
     console.log(`✓ Checkout ${id} marked as completed with ${invoiceNumbers.length} invoices`);
@@ -721,33 +721,33 @@ router.post('/:id/complete', authenticate, async (req, res) => {
   }
 });
 
-// Helper function to record stock movements
+
 async function recordStockMovementsForCheckout(checkout) {
   const Stock = require('../models/Stock');
   const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
-  // Load alias map for item name mapping
+  
   const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-  // Process each invoice
+  
   if (checkout.fetchedInvoices && checkout.fetchedInvoices.length > 0) {
     for (const invoice of checkout.fetchedInvoices) {
       for (const item of invoice.items) {
-        // Map item name to canonical name
+        
         const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
 
-        // Record stock movement (marked as already processed)
+        
         await Stock.create({
           itemName: canonicalName,
           originalItemName: item.name,
-          quantity: -item.quantity, // Negative for sale
+          quantity: -item.quantity, 
           type: 'truck_checkout_invoice',
           source: 'routestar',
           sourceId: invoice.invoiceNumber,
           checkoutId: checkout._id,
           employeeName: checkout.employeeName,
           notes: `Invoice ${invoice.invoiceNumber} - Stock already decreased during checkout`,
-          alreadyProcessed: true, // Important: Don't decrease stock again!
+          alreadyProcessed: true, 
           processedBy: 'system',
           processedAt: new Date()
         });
@@ -756,7 +756,7 @@ async function recordStockMovementsForCheckout(checkout) {
   }
 }
 
-// Check work: Fetch invoices and compare (BEFORE completing)
+
 router.post('/:id/check-work', authenticate, async (req, res) => {
   let syncService = null;
 
@@ -787,7 +787,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       });
     }
 
-    // VALIDATION: Check if any of these invoices are already linked to another checkout
+    
     const duplicateCheckouts = await TruckCheckout.find({
       _id: { $ne: checkout._id },
       invoiceNumbers: { $in: invoiceNumbers },
@@ -817,7 +817,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
     console.log(`\n📊 Starting check work for checkout ${id}`);
     console.log(`   Fetching ${invoiceNumbers.length} ${invoiceType} invoices...`);
 
-    // Fetch invoices from database first
+    
     const invoicesFromDB = await RouteStarInvoice.find({
       invoiceNumber: { $in: invoiceNumbers }
     }).lean();
@@ -825,12 +825,12 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
     const fetchedInvoices = [];
     const missingInvoices = [];
 
-    // Check which invoices are missing or need details
+    
     for (const invoiceNumber of invoiceNumbers) {
       const dbInvoice = invoicesFromDB.find(inv => inv.invoiceNumber === invoiceNumber);
 
       if (dbInvoice && dbInvoice.lineItems && dbInvoice.lineItems.length > 0) {
-        // Invoice exists with details
+        
         fetchedInvoices.push({
           invoiceNumber: dbInvoice.invoiceNumber,
           customer: dbInvoice.customer?.name || 'Unknown',
@@ -843,12 +843,12 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
           fetchedAt: new Date()
         });
       } else {
-        // Missing or needs details
+        
         missingInvoices.push(invoiceNumber);
       }
     }
 
-    // Fetch missing invoices from RouteStar if needed
+    
     if (missingInvoices.length > 0) {
       console.log(`   ${missingInvoices.length} invoices need to be fetched from RouteStar...`);
 
@@ -880,18 +880,18 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       }
     }
 
-    // Load alias map for canonical name mapping
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-    // Tally: Group items sold by canonical name
+    
     const itemsSoldMap = {};
 
     for (const invoice of fetchedInvoices) {
       for (const item of invoice.items) {
-        // Map to canonical name for proper grouping
+        
         const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
-        const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+        const key = canonicalName.toUpperCase(); 
 
         if (!itemsSoldMap[key]) {
           itemsSoldMap[key] = {
@@ -906,13 +906,13 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
 
     const itemsSold = Object.values(itemsSoldMap);
 
-    // Tally: Group items taken by canonical name
+    
     const itemsTakenMap = {};
 
     for (const item of checkout.itemsTaken) {
-      // Map to canonical name for proper grouping
+      
       const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
-      const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+      const key = canonicalName.toUpperCase(); 
 
       if (!itemsTakenMap[key]) {
         itemsTakenMap[key] = {
@@ -926,9 +926,9 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
 
     const itemsTaken = Object.values(itemsTakenMap);
 
-    // Calculate discrepancies - ONLY for items that were checked out
+    
     const discrepancies = [];
-    const checkedOutKeys = Object.keys(itemsTakenMap); // Only show items that were taken
+    const checkedOutKeys = Object.keys(itemsTakenMap); 
 
     for (const key of checkedOutKeys) {
       const taken = itemsTakenMap[key];
@@ -938,9 +938,9 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       let status = 'matched';
 
       if (difference > 0) {
-        status = 'excess'; // Took more than sold (has returns)
+        status = 'excess'; 
       } else if (difference < 0) {
-        status = 'shortage'; // Sold more than took (error/missing items)
+        status = 'shortage'; 
       }
 
       discrepancies.push({
@@ -953,7 +953,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       });
     }
 
-    // Save temporary results for completion step
+    
     checkout.invoiceNumbers = invoiceNumbers;
     checkout.invoiceType = invoiceType;
     checkout.fetchedInvoices = fetchedInvoices;
@@ -1004,7 +1004,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
   }
 });
 
-// Fetch invoices and tally results
+
 router.post('/:id/tally', authenticate, async (req, res) => {
   let syncService = null;
 
@@ -1037,7 +1037,7 @@ router.post('/:id/tally', authenticate, async (req, res) => {
     console.log(`\n📊 Starting tally for checkout ${id}`);
     console.log(`   Fetching ${checkout.invoiceNumbers.length} ${checkout.invoiceType} invoices...`);
 
-    // Fetch invoices from database first
+    
     const invoicesFromDB = await RouteStarInvoice.find({
       invoiceNumber: { $in: checkout.invoiceNumbers }
     }).lean();
@@ -1045,12 +1045,12 @@ router.post('/:id/tally', authenticate, async (req, res) => {
     const fetchedInvoices = [];
     const missingInvoices = [];
 
-    // Check which invoices are missing or need details
+    
     for (const invoiceNumber of checkout.invoiceNumbers) {
       const dbInvoice = invoicesFromDB.find(inv => inv.invoiceNumber === invoiceNumber);
 
       if (dbInvoice && dbInvoice.lineItems && dbInvoice.lineItems.length > 0) {
-        // Invoice exists with details
+        
         fetchedInvoices.push({
           invoiceNumber: dbInvoice.invoiceNumber,
           customer: dbInvoice.customer?.name || 'Unknown',
@@ -1063,12 +1063,12 @@ router.post('/:id/tally', authenticate, async (req, res) => {
           fetchedAt: new Date()
         });
       } else {
-        // Missing or needs details
+        
         missingInvoices.push(invoiceNumber);
       }
     }
 
-    // Fetch missing invoices from RouteStar if needed
+    
     if (missingInvoices.length > 0) {
       console.log(`   ${missingInvoices.length} invoices need to be fetched from RouteStar...`);
 
@@ -1100,18 +1100,18 @@ router.post('/:id/tally', authenticate, async (req, res) => {
       }
     }
 
-    // Load alias map for canonical name mapping
+    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-    // Tally: Group items sold by canonical name
+    
     const itemsSoldMap = {};
 
     for (const invoice of fetchedInvoices) {
       for (const item of invoice.items) {
-        // Map to canonical name for proper grouping
+        
         const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
-        const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+        const key = canonicalName.toUpperCase(); 
 
         if (!itemsSoldMap[key]) {
           itemsSoldMap[key] = {
@@ -1126,13 +1126,13 @@ router.post('/:id/tally', authenticate, async (req, res) => {
 
     const itemsSold = Object.values(itemsSoldMap);
 
-    // Tally: Group items taken by canonical name
+    
     const itemsTakenMap = {};
 
     for (const item of checkout.itemsTaken) {
-      // Map to canonical name for proper grouping
+      
       const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
-      const key = canonicalName.toUpperCase(); // Use uppercase canonical name as key
+      const key = canonicalName.toUpperCase(); 
 
       if (!itemsTakenMap[key]) {
         itemsTakenMap[key] = {
@@ -1146,9 +1146,9 @@ router.post('/:id/tally', authenticate, async (req, res) => {
 
     const itemsTaken = Object.values(itemsTakenMap);
 
-    // Calculate discrepancies - ONLY for items that were checked out
+    
     const discrepancies = [];
-    const checkedOutKeys = Object.keys(itemsTakenMap); // Only show items that were taken
+    const checkedOutKeys = Object.keys(itemsTakenMap); 
 
     for (const key of checkedOutKeys) {
       const taken = itemsTakenMap[key];
@@ -1158,9 +1158,9 @@ router.post('/:id/tally', authenticate, async (req, res) => {
       let status = 'matched';
 
       if (difference > 0) {
-        status = 'excess'; // Took more than sold (has returns)
+        status = 'excess'; 
       } else if (difference < 0) {
-        status = 'shortage'; // Sold more than took (error/missing items)
+        status = 'shortage'; 
       }
 
       discrepancies.push({
@@ -1173,7 +1173,7 @@ router.post('/:id/tally', authenticate, async (req, res) => {
       });
     }
 
-    // Save tally results
+    
     const tallyResults = {
       itemsTaken,
       itemsSold,
@@ -1218,7 +1218,7 @@ router.post('/:id/tally', authenticate, async (req, res) => {
   }
 });
 
-// Process stock movements for completed checkout
+
 router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
@@ -1262,15 +1262,15 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
     let usedMovements = 0;
     const errors = [];
 
-    // Process each item with discrepancies
+    
     for (const item of checkout.tallyResults.discrepancies) {
       const itemName = item.name || item.sku;
       const quantityTaken = item.quantityTaken || 0;
       const quantitySold = item.quantitySold || 0;
-      const quantityUsed = quantityTaken - quantitySold; // Remaining = Used for service
+      const quantityUsed = quantityTaken - quantitySold; 
 
       try {
-        // Get canonical name and SKU using alias mapping
+        
         const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
         const sku = (item.sku || canonicalName || itemName).toUpperCase();
 
@@ -1278,15 +1278,15 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
         console.log(`    → Canonical: ${canonicalName}, SKU: ${sku}`);
         console.log(`    → Taken: ${quantityTaken}, Sold: ${quantitySold}, Used: ${quantityUsed}`);
 
-        // STEP 1: ADD BACK sold quantities (compensation for double decrease)
-        // Why: Items were decreased twice:
-        //   1. During checkout (OUT for all taken items)
-        //   2. During invoice sync (OUT for sold items)
-        // So we ADD BACK the sold quantity to correct the double-counting
+        
+        
+        
+        
+        
         if (quantitySold > 0) {
           await StockMovement.create({
             sku: sku,
-            type: 'IN',  // ADD BACK (compensation)
+            type: 'IN',  
             qty: quantitySold,
             refType: 'TRUCK_CHECKOUT_ADJUSTMENT',
             refId: checkout._id,
@@ -1295,7 +1295,7 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
             notes: `Stock adjustment: Adding back ${quantitySold} sold items (invoices: ${checkout.invoiceNumbers.join(', ')}) to compensate for double-decrease (checkout + invoice sync)`
           });
 
-          // Update StockSummary
+          
           let stockSummary = await StockSummary.findOne({ sku });
           if (!stockSummary) {
             stockSummary = await StockSummary.create({
@@ -1314,8 +1314,8 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
           console.log(`    ✓ Added back ${quantitySold} sold items (compensation for double-decrease)`);
         }
 
-        // STEP 2: Create OUT movement for USED quantities only
-        // These were checked out but NOT sold (used for service/installation)
+        
+        
         if (quantityUsed > 0) {
           await StockMovement.create({
             sku: sku,
@@ -1328,7 +1328,7 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
             notes: `Items used for service/installation (not sold): ${checkout.employeeName}`
           });
 
-          // Update StockSummary for used items
+          
           let stockSummary = await StockSummary.findOne({ sku });
           if (!stockSummary) {
             stockSummary = await StockSummary.create({
@@ -1347,7 +1347,7 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
           console.log(`    ✓ Created OUT movement for ${quantityUsed} used items`);
         }
 
-        // Handle shortage case (sold more than taken - theft/error)
+        
         if (quantityUsed < 0) {
           console.log(`    ⚠️  WARNING: Sold ${quantitySold} but only took ${quantityTaken} (shortage: ${Math.abs(quantityUsed)})`);
         }
@@ -1397,7 +1397,7 @@ router.post('/:id/process-stock', authenticate, requireAdmin(), async (req, res)
   }
 });
 
-// Cancel checkout
+
 router.post('/:id/cancel', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1438,13 +1438,13 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
   }
 });
 
-// Update checkout
+
 router.patch('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
-    // Don't allow updating critical fields
+    
     delete updates._id;
     delete updates.createdAt;
     delete updates.updatedAt;
@@ -1479,7 +1479,7 @@ router.patch('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Delete checkout
+
 router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
   try {
     const { id } = req.params;
@@ -1504,7 +1504,7 @@ router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
     console.log(`\n🗑️  Deleting checkout ${id}...`);
     console.log(`   Reversing stock movements for ${checkout.itemsTaken?.length || 0} items...`);
 
-    // Reverse stock movements: Add back the quantities that were decreased during checkout
+    
     for (const item of checkout.itemsTaken || []) {
       if (item.quantity <= 0) continue;
 
@@ -1513,14 +1513,14 @@ router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
         const canonicalName = await RouteStarItemAlias.getCanonicalName(item.name);
         const sku = (item.sku || canonicalName || item.name).toUpperCase();
 
-        // Delete the OUT stock movement that was created during checkout
+        
         await StockMovement.deleteMany({
           refType: 'TRUCK_CHECKOUT',
           refId: checkout._id,
           sku: sku
         });
 
-        // Add back the stock to StockSummary
+        
         let stockSummary = await StockSummary.findOne({ sku });
         if (stockSummary) {
           stockSummary.addStock(item.quantity);
@@ -1532,7 +1532,7 @@ router.delete('/:id', authenticate, requireAdmin(), async (req, res) => {
       }
     }
 
-    // Delete any invoice-related stock movements if checkout was completed
+    
     if (checkout.status === 'completed') {
       await StockMovement.deleteMany({
         refType: 'TRUCK_CHECKOUT_ADJUSTMENT',

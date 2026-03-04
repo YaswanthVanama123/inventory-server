@@ -3,14 +3,9 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarSyncService = require('./routeStarSync.service');
 
-/**
- * RouteStar Items Service
- * Handles all business logic for RouteStar items operations
- */
+
 class RouteStarItemsService {
-  /**
-   * Get item statistics
-   */
+  
   async getItemStats() {
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     const allItems = await RouteStarItem.find().lean();
@@ -49,9 +44,7 @@ class RouteStarItemsService {
     };
   }
 
-  /**
-   * Get items with filtering and pagination
-   */
+  
   async getItems(filters = {}, pagination = {}) {
     const {
       search,
@@ -129,7 +122,7 @@ class RouteStarItemsService {
 
     let mergedItems = Object.values(groupedByCanonical);
 
-    // Apply search filter AFTER merging (on canonical names)
+    
     if (search) {
       const searchRegex = new RegExp(search, 'i');
       mergedItems = mergedItems.filter(item => {
@@ -162,9 +155,7 @@ class RouteStarItemsService {
     };
   }
 
-  /**
-   * Update item flags
-   */
+  
   async updateItemFlags(itemId, updates) {
     const { forUse, forSell, itemCategory } = updates;
 
@@ -208,9 +199,7 @@ class RouteStarItemsService {
     return item;
   }
 
-  /**
-   * Delete all items
-   */
+  
   async deleteAllItems() {
     const result = await RouteStarItem.deleteMany({});
 
@@ -219,9 +208,7 @@ class RouteStarItemsService {
     };
   }
 
-  /**
-   * Sync items from RouteStar
-   */
+  
   async syncItems() {
     const RouteStarSyncService = require('./routeStarSync.service');
     const syncService = new RouteStarSyncService();
@@ -233,44 +220,41 @@ class RouteStarItemsService {
     return result;
   }
 
-  /**
-   * Get sales report - OPTIMIZED (Parallel execution)
-   * Start from invoices (smaller filtered dataset), run queries in parallel
-   */
+  
   async getSalesReport() {
     console.time('[getSalesReport] Total execution');
 
-    // Run both queries in parallel for maximum performance
+    
     const [salesByItem, allItems] = await Promise.all([
-      // Query 1: Get sales data aggregated by item name (from invoices)
+      
       (async () => {
         console.time('[getSalesReport] Sales aggregation');
         const result = await RouteStarInvoice.aggregate([
-          // Filter invoices first (reduces dataset significantly)
+          
           {
             $match: {
               status: { $in: ['Completed', 'Closed', 'Pending'] }
             }
           },
 
-          // Unwind line items
+          
           { $unwind: '$lineItems' },
 
-          // Filter out empty item names
+          
           {
             $match: {
               'lineItems.name': { $exists: true, $ne: '', $ne: null }
             }
           },
 
-          // Group by item name and calculate sales metrics
+          
           {
             $group: {
               _id: '$lineItems.name',
               totalQuantity: { $sum: '$lineItems.quantity' },
               totalAmount: { $sum: '$lineItems.amount' },
               uniqueInvoices: { $addToSet: '$invoiceNumber' },
-              // Limit invoice details to first 100 to prevent massive arrays
+              
               invoiceDetails: {
                 $push: {
                   invoiceNumber: '$invoiceNumber',
@@ -285,14 +269,14 @@ class RouteStarItemsService {
             }
           },
 
-          // Calculate invoice count and limit invoice details
+          
           {
             $project: {
               itemName: '$_id',
               soldQuantity: '$totalQuantity',
               soldAmount: '$totalAmount',
               invoiceCount: { $size: '$uniqueInvoices' },
-              // Limit to first 100 invoice details to reduce data transfer
+              
               invoiceDetails: { $slice: ['$invoiceDetails', 100] }
             }
           }
@@ -302,7 +286,7 @@ class RouteStarItemsService {
         return result;
       })(),
 
-      // Query 2: Get all items (runs in parallel)
+      
       (async () => {
         console.time('[getSalesReport] Fetch items');
         const result = await RouteStarItem.find()
@@ -315,14 +299,14 @@ class RouteStarItemsService {
       })()
     ]);
 
-    // Create sales map for O(1) lookup
+    
     console.time('[getSalesReport] Merge');
     const salesMap = new Map();
     salesByItem.forEach(sale => {
       salesMap.set(sale.itemName, sale);
     });
 
-    // Merge items with sales data
+    
     const itemsWithSales = allItems.map(item => {
       const sales = salesMap.get(item.itemName);
 
@@ -343,7 +327,7 @@ class RouteStarItemsService {
     });
     console.timeEnd('[getSalesReport] Merge');
 
-    // Calculate totals
+    
     const totals = {
       totalItems: allItems.length,
       totalSoldQuantity: salesByItem.reduce((sum, s) => sum + s.soldQuantity, 0),
@@ -360,10 +344,7 @@ class RouteStarItemsService {
     };
   }
 
-  /**
-   * OPTIMIZED: Get items list with stats in one call
-   * Builds alias map once and reuses it for both items and stats
-   */
+  
   async getItemsWithStats(filters = {}, pagination = {}) {
     const {
       search,
@@ -403,7 +384,7 @@ class RouteStarItemsService {
       query.itemCategory = itemCategory;
     }
 
-    // Fetch all data in parallel
+    
     const [allItems, aliasMap, itemParents, types] = await Promise.all([
       RouteStarItem.find(query).sort({ itemName: sortOrder === 'asc' ? 1 : -1 }).lean(),
       RouteStarItemAlias.buildLookupMap(),
@@ -413,7 +394,7 @@ class RouteStarItemsService {
 
     console.log(`[getItemsWithStats] Found ${allItems.length} items before merging`);
 
-    // Group items by canonical name (merge variations)
+    
     const groupedByCanonical = {};
 
     allItems.forEach(item => {
@@ -446,7 +427,7 @@ class RouteStarItemsService {
 
     let mergedItems = Object.values(groupedByCanonical);
 
-    // Apply search filter AFTER merging (on canonical names)
+    
     if (search) {
       const searchRegex = new RegExp(search, 'i');
       mergedItems = mergedItems.filter(item => {
@@ -457,7 +438,7 @@ class RouteStarItemsService {
       });
     }
 
-    // Calculate stats from merged items
+    
     const statsTotal = mergedItems.length;
     const forUseCount = mergedItems.filter(item => item.forUse).length;
     const forSellCount = mergedItems.filter(item => item.forSell).length;
@@ -472,7 +453,7 @@ class RouteStarItemsService {
       unmarked: unmarkedCount
     };
 
-    // Paginate merged items
+    
     const total = mergedItems.length;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const paginatedItems = mergedItems.slice(skip, skip + parseInt(limit));

@@ -5,17 +5,9 @@ const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const stockCalculationService = require('./stockCalculation.service');
 
-/**
- * Truck Checkout Service
- * Handles all business logic for truck checkouts
- */
+
 class TruckCheckoutService {
-  /**
-   * Create a new checkout with stock validation
-   * @param {Object} checkoutData - Checkout data
-   * @param {string} userId - User ID creating the checkout
-   * @returns {Promise<Object>} Result with checkout and stock update info
-   */
+  
   async createCheckout(checkoutData, userId) {
     const {
       employeeName,
@@ -32,7 +24,7 @@ class TruckCheckoutService {
     console.log(`\n📦 Creating checkout for ${employeeName}`);
     console.log(`   Item: ${itemName}, Taking: ${quantityTaking}, Remaining: ${remainingQuantity}`);
 
-    // Step 1: Validate stock
+    
     const validation = await stockCalculationService.validateCheckoutStock(
       itemName,
       quantityTaking,
@@ -42,7 +34,7 @@ class TruckCheckoutService {
     console.log(`   Current stock: ${validation.currentStock}`);
     console.log(`   Expected remaining: ${validation.systemCalculatedRemaining}`);
 
-    // Step 2: Check for discrepancy
+    
     if (validation.hasDiscrepancy && !acceptDiscrepancy) {
       return {
         success: false,
@@ -52,7 +44,7 @@ class TruckCheckoutService {
       };
     }
 
-    // Step 3: Create checkout record
+    
     const checkout = await TruckCheckout.create({
       employeeName,
       employeeId,
@@ -72,7 +64,7 @@ class TruckCheckoutService {
 
     console.log(`   ✓ Checkout created: ${checkout._id}`);
 
-    // Step 4: Handle discrepancy if accepted
+    
     let discrepancy = null;
     if (validation.hasDiscrepancy && acceptDiscrepancy) {
       discrepancy = await this._createDiscrepancy(checkout, validation, userId);
@@ -80,7 +72,7 @@ class TruckCheckoutService {
       await checkout.save();
     }
 
-    // Step 5: Update stock
+    
     const stockUpdate = await this._updateStock(
       itemName,
       quantityTaking,
@@ -101,10 +93,7 @@ class TruckCheckoutService {
     };
   }
 
-  /**
-   * Create discrepancy record for checkout
-   * @private
-   */
+  
   async _createDiscrepancy(checkout, validation, userId) {
     const discrepancy = await StockDiscrepancy.create({
       invoiceNumber: `CHECKOUT-${checkout._id}`,
@@ -124,15 +113,12 @@ class TruckCheckoutService {
     return discrepancy;
   }
 
-  /**
-   * Update stock for checkout
-   * @private
-   */
+  
   async _updateStock(itemName, quantityTaking, validation, checkout) {
     const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
     const sku = (canonicalName || itemName).toUpperCase();
 
-    // Create stock movement
+    
     await StockMovement.create({
       sku,
       type: 'OUT',
@@ -144,7 +130,7 @@ class TruckCheckoutService {
       notes: `Checked out to truck: ${checkout.employeeName}${checkout.notes ? ` (${checkout.notes})` : ''}`
     });
 
-    // Update StockSummary
+    
     let stockSummary = await StockSummary.findOne({ sku });
     if (!stockSummary) {
       stockSummary = await StockSummary.create({
@@ -159,10 +145,10 @@ class TruckCheckoutService {
 
     const previousStock = stockSummary.availableQty;
 
-    // Remove quantity taken
+    
     stockSummary.removeStock(quantityTaking);
 
-    // Apply discrepancy adjustment if needed
+    
     let discrepancyAdjustment = 0;
     if (validation.hasDiscrepancy) {
       const diff = validation.discrepancyDifference;
@@ -188,9 +174,7 @@ class TruckCheckoutService {
     };
   }
 
-  /**
-   * Get checkouts with filtering and pagination
-   */
+  
   async getCheckouts(filters = {}, pagination = {}) {
     const {
       status,
@@ -237,9 +221,7 @@ class TruckCheckoutService {
     };
   }
 
-  /**
-   * Get checkout by ID
-   */
+  
   async getCheckoutById(checkoutId) {
     const checkout = await TruckCheckout.findById(checkoutId)
       .populate('discrepancyId')
@@ -252,9 +234,7 @@ class TruckCheckoutService {
     return checkout;
   }
 
-  /**
-   * Delete checkout and reverse stock movements
-   */
+  
   async deleteCheckout(checkoutId) {
     const checkout = await TruckCheckout.findById(checkoutId);
 
@@ -268,25 +248,25 @@ class TruckCheckoutService {
 
     console.log(`\n🗑️  Deleting checkout ${checkoutId}...`);
 
-    // Reverse stock movements for new structure
+    
     if (checkout.quantityTaking && checkout.itemName) {
       await this._reverseStockForItem(checkout.itemName, checkout.quantityTaking, checkout._id);
     }
 
-    // Reverse stock movements for old structure (backwards compatibility)
+    
     if (checkout.itemsTaken?.length > 0) {
       for (const item of checkout.itemsTaken) {
         await this._reverseStockForItem(item.name, item.quantity, checkout._id);
       }
     }
 
-    // Delete related stock movements
+    
     await StockMovement.deleteMany({
       refType: { $in: ['TRUCK_CHECKOUT', 'TRUCK_CHECKOUT_ADJUSTMENT', 'TRUCK_CHECKOUT_USED'] },
       refId: checkout._id
     });
 
-    // Delete discrepancy if exists
+    
     if (checkout.discrepancyId) {
       await StockDiscrepancy.findByIdAndDelete(checkout.discrepancyId);
     }
@@ -298,10 +278,7 @@ class TruckCheckoutService {
     return { success: true, message: 'Checkout deleted and stock movements reversed' };
   }
 
-  /**
-   * Reverse stock for a single item
-   * @private
-   */
+  
   async _reverseStockForItem(itemName, quantity, checkoutId) {
     if (quantity <= 0) return;
 
@@ -320,19 +297,14 @@ class TruckCheckoutService {
     }
   }
 
-  /**
-   * Get checkout sales tracking
-   * Matches checkouts with invoices to track what was sold vs checked out
-   * @param {Object} filters - Filter options
-   * @returns {Promise<Object>} Sales tracking data
-   */
+  
   async getCheckoutSalesTracking(filters = {}) {
     const RouteStarInvoice = require('../models/RouteStarInvoice');
 
     console.log('\n📊 Getting checkout sales tracking...');
 
     try {
-      // Build query for checkouts
+      
       const query = { status: { $ne: 'cancelled' } };
 
       if (filters.employeeName) {
@@ -354,18 +326,18 @@ class TruckCheckoutService {
         };
       }
 
-      // Get checkouts
+      
       const checkouts = await TruckCheckout.find(query)
         .sort({ checkoutDate: -1 })
         .lean();
 
       console.log(`✓ Found ${checkouts.length} checkouts to track`);
 
-      // For each checkout, find matching invoices
+      
       const trackingData = [];
 
       for (const checkout of checkouts) {
-        // Only process new single-item checkouts (with itemName field)
+        
         if (!checkout.itemName) {
           continue;
         }
@@ -375,19 +347,19 @@ class TruckCheckoutService {
         const truckNumber = checkout.truckNumber;
         const quantityCheckedOut = checkout.quantityTaking || 0;
 
-        // Find matching invoices:
-        // - Invoice date >= checkout date
-        // - Truck number matches (if available)
-        // - Item name matches (using alias lookup)
+        
+        
+        
+        
         const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
 
-        // Build invoice query
+        
         const invoiceQuery = {
           invoiceDate: { $gte: checkoutDate },
           'lineItems': { $exists: true, $ne: [] }
         };
 
-        // Match truck number if available in invoice
+        
         if (truckNumber) {
           invoiceQuery.$or = [
             { truckNumber: new RegExp(truckNumber, 'i') },
@@ -397,7 +369,7 @@ class TruckCheckoutService {
 
         const matchedInvoices = await RouteStarInvoice.find(invoiceQuery).lean();
 
-        // Calculate total sold from matched invoices
+        
         let totalSold = 0;
         const invoiceDetails = [];
 
@@ -405,7 +377,7 @@ class TruckCheckoutService {
           for (const lineItem of invoice.lineItems || []) {
             const lineItemCanonical = await RouteStarItemAlias.getCanonicalName(lineItem.name);
 
-            // Check if item matches (by canonical name or direct name)
+            
             if (
               lineItemCanonical === canonicalName ||
               lineItem.name.toLowerCase() === itemName.toLowerCase() ||
@@ -422,14 +394,14 @@ class TruckCheckoutService {
           }
         }
 
-        // Calculate remaining and status
+        
         const remaining = quantityCheckedOut - totalSold;
         let status = 'Good';
 
         if (remaining > 0) {
-          status = 'Shortage'; // Less sold than checked out (units still in truck or lost)
+          status = 'Shortage'; 
         } else if (remaining < 0) {
-          status = 'Overage'; // More sold than checked out (possible theft or error)
+          status = 'Overage'; 
         }
 
         trackingData.push({
@@ -443,7 +415,7 @@ class TruckCheckoutService {
           remaining: Math.abs(remaining),
           status,
           matchedInvoices: invoiceDetails.length,
-          invoiceDetails: invoiceDetails.slice(0, 5) // Limit to first 5 for preview
+          invoiceDetails: invoiceDetails.slice(0, 5) 
         });
       }
 

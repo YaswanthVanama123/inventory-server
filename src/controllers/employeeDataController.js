@@ -1,12 +1,10 @@
 const employeeDataService = require('../services/employeeData.service');
 const User = require('../models/User');
 
-/**
- * Get employee's own work data (invoices filtered by their truck number)
- */
+
 const getMyWorkData = async (req, res) => {
   try {
-    // Fetch fresh user data from database to get updated truck number
+    
     const user = await User.findById(req.user.id).select('truckNumber');
 
     if (!user || !user.truckNumber) {
@@ -46,12 +44,10 @@ const getMyWorkData = async (req, res) => {
   }
 };
 
-/**
- * Get employee's statistics
- */
+
 const getMyStatistics = async (req, res) => {
   try {
-    // Fetch fresh user data from database to get updated truck number
+    
     const user = await User.findById(req.user.id).select('truckNumber');
 
     if (!user || !user.truckNumber) {
@@ -63,7 +59,7 @@ const getMyStatistics = async (req, res) => {
 
     const { startDate, endDate } = req.query;
 
-    // Default to last 30 days if not specified
+    
     const end = endDate ? new Date(endDate) : new Date();
     const start = startDate
       ? new Date(startDate)
@@ -92,12 +88,10 @@ const getMyStatistics = async (req, res) => {
   }
 };
 
-/**
- * Get employee's recent activity
- */
+
 const getMyRecentActivity = async (req, res) => {
   try {
-    // Fetch fresh user data from database to get updated truck number
+    
     const user = await User.findById(req.user.id).select('truckNumber');
 
     if (!user || !user.truckNumber) {
@@ -128,12 +122,10 @@ const getMyRecentActivity = async (req, res) => {
   }
 };
 
-/**
- * Get employee's performance metrics
- */
+
 const getMyPerformance = async (req, res) => {
   try {
-    // Fetch fresh user data from database to get updated truck number
+    
     const user = await User.findById(req.user.id).select('truckNumber');
 
     if (!user || !user.truckNumber) {
@@ -145,7 +137,7 @@ const getMyPerformance = async (req, res) => {
 
     const { startDate, endDate } = req.query;
 
-    // Default to last 30 days
+    
     const end = endDate ? new Date(endDate) : new Date();
     const start = startDate
       ? new Date(startDate)
@@ -174,9 +166,7 @@ const getMyPerformance = async (req, res) => {
   }
 };
 
-/**
- * Admin: Get employee data by truck number
- */
+
 const getEmployeeDataByTruckNumber = async (req, res) => {
   try {
     const { truckNumber } = req.params;
@@ -208,9 +198,7 @@ const getEmployeeDataByTruckNumber = async (req, res) => {
   }
 };
 
-/**
- * Admin: Get all truck assignments
- */
+
 const getAllTruckAssignments = async (req, res) => {
   try {
     const assignments = await employeeDataService.getAllTruckAssignments();

@@ -6,20 +6,15 @@ const RouteStarItem = require('../models/RouteStarItem');
 const StockDiscrepancy = require('../models/StockDiscrepancy');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
-/**
- * Stock Service
- * Business logic for stock operations
- */
+
 class StockService {
   constructor() {
-    // Simple in-memory cache for metadata
+    
     this._cache = new Map();
     this._cacheTTL = new Map();
   }
 
-  /**
-   * Simple cache get with TTL check
-   */
+  
   _cacheGet(key) {
     const ttl = this._cacheTTL.get(key);
     if (ttl && Date.now() > ttl) {
@@ -30,21 +25,17 @@ class StockService {
     return this._cache.get(key);
   }
 
-  /**
-   * Simple cache set with TTL (in seconds)
-   */
+  
   _cacheSet(key, value, ttlSeconds) {
     this._cache.set(key, value);
     this._cacheTTL.set(key, Date.now() + (ttlSeconds * 1000));
   }
 
-  /**
-   * Get category SKUs with purchase history
-   */
+  
   async getCategorySkus(categoryName) {
     console.time(`[getCategorySkus] Total for ${categoryName}`);
 
-    // Get mappings for this category
+    
     console.time('[getCategorySkus] Step 1: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
@@ -63,7 +54,7 @@ class StockService {
 
     console.log(`[getCategorySkus] Found ${skus.length} SKUs for ${categoryName}`);
 
-    // Use aggregation instead of fetching all orders
+    
     console.time('[getCategorySkus] Step 2: Aggregate SKU data');
     const skuAggregation = await CustomerConnectOrder.aggregate([
       {
@@ -111,13 +102,13 @@ class StockService {
     ]);
     console.timeEnd('[getCategorySkus] Step 2: Aggregate SKU data');
 
-    // Convert to object for easy lookup
+    
     const skuData = {};
     skuAggregation.forEach(item => {
       skuData[item.sku] = item;
     });
 
-    // Ensure all SKUs have an entry (even if no orders)
+    
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
       if (!skuData[skuUpper]) {
@@ -132,7 +123,7 @@ class StockService {
       }
     });
 
-    // Sort by SKU
+    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
@@ -145,23 +136,21 @@ class StockService {
     };
   }
 
-  /**
-   * Get category sales with purchases, sales, checkouts, and discrepancies
-   */
+  
   async getCategorySales(categoryName) {
     console.time(`[getCategorySales] Total for ${categoryName}`);
 
-    // Load alias map
+    
     console.time('[getCategorySales] Step 1: Load aliases');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     console.timeEnd('[getCategorySales] Step 1: Load aliases');
 
-    // Find all variations of the category name
+    
     const variations = this._getItemVariations(categoryName, aliasMap);
 
     console.log(`Finding data for category: ${categoryName}, variations:`, variations);
 
-    // Get mappings
+    
     console.time('[getCategorySales] Step 2: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
@@ -180,10 +169,10 @@ class StockService {
 
     console.log(`[getCategorySales] Found ${skus.length} SKUs`);
 
-    // Fetch all data in parallel using aggregations
+    
     console.time('[getCategorySales] Step 3: Parallel aggregations');
     const [purchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
-      // Purchases aggregation
+      
       CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -218,7 +207,7 @@ class StockService {
         }
       ]),
 
-      // Sales aggregation
+      
       RouteStarInvoice.aggregate([
         {
           $match: {
@@ -252,7 +241,7 @@ class StockService {
         }
       ]),
 
-      // Checkouts aggregation (both old and new structure)
+      
       TruckCheckout.aggregate([
         {
           $match: {
@@ -307,7 +296,7 @@ class StockService {
         }
       ]),
 
-      // Discrepancies (keep as is since it needs population)
+      
       StockDiscrepancy.find({
         $or: [
           { categoryName: categoryName },
@@ -322,7 +311,7 @@ class StockService {
     ]);
     console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
 
-    // Build SKU data from purchase aggregation
+    
     const skuData = {};
     purchaseData.forEach(item => {
       skuData[item._id] = {
@@ -340,14 +329,14 @@ class StockService {
       };
     });
 
-    // Aggregate sales data
+    
     const categorySalesData = salesData[0] || {
       totalSold: 0,
       totalSalesValue: 0,
       salesHistory: []
     };
 
-    // Aggregate checkout data (combine old and new structures)
+    
     const checkoutResults = checkoutData[0];
     const oldCheckoutData = checkoutResults?.oldStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
     const newCheckoutData = checkoutResults?.newStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
@@ -357,7 +346,7 @@ class StockService {
       checkoutHistory: [...oldCheckoutData.checkoutHistory, ...newCheckoutData.checkoutHistory]
     };
 
-    // Distribute sales/checkouts evenly across SKUs
+    
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -378,22 +367,22 @@ class StockService {
         };
       }
 
-      // Distribute sales evenly
+      
       skuData[skuUpper].totalSold = categorySalesData.totalSold / skuCount;
       skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
 
-      // Distribute checkouts evenly
+      
       skuData[skuUpper].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
 
-      // Add discrepancies
+      
       skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
         d.itemSku === sku || d.categoryName === categoryName
       );
     });
 
-    // Sort by SKU
+    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
@@ -415,9 +404,7 @@ class StockService {
     };
   }
 
-  /**
-   * Get forUse stock summary
-   */
+  
   async getUseStock() {
     const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
     const allowedCategories = new Set(forUseItems.map(item => item.itemName));
@@ -461,7 +448,7 @@ class StockService {
       }
     });
 
-    // Ensure all forUse items have entry
+    
     forUseItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -489,9 +476,7 @@ class StockService {
     };
   }
 
-  /**
-   * Get forSell stock summary
-   */
+  
   async getSellStock() {
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const allowedCategories = new Set(forSellItems.map(item => item.itemName));
@@ -505,7 +490,7 @@ class StockService {
       }
     });
 
-    // Fetch all data in parallel
+    
     const [orders, invoices, checkouts, discrepancies, aliasMap] = await Promise.all([
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] }
@@ -532,7 +517,7 @@ class StockService {
     const categoryMap = {};
     const categoryInvoices = {};
 
-    // Calculate purchases
+    
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
@@ -565,7 +550,7 @@ class StockService {
       }
     });
 
-    // Calculate sales
+    
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         invoice.lineItems.forEach(item => {
@@ -603,9 +588,9 @@ class StockService {
       }
     });
 
-    // Calculate checkouts (support both old and new structure)
+    
     checkouts.forEach(checkout => {
-      // Old structure: itemsTaken array
+      
       if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
         checkout.itemsTaken.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
@@ -641,7 +626,7 @@ class StockService {
         });
       }
 
-      // New structure: itemName and quantityTaking fields directly
+      
       if (checkout.itemName && checkout.quantityTaking) {
         const itemName = checkout.itemName.trim();
         const itemNameLower = itemName.toLowerCase();
@@ -676,14 +661,14 @@ class StockService {
       }
     });
 
-    // Update invoice counts
+    
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (categoryMap[categoryName]) {
         categoryMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
 
-    // Process discrepancies
+    
     const processedDiscrepancies = new Set();
 
     discrepancies.forEach(discrepancy => {
@@ -708,14 +693,14 @@ class StockService {
       }
     });
 
-    // Calculate stock remaining
+    
     Object.values(categoryMap).forEach(category => {
       const adjustment = category.discrepancyAdjustment || 0;
       category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut + adjustment;
       delete category.discrepancyAdjustment;
     });
 
-    // Ensure all forSell items have entry
+    
     forSellItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -767,16 +752,14 @@ class StockService {
     };
   }
 
-  /**
-   * Get complete stock summary (optimized mega aggregation)
-   */
+  
   async getStockSummary() {
     console.time('[StockSummary] Total time');
 
-    // Step 1: Get metadata in parallel with caching
+    
     console.time('[StockSummary] Step 1: Metadata');
 
-    // Use cache for metadata (10 second TTL)
+    
     const cacheKey = 'stock_summary_metadata';
     let metadata = this._cacheGet(cacheKey);
 
@@ -789,17 +772,17 @@ class StockService {
       ]);
 
       metadata = { forUseItems, forSellItems, aliasData, mappings };
-      this._cacheSet(cacheKey, metadata, 10); // 10 seconds
+      this._cacheSet(cacheKey, metadata, 10); 
     }
 
     const { forUseItems, forSellItems, aliasData, mappings } = metadata;
     console.timeEnd('[StockSummary] Step 1: Metadata');
 
-    // Build Sets for O(1) lookups
+    
     const useAllowedSet = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedSet = new Set(forSellItems.map(item => item.itemName));
 
-    // Build SKU maps
+    
     console.time('[StockSummary] Step 1.5: Build SKU maps');
     const skuToCategoryMap = new Map();
     const useSKUs = [];
@@ -817,7 +800,7 @@ class StockService {
       }
     });
 
-    // Build alias map
+    
     const aliasToCanonicalMap = new Map();
     const sellVariationsSet = new Set();
 
@@ -842,18 +825,18 @@ class StockService {
 
     console.log(`[StockSummary] Use: ${useAllowedSet.size} cats, ${useSKUs.length} SKUs | Sell: ${sellAllowedSet.size} cats, ${sellSKUs.length} SKUs, ${sellVariationsArray.length} variations`);
 
-    // Step 1.6: Get SKU item names from orders and extract sales keywords dynamically
+    
     console.time('[StockSummary] Step 1.6: Extract sales keywords from purchases');
 
-    // Cache keyword extraction (10 second TTL)
+    
     const keywordCacheKey = `sales_keywords_${sellSKUs.length}`;
     let keywordData = this._cacheGet(keywordCacheKey);
 
     if (!keywordData) {
       const skuToItemNameMap = new Map();
-      const salesKeywordsSet = new Set(); // Dynamically extracted keywords from item names
+      const salesKeywordsSet = new Set(); 
 
-      // Optimized query: Only fetch distinct SKU-name pairs, limit to 300
+      
       const skuOrders = await CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -882,15 +865,15 @@ class StockService {
             name: '$_id.name'
           }
         },
-        { $limit: 300 } // Reduced from 1000
+        { $limit: 300 } 
       ]);
 
       skuOrders.forEach(item => {
         if (item.sku && item.name) {
           skuToItemNameMap.set(item.sku, item.name);
 
-          // Extract potential sales keywords from item name
-          // Match words in quotes: "WHITE", "BLACK", etc.
+          
+          
           const quotedMatches = item.name.match(/"([^"]+)"/g);
           if (quotedMatches) {
             quotedMatches.forEach(match => {
@@ -902,11 +885,11 @@ class StockService {
             });
           }
 
-          // Also extract uppercase words (likely categories/types)
+          
           const words = item.name.split(/[\s,]+/);
           words.forEach(word => {
             const cleaned = word.replace(/[^A-Za-z0-9]/g, '');
-            // Add words that are all uppercase and longer than 2 characters
+            
             if (cleaned && cleaned.length > 2 && cleaned === cleaned.toUpperCase()) {
               salesKeywordsSet.add(cleaned);
               salesKeywordsSet.add(cleaned.toLowerCase());
@@ -916,23 +899,23 @@ class StockService {
       });
 
       keywordData = { skuToItemNameMap, salesKeywordsSet };
-      this._cacheSet(keywordCacheKey, keywordData, 10); // 10 seconds
+      this._cacheSet(keywordCacheKey, keywordData, 10); 
     }
 
     const { skuToItemNameMap, salesKeywordsSet } = keywordData;
 
-    // Add extracted keywords to variations array for invoice matching
+    
     salesKeywordsSet.forEach(kw => sellVariationsSet.add(kw));
     const finalSellVariationsArray = Array.from(sellVariationsSet);
     console.timeEnd('[StockSummary] Step 1.6: Extract sales keywords from purchases');
 
     console.log(`[StockSummary] Extracted ${salesKeywordsSet.size} sales keywords from item names`);
 
-    // Step 2: MEGA AGGREGATION
+    
     console.time('[StockSummary] Step 2: Mega query');
 
     const [ordersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
-      // Orders
+      
       (useSKUs.length > 0 || sellSKUs.length > 0) ? CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -979,7 +962,7 @@ class StockService {
         }
       ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
 
-      // Invoices
+      
       finalSellVariationsArray.length > 0 ? RouteStarInvoice.aggregate([
         {
           $match: {
@@ -1013,20 +996,20 @@ class StockService {
         }
       ]) : Promise.resolve([]),
 
-      // Checkouts (support both old and new structure)
+      
       finalSellVariationsArray.length > 0 ? TruckCheckout.aggregate([
         {
           $match: {
             status: 'checked_out',
             $or: [
-              { 'itemsTaken.0': { $exists: true } }, // Old structure
-              { 'itemName': { $exists: true } } // New structure
+              { 'itemsTaken.0': { $exists: true } }, 
+              { 'itemName': { $exists: true } } 
             ]
           }
         },
         {
           $facet: {
-            // Old structure: itemsTaken array
+            
             oldStructure: [
               { $match: { 'itemsTaken.0': { $exists: true } } },
               { $unwind: '$itemsTaken' },
@@ -1042,7 +1025,7 @@ class StockService {
                 }
               }
             ],
-            // New structure: itemName field directly
+            
             newStructure: [
               { $match: { 'itemName': { $exists: true, $in: finalSellVariationsArray } } },
               {
@@ -1076,7 +1059,7 @@ class StockService {
         }
       ]) : Promise.resolve([]),
 
-      // Discrepancies (fetch raw documents to process with SKU mapping)
+      
       (finalSellVariationsArray.length > 0 || sellSKUs.length > 0) ? StockDiscrepancy.find({
         $or: [
           { categoryName: { $in: finalSellVariationsArray } },
@@ -1092,33 +1075,33 @@ class StockService {
     const checkouts = checkoutsResult;
     const rawDiscrepancies = discrepanciesResult;
 
-    // Helper function to get canonical category name from alias
+    
     const getCanonical = (name) => {
       const nameLower = name.toLowerCase();
       return aliasToCanonicalMap.get(nameLower) || name;
     };
 
-    // Process raw discrepancies and group by target category
+    
     const discrepancyMap = new Map();
     rawDiscrepancies.forEach(disc => {
       let targetCategory = null;
 
-      // First, try to map by SKU if available
+      
       if (disc.itemSku && skuToCategoryMap.has(disc.itemSku)) {
         targetCategory = skuToCategoryMap.get(disc.itemSku);
       }
 
-      // If no SKU match, try categoryName
+      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         targetCategory = getCanonical(disc.categoryName || '');
       }
 
-      // If still no match, try itemName
+      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         targetCategory = getCanonical(disc.itemName || '');
       }
 
-      // Only process if we found a valid target category
+      
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!discrepancyMap.has(targetCategory)) {
           discrepancyMap.set(targetCategory, {
@@ -1136,7 +1119,7 @@ class StockService {
       }
     });
 
-    // Convert map to array format expected by downstream code
+    
     const discrepancies = Array.from(discrepancyMap.entries()).map(([categoryName, data]) => ({
       categoryName,
       ...data
@@ -1144,27 +1127,27 @@ class StockService {
 
     console.timeEnd('[StockSummary] Step 2: Mega query');
 
-    // Step 3: Build result maps
+    
     console.time('[StockSummary] Step 3: Build result maps');
 
-    // Build case-insensitive category lookup map
+    
     const lowercaseToCategoryMap = new Map();
     sellAllowedSet.forEach(category => {
       lowercaseToCategoryMap.set(category.toLowerCase(), category);
     });
 
-    // Build keyword-to-category mapping for sales distribution
-    // Map each extracted keyword to categories that have items with that keyword
+    
+    
     const keywordToCategoriesMap = new Map();
     const extractedKeywords = Array.from(salesKeywordsSet);
 
-    // Build mapping: WHITE -> [Bulk Soap, ...], BLACK -> [Other Category, ...]
+    
     for (const [sku, itemName] of skuToItemNameMap.entries()) {
       const category = skuToCategoryMap.get(sku);
       if (category && sellAllowedSet.has(category)) {
         const itemNameUpper = itemName.toUpperCase();
 
-        // Check against all extracted keywords
+        
         extractedKeywords.forEach(keyword => {
           const keywordUpper = keyword.toUpperCase();
           if (itemNameUpper.includes(keywordUpper)) {
@@ -1177,30 +1160,30 @@ class StockService {
       }
     }
 
-    // Process sales: map keyword sales to target categories
+    
     const salesByCategory = new Map();
     sales.forEach(s => {
-      // s.itemName comes from aggregation as lowercase
+      
       const itemNameLower = s.itemName.toLowerCase();
 
-      // First try direct category match (case-insensitive)
+      
       let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
 
-      // If not found, try alias resolution
+      
       if (!targetCategory) {
         targetCategory = getCanonical(s.itemName);
-        // getCanonical might return the original casing, so check again
+        
         if (!sellAllowedSet.has(targetCategory)) {
           targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
         }
       }
 
-      // If not a valid category, check if it's an extracted keyword
+      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         const itemNameUpper = s.itemName.toUpperCase();
 
         if (keywordToCategoriesMap.has(itemNameUpper)) {
-          // Distribute this keyword sale across all relevant categories
+          
           const relevantCategories = Array.from(keywordToCategoriesMap.get(itemNameUpper));
 
           relevantCategories.forEach(cat => {
@@ -1216,11 +1199,11 @@ class StockService {
             categoryData.totalSalesValue += s.totalSalesValue || 0;
             categoryData.invoiceCount += s.invoiceCount || 0;
           });
-          return; // Handled as keyword
+          return; 
         }
       }
 
-      // Regular category sale
+      
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!salesByCategory.has(targetCategory)) {
           salesByCategory.set(targetCategory, {
@@ -1236,7 +1219,7 @@ class StockService {
       }
     });
 
-    // Build USE stock map
+    
     const useStockMap = new Map();
 
     usePurchases.forEach(p => {
@@ -1268,7 +1251,7 @@ class StockService {
       }
     });
 
-    // Build SELL stock map
+    
     const sellStockMap = new Map();
 
     sellPurchases.forEach(p => {
@@ -1296,7 +1279,7 @@ class StockService {
       }
     });
 
-    // Add sales from processed salesByCategory map
+    
     salesByCategory.forEach((saleData, category) => {
       if (sellAllowedSet.has(category)) {
         if (!sellStockMap.has(category)) {
@@ -1345,7 +1328,7 @@ class StockService {
     });
 
     discrepancies.forEach(d => {
-      const canonical = d.categoryName; // Already mapped to target category in processing above
+      const canonical = d.categoryName; 
 
       if (sellAllowedSet.has(canonical)) {
         if (!sellStockMap.has(canonical)) {
@@ -1369,7 +1352,7 @@ class StockService {
       }
     });
 
-    // Calculate stock remaining
+    
     sellStockMap.forEach((item, category) => {
       const discrepancy = discrepancies.find(d => d.categoryName === category);
       const adjustment = discrepancy ? (discrepancy.approvedAdjustment || 0) : 0;
@@ -1396,7 +1379,7 @@ class StockService {
 
     console.timeEnd('[StockSummary] Step 3: Build result maps');
 
-    // Step 4: Sort and calculate totals
+    
     console.time('[StockSummary] Step 4: Sort and totals');
 
     const useStock = Array.from(useStockMap.values()).sort((a, b) =>
@@ -1450,10 +1433,7 @@ class StockService {
     };
   }
 
-  /**
-   * Helper: Get item variations (aliases)
-   * @private
-   */
+  
   _getItemVariations(canonicalName, aliasMap) {
     const variations = [canonicalName, canonicalName.toLowerCase()];
 
@@ -1466,10 +1446,7 @@ class StockService {
     return variations;
   }
 
-  /**
-   * Helper: Get canonical name for item
-   * @private
-   */
+  
   _getCanonicalName(itemName, aliasMap) {
     return aliasMap[itemName.toLowerCase()] || itemName;
   }

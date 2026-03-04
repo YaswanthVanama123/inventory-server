@@ -4,12 +4,12 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const AuditLog = require('../models/AuditLog');
 const SyncLog = require('../models/SyncLog');
 
-// Optimized getDashboard - Target: <100ms
+
 const getDashboard = async (req, res, next) => {
   try {
     const startTime = Date.now();
 
-    // Execute all queries in parallel
+    
     const [
       inventoryStats,
       categoryStats,
@@ -17,7 +17,7 @@ const getDashboard = async (req, res, next) => {
       salesData,
       syncStats
     ] = await Promise.all([
-      // 1. Get inventory stats using aggregation (much faster than loading all documents)
+      
       Inventory.aggregate([
         { $match: { isActive: true, isDeleted: false } },
         {
@@ -58,18 +58,18 @@ const getDashboard = async (req, res, next) => {
         }
       ]),
 
-      // 2. Get category stats (already done above but kept for backward compatibility)
+      
       Promise.resolve([]),
 
-      // 3. Get recent activity - OPTIMIZED: limit to 5, project only needed fields
+      
       AuditLog.find({ resource: 'INVENTORY' })
         .select('action resource resourceId details timestamp performedBy')
-        .populate('performedBy', 'username fullName') // Only get username and fullName
+        .populate('performedBy', 'username fullName') 
         .sort({ timestamp: -1 })
-        .limit(5) // Reduced from 10 to 5
-        .lean(), // Convert to plain objects (faster)
+        .limit(5) 
+        .lean(), 
 
-      // 4. Get sales data using aggregation (much faster)
+      
       RouteStarInvoice.aggregate([
         {
           $match: {
@@ -121,11 +121,11 @@ const getDashboard = async (req, res, next) => {
         }
       ]),
 
-      // 5. Get sync stats - simplified version
+      
       getSyncStatisticsOptimized()
     ]);
 
-    // Process inventory stats
+    
     const invStats = inventoryStats[0];
     const totals = invStats.totals[0] || {
       totalItems: 0,
@@ -135,7 +135,7 @@ const getDashboard = async (req, res, next) => {
     };
     const categories = invStats.categories || [];
 
-    // Process sales data
+    
     const salesInfo = salesData[0];
     const salesTotals = salesInfo.totals[0] || { totalRevenue: 0, totalOrders: 0 };
     const invoiceStatusStats = {};
@@ -143,7 +143,7 @@ const getDashboard = async (req, res, next) => {
       invoiceStatusStats[s._id] = s.count;
     });
 
-    // Build top selling items
+    
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const topSellingItemsArray = salesInfo.topItems.map(item => ({
       name: item._id.name || 'Unknown',
@@ -171,15 +171,15 @@ const getDashboard = async (req, res, next) => {
       orderCount: item.orderCount
     }));
 
-    // Build sales trend
+    
     const salesTrend = salesInfo.byMonth.map(m => ({
       month: monthNames[m._id.month - 1],
       revenue: m.revenue,
-      profit: 0, // Simplified - remove expensive profit calculation
+      profit: 0, 
       orders: m.orders
     }));
 
-    // Calculate changes (simplified)
+    
     const currentMonth = new Date().getMonth();
     const lastMonthData = salesTrend[salesTrend.length - 1] || { revenue: 0, orders: 0 };
     const prevMonthData = salesTrend[salesTrend.length - 2] || { revenue: 0, orders: 0 };
@@ -203,19 +203,19 @@ const getDashboard = async (req, res, next) => {
           totalRevenue: salesTotals.totalRevenue,
           totalOrders: salesTotals.totalOrders,
           avgOrderValue: salesTotals.totalOrders > 0 ? salesTotals.totalRevenue / salesTotals.totalOrders : 0,
-          totalProfit: 0, // Simplified
-          profitMargin: "0.00", // Simplified
+          totalProfit: 0, 
+          profitMargin: "0.00", 
           revenueChange,
           ordersChange,
-          lowStockChange: 0, // Simplified
-          profitMarginChange: "0.0", // Simplified
-          totalPurchaseAmount: 0, // Can be added later if needed
+          lowStockChange: 0, 
+          profitMarginChange: "0.0", 
+          totalPurchaseAmount: 0, 
           totalPurchaseOrders: 0,
           avgPurchaseValue: 0,
           dataSource: 'automation'
         },
         categoryStats: categories,
-        recentActivity, // Already optimized
+        recentActivity, 
         topSellingItems,
         topSellingItemsDetailed,
         invoiceStatusStats,
@@ -234,7 +234,7 @@ const getDashboard = async (req, res, next) => {
   }
 };
 
-// Optimized sync statistics - only get what's needed
+
 const getSyncStatisticsOptimized = async () => {
   try {
     const [latestSync, last24HoursCount, weekSuccessRate] = await Promise.all([
@@ -274,14 +274,14 @@ const getSyncStatisticsOptimized = async () => {
       } : null,
       last24Hours: {
         syncCount: last24HoursCount,
-        successful: 0, // Simplified
+        successful: 0, 
         failed: 0,
         inProgress: 0
       },
       weeklyStats: {
         totalSyncs: weekStats.total,
         successRate: parseFloat(successRate),
-        averageDuration: 0 // Simplified
+        averageDuration: 0 
       },
       health: {
         status: isDataStale ? 'critical' : 'healthy',

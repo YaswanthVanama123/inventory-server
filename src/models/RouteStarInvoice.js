@@ -192,9 +192,9 @@ routeStarInvoiceSchema.index({ assignedTo: 1, invoiceDate: -1 });
 routeStarInvoiceSchema.index({ invoiceType: 1, status: 1 });
 routeStarInvoiceSchema.index({ stockProcessed: 1, isComplete: 1 });
 routeStarInvoiceSchema.index({ lastSyncedAt: -1 });
-routeStarInvoiceSchema.index({ 'lineItems.name': 1 }); // Optimize grouped items queries
-routeStarInvoiceSchema.index({ 'lineItems.sku': 1 }); // Optimize SKU filtering
-routeStarInvoiceSchema.index({ status: 1, 'lineItems.name': 1 }); // Compound index for stock summary queries
+routeStarInvoiceSchema.index({ 'lineItems.name': 1 }); 
+routeStarInvoiceSchema.index({ 'lineItems.sku': 1 }); 
+routeStarInvoiceSchema.index({ status: 1, 'lineItems.name': 1 }); 
 
 
 
