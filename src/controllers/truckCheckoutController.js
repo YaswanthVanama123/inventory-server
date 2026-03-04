@@ -212,6 +212,26 @@ class TruckCheckoutController {
       next(error);
     }
   }
+
+  async getAllEmployeesWithStats(req, res, next) {
+    try {
+      const filters = {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        search: req.query.search
+      };
+
+      const employees = await truckCheckoutService.getAllEmployeesWithStats(filters);
+
+      res.status(200).json({
+        success: true,
+        data: employees
+      });
+    } catch (error) {
+      console.error('Get all employees with stats error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new TruckCheckoutController();

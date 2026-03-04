@@ -304,7 +304,7 @@ class TruckCheckoutService {
     console.log('\n📊 Getting checkout sales tracking...');
 
     try {
-      
+
       const query = { status: { $ne: 'cancelled' } };
 
       if (filters.employeeName) {
@@ -326,18 +326,18 @@ class TruckCheckoutService {
         };
       }
 
-      
+
       const checkouts = await TruckCheckout.find(query)
         .sort({ checkoutDate: -1 })
         .lean();
 
       console.log(`✓ Found ${checkouts.length} checkouts to track`);
 
-      
+
       const trackingData = [];
 
       for (const checkout of checkouts) {
-        
+
         if (!checkout.itemName) {
           continue;
         }
@@ -347,19 +347,19 @@ class TruckCheckoutService {
         const truckNumber = checkout.truckNumber;
         const quantityCheckedOut = checkout.quantityTaking || 0;
 
-        
-        
-        
-        
+
+
+
+
         const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
 
-        
+
         const invoiceQuery = {
           invoiceDate: { $gte: checkoutDate },
           'lineItems': { $exists: true, $ne: [] }
         };
 
-        
+
         if (truckNumber) {
           invoiceQuery.$or = [
             { truckNumber: new RegExp(truckNumber, 'i') },
@@ -369,7 +369,7 @@ class TruckCheckoutService {
 
         const matchedInvoices = await RouteStarInvoice.find(invoiceQuery).lean();
 
-        
+
         let totalSold = 0;
         const invoiceDetails = [];
 
@@ -377,7 +377,7 @@ class TruckCheckoutService {
           for (const lineItem of invoice.lineItems || []) {
             const lineItemCanonical = await RouteStarItemAlias.getCanonicalName(lineItem.name);
 
-            
+
             if (
               lineItemCanonical === canonicalName ||
               lineItem.name.toLowerCase() === itemName.toLowerCase() ||
@@ -394,14 +394,14 @@ class TruckCheckoutService {
           }
         }
 
-        
+
         const remaining = quantityCheckedOut - totalSold;
         let status = 'Good';
 
         if (remaining > 0) {
-          status = 'Shortage'; 
+          status = 'Shortage';
         } else if (remaining < 0) {
-          status = 'Overage'; 
+          status = 'Overage';
         }
 
         trackingData.push({
@@ -415,7 +415,7 @@ class TruckCheckoutService {
           remaining: Math.abs(remaining),
           status,
           matchedInvoices: invoiceDetails.length,
-          invoiceDetails: invoiceDetails.slice(0, 5) 
+          invoiceDetails: invoiceDetails.slice(0, 5)
         });
       }
 
@@ -432,6 +432,66 @@ class TruckCheckoutService {
       };
     } catch (error) {
       console.error('Get checkout sales tracking error:', error);
+      throw error;
+    }
+  }
+
+  async getAllEmployeesWithStats(filters = {}) {
+    try {
+      console.log('\n👥 Getting all employees with stats...');
+
+      const matchStage = {};
+
+      if (filters.startDate || filters.endDate) {
+        matchStage.checkoutDate = {};
+        if (filters.startDate) matchStage.checkoutDate.$gte = new Date(filters.startDate);
+        if (filters.endDate) matchStage.checkoutDate.$lte = new Date(filters.endDate);
+      }
+
+      const employees = await TruckCheckout.aggregate([
+        ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
+        {
+          $group: {
+            _id: {
+              employeeName: '$employeeName',
+              truckNumber: { $ifNull: ['$truckNumber', 'N/A'] }
+            },
+            totalCheckouts: { $sum: 1 },
+            activeCheckouts: {
+              $sum: { $cond: [{ $eq: ['$status', 'checked_out'] }, 1, 0] }
+            },
+            completedCheckouts: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+            },
+            lastCheckoutDate: { $max: '$checkoutDate' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            employeeName: '$_id.employeeName',
+            truckNumber: '$_id.truckNumber',
+            totalCheckouts: 1,
+            activeCheckouts: 1,
+            completedCheckouts: 1,
+            lastCheckoutDate: 1
+          }
+        },
+        { $sort: { employeeName: 1 } }
+      ]);
+
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        return employees.filter(emp =>
+          emp.employeeName.toLowerCase().includes(searchLower) ||
+          emp.truckNumber.toLowerCase().includes(searchLower)
+        );
+      }
+
+      console.log(`✓ Found ${employees.length} employees\n`);
+      return employees;
+    } catch (error) {
+      console.error('Get all employees with stats error:', error);
       throw error;
     }
   }

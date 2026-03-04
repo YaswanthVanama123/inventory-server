@@ -24,6 +24,9 @@ router.get('/stats/employee/:employeeName', authenticate, truckCheckoutControlle
 router.get('/sales-tracking', authenticate, truckCheckoutController.getCheckoutSalesTracking);
 
 
+router.get('/employees/stats', authenticate, truckCheckoutController.getAllEmployeesWithStats);
+
+
 router.post('/create-new', authenticate, truckCheckoutController.createCheckout);
 
 
