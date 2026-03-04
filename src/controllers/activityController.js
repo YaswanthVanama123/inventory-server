@@ -432,7 +432,7 @@ exports.getDeleteActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    
+
     const query = {
       action: 'DELETE',
     };
@@ -478,6 +478,195 @@ exports.getDeleteActivities = async (req, res) => {
       success: false,
       error: {
         message: 'Failed to fetch delete activities',
+        code: 'FETCH_FAILED',
+      },
+    });
+  }
+};
+
+
+/**
+ * OPTIMIZED: Get page data (activities, stats, and users) in one API call
+ * Runs all three queries in parallel for maximum performance
+ */
+exports.getPageData = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      employeeId,
+      action,
+      resource,
+      startDate,
+      endDate,
+      search,
+    } = req.query;
+
+    // Build activity query
+    const activityQuery = {};
+    if (employeeId) activityQuery.performedBy = employeeId;
+    if (action) activityQuery.action = action;
+    if (resource) activityQuery.resource = resource;
+    if (startDate || endDate) {
+      activityQuery.timestamp = {};
+      if (startDate) activityQuery.timestamp.$gte = new Date(startDate);
+      if (endDate) activityQuery.timestamp.$lte = new Date(endDate);
+    }
+    if (search) {
+      activityQuery.$or = [
+        { 'details.itemName': { $regex: search, $options: 'i' } },
+        { 'details.skuCode': { $regex: search, $options: 'i' } },
+        { 'details.username': { $regex: search, $options: 'i' } },
+        { 'details.invoiceNumber': { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build stats date filter
+    const statsDateFilter = {};
+    if (startDate || endDate) {
+      statsDateFilter.timestamp = {};
+      if (startDate) statsDateFilter.timestamp.$gte = new Date(startDate);
+      if (endDate) statsDateFilter.timestamp.$lte = new Date(endDate);
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    // Run all queries in parallel for maximum performance
+    const [activities, total, users, stats] = await Promise.all([
+      // 1. Get activities
+      AuditLog.find(activityQuery)
+        .populate('performedBy', 'username fullName email role')
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+
+      // 2. Count total activities
+      AuditLog.countDocuments(activityQuery),
+
+      // 3. Get users list
+      User.find({ isDeleted: false })
+        .select('_id username fullName email role')
+        .sort({ fullName: 1 })
+        .lean(),
+
+      // 4. Get stats using aggregation
+      (async () => {
+        const [
+          mostActiveEmployees,
+          actionBreakdown,
+          resourceBreakdown,
+          dailyTrend,
+          totalActivities
+        ] = await Promise.all([
+          // Most active employees
+          AuditLog.aggregate([
+            { $match: statsDateFilter },
+            {
+              $group: {
+                _id: '$performedBy',
+                activityCount: { $sum: 1 },
+              },
+            },
+            { $sort: { activityCount: -1 } },
+            { $limit: 5 },
+            {
+              $lookup: {
+                from: 'users',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'user',
+              },
+            },
+            { $unwind: '$user' },
+            {
+              $project: {
+                userId: '$_id',
+                username: '$user.username',
+                fullName: '$user.fullName',
+                activityCount: 1,
+              },
+            },
+          ]),
+
+          // Action breakdown
+          AuditLog.aggregate([
+            { $match: statsDateFilter },
+            {
+              $group: {
+                _id: '$action',
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+          ]),
+
+          // Resource breakdown
+          AuditLog.aggregate([
+            { $match: statsDateFilter },
+            {
+              $group: {
+                _id: '$resource',
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+          ]),
+
+          // Daily trend (last 7 days)
+          AuditLog.aggregate([
+            {
+              $match: {
+                timestamp: { $gte: sevenDaysAgo },
+              },
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: '%Y-%m-%d', date: '$timestamp' },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ]),
+
+          // Total activities count
+          AuditLog.countDocuments(statsDateFilter),
+        ]);
+
+        return {
+          totalActivities,
+          mostActiveEmployees,
+          actionBreakdown,
+          resourceBreakdown,
+          dailyTrend,
+        };
+      })(),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        activities,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit),
+        },
+        users,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching page data:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to fetch page data',
         code: 'FETCH_FAILED',
       },
     });

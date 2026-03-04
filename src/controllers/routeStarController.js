@@ -194,7 +194,7 @@ class RouteStarController {
    */
   async syncPendingWithDetails(req, res, next) {
     try {
-      const { invoicesLimit = 100, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
+      const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
 
       const results = await routeStarService.syncPendingWithDetails(invoicesLimit, detailsLimit, triggeredBy);
 
@@ -220,7 +220,7 @@ class RouteStarController {
    */
   async syncClosedWithDetails(req, res, next) {
     try {
-      const { invoicesLimit = 100, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
+      const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
 
       const results = await routeStarService.syncClosedWithDetails(invoicesLimit, detailsLimit, triggeredBy);
 
@@ -284,8 +284,8 @@ class RouteStarController {
   async fullSync(req, res, next) {
     try {
       const options = {
-        itemsLimit: req.body.itemsLimit || 100,
-        invoicesLimit: req.body.invoicesLimit || 100,
+        itemsLimit: req.body.itemsLimit || 0,
+        invoicesLimit: req.body.invoicesLimit || 0,
         detailsLimit: req.body.detailsLimit || 50,
         processStock: req.body.processStock !== false
       };

@@ -3,6 +3,9 @@ const router = express.Router();
 const fetchHistoryController = require('../controllers/fetchHistoryController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
+// OPTIMIZED: Combined endpoint for fetch history page (history + active + stats)
+router.get('/page-data', authenticate, fetchHistoryController.getPageData);
+
 // Get all fetch history
 router.get('/', authenticate, fetchHistoryController.getFetchHistory);
 

@@ -73,8 +73,9 @@ fetchHistorySchema.index({ startedAt: -1 });
 fetchHistorySchema.index({ source: 1, startedAt: -1 });
 fetchHistorySchema.index({ status: 1, startedAt: -1 });
 
-// Auto-delete records older than 10 days
-fetchHistorySchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 }); // 10 days in seconds
+// DISABLED: Auto-delete was removing historical data
+// If you want to enable auto-cleanup, use the manual cleanup endpoint instead
+// fetchHistorySchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 }); // 10 days in seconds
 
 // Virtual for calculating duration if not set
 fetchHistorySchema.virtual('calculatedDuration').get(function() {

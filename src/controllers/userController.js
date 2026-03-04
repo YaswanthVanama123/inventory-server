@@ -4,11 +4,15 @@ const AuditLog = require('../models/AuditLog');
 
 
 
+/**
+ * Get all users - OPTIMIZED
+ * Runs count and find queries in parallel
+ */
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
 
-    
+    // Build query
     const query = { isDeleted: false };
     if (role) query.role = role;
     if (search) {
@@ -20,14 +24,18 @@ const getUsers = async (req, res, next) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const total = await User.countDocuments(query);
 
-    const users = await User.find(query)
-      .select('-password')
-      .populate('createdBy', 'username fullName')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // Run count and find queries in parallel for better performance
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select('-password')
+        .populate('createdBy', 'username fullName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      User.countDocuments(query)
+    ]);
 
     res.status(200).json({
       success: true,
@@ -50,11 +58,16 @@ const getUsers = async (req, res, next) => {
 
 
 
+/**
+ * Get single user - OPTIMIZED
+ * Uses lean() for better performance
+ */
 const getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false })
       .select('-password')
-      .populate('createdBy', 'username fullName');
+      .populate('createdBy', 'username fullName')
+      .lean();
 
     if (!user) {
       return res.status(404).json({
