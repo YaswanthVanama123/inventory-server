@@ -490,7 +490,14 @@ class StockService {
       }
     });
 
-    
+    // Get cutoff date from settings
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const cutoffDate = settings.stockCalculationCutoffDate;
+
+    console.log(`[getSellStock] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
+
+
     const [orders, invoices, checkouts, discrepancies, aliasMap] = await Promise.all([
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] }
@@ -517,7 +524,7 @@ class StockService {
     const categoryMap = {};
     const categoryInvoices = {};
 
-    
+    // Process purchases
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
@@ -531,8 +538,10 @@ class StockService {
                 totalPurchased: 0,
                 totalPurchaseValue: 0,
                 totalSold: 0,
+                totalSoldBeforeCutoff: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalCheckedOutAfterCutoff: 0,
                 totalDiscrepancies: 0,
                 totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
@@ -550,9 +559,12 @@ class StockService {
       }
     });
 
-    
+    // Process invoices - track ALL for display, but separate before/after cutoff for remaining stock
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
+        const invoiceDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : null;
+        const isBeforeCutoff = !cutoffDate || !invoiceDate || invoiceDate < cutoffDate;
+
         invoice.lineItems.forEach(item => {
           const rawItemName = item.name ? item.name.trim() : '';
           const itemNameLower = rawItemName.toLowerCase();
@@ -565,8 +577,10 @@ class StockService {
                 totalPurchased: 0,
                 totalPurchaseValue: 0,
                 totalSold: 0,
+                totalSoldBeforeCutoff: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalCheckedOutAfterCutoff: 0,
                 totalDiscrepancies: 0,
                 totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
@@ -576,8 +590,14 @@ class StockService {
               };
             }
 
+            // Always add to totalSold (for display)
             categoryMap[canonicalName].totalSold += item.quantity || 0;
             categoryMap[canonicalName].totalSalesValue += item.amount || 0;
+
+            // Only add to totalSoldBeforeCutoff if before cutoff date (for remaining stock calculation)
+            if (isBeforeCutoff) {
+              categoryMap[canonicalName].totalSoldBeforeCutoff += item.quantity || 0;
+            }
 
             if (!categoryInvoices[canonicalName]) {
               categoryInvoices[canonicalName] = new Set();
@@ -588,9 +608,12 @@ class StockService {
       }
     });
 
-    
+    // Process checkouts - track ALL for display, but separate after cutoff for remaining stock
     checkouts.forEach(checkout => {
-      
+      const checkoutDate = checkout.checkoutDate ? new Date(checkout.checkoutDate) : null;
+      const isAfterCutoff = cutoffDate && checkoutDate && checkoutDate >= cutoffDate;
+
+      // Old structure: itemsTaken array
       if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
         checkout.itemsTaken.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
@@ -604,8 +627,10 @@ class StockService {
                 totalPurchased: 0,
                 totalPurchaseValue: 0,
                 totalSold: 0,
+                totalSoldBeforeCutoff: 0,
                 totalSalesValue: 0,
                 totalCheckedOut: 0,
+                totalCheckedOutAfterCutoff: 0,
                 totalDiscrepancies: 0,
                 totalDiscrepancyDifference: 0,
                 checkoutDetails: [],
@@ -615,7 +640,14 @@ class StockService {
               };
             }
 
+            // Always add to totalCheckedOut (for display)
             categoryMap[canonicalName].totalCheckedOut += item.quantity || 0;
+
+            // Only add to totalCheckedOutAfterCutoff if after cutoff date (for remaining stock calculation)
+            if (isAfterCutoff) {
+              categoryMap[canonicalName].totalCheckedOutAfterCutoff += item.quantity || 0;
+            }
+
             categoryMap[canonicalName].checkoutDetails.push({
               employeeName: checkout.employeeName,
               truckNumber: checkout.truckNumber,
@@ -626,7 +658,7 @@ class StockService {
         });
       }
 
-      
+      // New structure: itemName and quantityTaking
       if (checkout.itemName && checkout.quantityTaking) {
         const itemName = checkout.itemName.trim();
         const itemNameLower = itemName.toLowerCase();
@@ -639,8 +671,10 @@ class StockService {
               totalPurchased: 0,
               totalPurchaseValue: 0,
               totalSold: 0,
+              totalSoldBeforeCutoff: 0,
               totalSalesValue: 0,
               totalCheckedOut: 0,
+              totalCheckedOutAfterCutoff: 0,
               totalDiscrepancies: 0,
               totalDiscrepancyDifference: 0,
               checkoutDetails: [],
@@ -650,7 +684,14 @@ class StockService {
             };
           }
 
+          // Always add to totalCheckedOut (for display)
           categoryMap[canonicalName].totalCheckedOut += checkout.quantityTaking || 0;
+
+          // Only add to totalCheckedOutAfterCutoff if after cutoff date (for remaining stock calculation)
+          if (isAfterCutoff) {
+            categoryMap[canonicalName].totalCheckedOutAfterCutoff += checkout.quantityTaking || 0;
+          }
+
           categoryMap[canonicalName].checkoutDetails.push({
             employeeName: checkout.employeeName,
             truckNumber: checkout.truckNumber,
@@ -693,14 +734,23 @@ class StockService {
       }
     });
 
-    
+    // Calculate remaining stock with cutoff date logic
     Object.values(categoryMap).forEach(category => {
       const adjustment = category.discrepancyAdjustment || 0;
-      category.stockRemaining = category.totalPurchased - category.totalSold - category.totalCheckedOut + adjustment;
+
+      // NEW FORMULA with cutoff date logic:
+      // stockRemaining = totalPurchased - invoicesSoldBeforeCutoff - checkoutsAfterCutoff + discrepancyAdjustment
+      category.stockRemaining = category.totalPurchased
+                              - category.totalSoldBeforeCutoff
+                              - category.totalCheckedOutAfterCutoff
+                              + adjustment;
+
       delete category.discrepancyAdjustment;
+
+      console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${category.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
 
-    
+    // Ensure all forSell items have entries
     forSellItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -708,8 +758,10 @@ class StockService {
           totalPurchased: 0,
           totalPurchaseValue: 0,
           totalSold: 0,
+          totalSoldBeforeCutoff: 0,
           totalSalesValue: 0,
           totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
           totalDiscrepancies: 0,
           totalDiscrepancyDifference: 0,
           checkoutDetails: [],
@@ -778,7 +830,14 @@ class StockService {
     const { forUseItems, forSellItems, aliasData, mappings } = metadata;
     console.timeEnd('[StockSummary] Step 1: Metadata');
 
-    
+    // Get cutoff date from settings
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const cutoffDate = settings.stockCalculationCutoffDate;
+
+    console.log(`[StockSummary] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
+
+
     const useAllowedSet = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedSet = new Set(forSellItems.map(item => item.itemName));
 
@@ -962,7 +1021,7 @@ class StockService {
         }
       ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
 
-      
+      // Invoices aggregation with cutoff date logic
       finalSellVariationsArray.length > 0 ? RouteStarInvoice.aggregate([
         {
           $match: {
@@ -978,39 +1037,82 @@ class StockService {
           }
         },
         {
-          $group: {
-            _id: { $toLower: '$lineItems.name' },
-            totalSold: { $sum: '$lineItems.quantity' },
-            totalSalesValue: { $sum: '$lineItems.amount' },
-            invoiceNumbers: { $addToSet: '$invoiceNumber' }
-          }
-        },
-        {
-          $project: {
-            itemName: '$_id',
-            totalSold: 1,
-            totalSalesValue: 1,
-            invoiceCount: { $size: '$invoiceNumbers' },
-            _id: 0
+          $facet: {
+            // ALL invoices (for display totalSold column)
+            allInvoices: [
+              {
+                $group: {
+                  _id: { $toLower: '$lineItems.name' },
+                  totalSold: { $sum: '$lineItems.quantity' },
+                  totalSalesValue: { $sum: '$lineItems.amount' },
+                  invoiceNumbers: { $addToSet: '$invoiceNumber' }
+                }
+              },
+              {
+                $project: {
+                  itemName: '$_id',
+                  totalSold: 1,
+                  totalSalesValue: 1,
+                  invoiceCount: { $size: '$invoiceNumbers' },
+                  _id: 0
+                }
+              }
+            ],
+            // Invoices BEFORE cutoff (for remaining stock calculation)
+            invoicesBeforeCutoff: cutoffDate ? [
+              {
+                $match: {
+                  invoiceDate: { $lt: cutoffDate }
+                }
+              },
+              {
+                $group: {
+                  _id: { $toLower: '$lineItems.name' },
+                  totalSoldBeforeCutoff: { $sum: '$lineItems.quantity' }
+                }
+              },
+              {
+                $project: {
+                  itemName: '$_id',
+                  totalSoldBeforeCutoff: 1,
+                  _id: 0
+                }
+              }
+            ] : [
+              // If no cutoff, all invoices count for remaining stock
+              {
+                $group: {
+                  _id: { $toLower: '$lineItems.name' },
+                  totalSoldBeforeCutoff: { $sum: '$lineItems.quantity' }
+                }
+              },
+              {
+                $project: {
+                  itemName: '$_id',
+                  totalSoldBeforeCutoff: 1,
+                  _id: 0
+                }
+              }
+            ]
           }
         }
-      ]) : Promise.resolve([]),
+      ]) : Promise.resolve([{ allInvoices: [], invoicesBeforeCutoff: [] }]),
 
-      
+      // Checkouts aggregation with cutoff date logic
       finalSellVariationsArray.length > 0 ? TruckCheckout.aggregate([
         {
           $match: {
             status: 'checked_out',
             $or: [
-              { 'itemsTaken.0': { $exists: true } }, 
-              { 'itemName': { $exists: true } } 
+              { 'itemsTaken.0': { $exists: true } },
+              { 'itemName': { $exists: true } }
             ]
           }
         },
         {
           $facet: {
-            
-            oldStructure: [
+            // ALL checkouts - old structure (for display)
+            allCheckoutsOld: [
               { $match: { 'itemsTaken.0': { $exists: true } } },
               { $unwind: '$itemsTaken' },
               {
@@ -1025,8 +1127,8 @@ class StockService {
                 }
               }
             ],
-            
-            newStructure: [
+            // ALL checkouts - new structure (for display)
+            allCheckoutsNew: [
               { $match: { 'itemName': { $exists: true, $in: finalSellVariationsArray } } },
               {
                 $group: {
@@ -1034,30 +1136,46 @@ class StockService {
                   totalCheckedOut: { $sum: '$quantityTaking' }
                 }
               }
-            ]
-          }
-        },
-        {
-          $project: {
-            combined: { $concatArrays: ['$oldStructure', '$newStructure'] }
-          }
-        },
-        { $unwind: '$combined' },
-        { $replaceRoot: { newRoot: '$combined' } },
-        {
-          $group: {
-            _id: '$_id',
-            totalCheckedOut: { $sum: '$totalCheckedOut' }
-          }
-        },
-        {
-          $project: {
-            itemName: '$_id',
-            totalCheckedOut: 1,
-            _id: 0
+            ],
+            // Checkouts AFTER cutoff - old structure (for remaining stock calculation)
+            checkoutsAfterCutoffOld: cutoffDate ? [
+              {
+                $match: {
+                  checkoutDate: { $gte: cutoffDate },
+                  'itemsTaken.0': { $exists: true }
+                }
+              },
+              { $unwind: '$itemsTaken' },
+              {
+                $match: {
+                  'itemsTaken.name': { $in: finalSellVariationsArray }
+                }
+              },
+              {
+                $group: {
+                  _id: { $toLower: '$itemsTaken.name' },
+                  totalCheckedOutAfterCutoff: { $sum: '$itemsTaken.quantity' }
+                }
+              }
+            ] : [{ $match: { _id: null } }],
+            // Checkouts AFTER cutoff - new structure (for remaining stock calculation)
+            checkoutsAfterCutoffNew: cutoffDate ? [
+              {
+                $match: {
+                  checkoutDate: { $gte: cutoffDate },
+                  'itemName': { $exists: true, $in: finalSellVariationsArray }
+                }
+              },
+              {
+                $group: {
+                  _id: { $toLower: '$itemName' },
+                  totalCheckedOutAfterCutoff: { $sum: '$quantityTaking' }
+                }
+              }
+            ] : [{ $match: { _id: null } }]
           }
         }
-      ]) : Promise.resolve([]),
+      ]) : Promise.resolve([{ allCheckoutsOld: [], allCheckoutsNew: [], checkoutsAfterCutoffOld: [], checkoutsAfterCutoffNew: [] }]),
 
       
       (finalSellVariationsArray.length > 0 || sellSKUs.length > 0) ? StockDiscrepancy.find({
@@ -1071,8 +1189,39 @@ class StockService {
 
     const usePurchases = ordersResult[0]?.usePurchases || [];
     const sellPurchases = ordersResult[0]?.sellPurchases || [];
-    const sales = invoicesResult;
-    const checkouts = checkoutsResult;
+
+    // Extract invoice data from facets
+    const allInvoices = invoicesResult[0]?.allInvoices || [];
+    const invoicesBeforeCutoff = invoicesResult[0]?.invoicesBeforeCutoff || [];
+
+    // Extract and combine checkout data from facets (old + new structure)
+    const allCheckoutsOld = checkoutsResult[0]?.allCheckoutsOld || [];
+    const allCheckoutsNew = checkoutsResult[0]?.allCheckoutsNew || [];
+    const checkoutsAfterCutoffOld = checkoutsResult[0]?.checkoutsAfterCutoffOld || [];
+    const checkoutsAfterCutoffNew = checkoutsResult[0]?.checkoutsAfterCutoffNew || [];
+
+    // Combine old and new structure results for all checkouts (display)
+    const allCheckoutsMap = new Map();
+    [...allCheckoutsOld, ...allCheckoutsNew].forEach(item => {
+      const key = item._id || item.itemName;
+      if (!allCheckoutsMap.has(key)) {
+        allCheckoutsMap.set(key, { itemName: key, totalCheckedOut: 0 });
+      }
+      allCheckoutsMap.get(key).totalCheckedOut += item.totalCheckedOut || 0;
+    });
+    const allCheckoutsData = Array.from(allCheckoutsMap.values());
+
+    // Combine old and new structure results for checkouts after cutoff (calculation)
+    const checkoutsAfterCutoffMap = new Map();
+    [...checkoutsAfterCutoffOld, ...checkoutsAfterCutoffNew].forEach(item => {
+      const key = item._id || item.itemName;
+      if (!checkoutsAfterCutoffMap.has(key)) {
+        checkoutsAfterCutoffMap.set(key, { itemName: key, totalCheckedOutAfterCutoff: 0 });
+      }
+      checkoutsAfterCutoffMap.get(key).totalCheckedOutAfterCutoff += item.totalCheckedOutAfterCutoff || 0;
+    });
+    const checkoutsAfterCutoffData = Array.from(checkoutsAfterCutoffMap.values());
+
     const rawDiscrepancies = discrepanciesResult;
 
     
@@ -1160,32 +1309,26 @@ class StockService {
       }
     }
 
-    
+    // Build sales maps - one for display (all invoices), one for remaining stock (before cutoff)
     const salesByCategory = new Map();
-    sales.forEach(s => {
-      
-      const itemNameLower = s.itemName.toLowerCase();
+    const salesBeforeCutoffByCategory = new Map();
 
-      
+    // Process ALL invoices (for display totalSold column)
+    allInvoices.forEach(s => {
+      const itemNameLower = s.itemName.toLowerCase();
       let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
 
-      
       if (!targetCategory) {
         targetCategory = getCanonical(s.itemName);
-        
         if (!sellAllowedSet.has(targetCategory)) {
           targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
         }
       }
 
-      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         const itemNameUpper = s.itemName.toUpperCase();
-
         if (keywordToCategoriesMap.has(itemNameUpper)) {
-          
           const relevantCategories = Array.from(keywordToCategoriesMap.get(itemNameUpper));
-
           relevantCategories.forEach(cat => {
             if (!salesByCategory.has(cat)) {
               salesByCategory.set(cat, {
@@ -1199,11 +1342,10 @@ class StockService {
             categoryData.totalSalesValue += s.totalSalesValue || 0;
             categoryData.invoiceCount += s.invoiceCount || 0;
           });
-          return; 
+          return;
         }
       }
 
-      
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!salesByCategory.has(targetCategory)) {
           salesByCategory.set(targetCategory, {
@@ -1216,6 +1358,46 @@ class StockService {
         categoryData.totalSold += s.totalSold || 0;
         categoryData.totalSalesValue += s.totalSalesValue || 0;
         categoryData.invoiceCount += s.invoiceCount || 0;
+      }
+    });
+
+    // Process invoices BEFORE cutoff (for remaining stock calculation)
+    invoicesBeforeCutoff.forEach(s => {
+      const itemNameLower = s.itemName.toLowerCase();
+      let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
+
+      if (!targetCategory) {
+        targetCategory = getCanonical(s.itemName);
+        if (!sellAllowedSet.has(targetCategory)) {
+          targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
+        }
+      }
+
+      if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
+        const itemNameUpper = s.itemName.toUpperCase();
+        if (keywordToCategoriesMap.has(itemNameUpper)) {
+          const relevantCategories = Array.from(keywordToCategoriesMap.get(itemNameUpper));
+          relevantCategories.forEach(cat => {
+            if (!salesBeforeCutoffByCategory.has(cat)) {
+              salesBeforeCutoffByCategory.set(cat, {
+                totalSoldBeforeCutoff: 0
+              });
+            }
+            const categoryData = salesBeforeCutoffByCategory.get(cat);
+            categoryData.totalSoldBeforeCutoff += s.totalSoldBeforeCutoff || 0;
+          });
+          return;
+        }
+      }
+
+      if (targetCategory && sellAllowedSet.has(targetCategory)) {
+        if (!salesBeforeCutoffByCategory.has(targetCategory)) {
+          salesBeforeCutoffByCategory.set(targetCategory, {
+            totalSoldBeforeCutoff: 0
+          });
+        }
+        const categoryData = salesBeforeCutoffByCategory.get(targetCategory);
+        categoryData.totalSoldBeforeCutoff += s.totalSoldBeforeCutoff || 0;
       }
     });
 
@@ -1251,7 +1433,7 @@ class StockService {
       }
     });
 
-    
+    // Build sellStockMap
     const sellStockMap = new Map();
 
     sellPurchases.forEach(p => {
@@ -1263,8 +1445,10 @@ class StockService {
             totalPurchased: 0,
             totalPurchaseValue: 0,
             totalSold: 0,
+            totalSoldBeforeCutoff: 0,
             totalSalesValue: 0,
             totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
             totalDiscrepancies: 0,
             totalDiscrepancyDifference: 0,
             itemCount: 0,
@@ -1279,7 +1463,7 @@ class StockService {
       }
     });
 
-    
+    // Add totalSold from all invoices (for display)
     salesByCategory.forEach((saleData, category) => {
       if (sellAllowedSet.has(category)) {
         if (!sellStockMap.has(category)) {
@@ -1288,8 +1472,10 @@ class StockService {
             totalPurchased: 0,
             totalPurchaseValue: 0,
             totalSold: 0,
+            totalSoldBeforeCutoff: 0,
             totalSalesValue: 0,
             totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
             totalDiscrepancies: 0,
             totalDiscrepancyDifference: 0,
             itemCount: 0,
@@ -1304,7 +1490,33 @@ class StockService {
       }
     });
 
-    checkouts.forEach(c => {
+    // Add totalSoldBeforeCutoff (for remaining stock calculation)
+    salesBeforeCutoffByCategory.forEach((saleData, category) => {
+      if (sellAllowedSet.has(category)) {
+        if (!sellStockMap.has(category)) {
+          sellStockMap.set(category, {
+            categoryName: category,
+            totalPurchased: 0,
+            totalPurchaseValue: 0,
+            totalSold: 0,
+            totalSoldBeforeCutoff: 0,
+            totalSalesValue: 0,
+            totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
+            totalDiscrepancies: 0,
+            totalDiscrepancyDifference: 0,
+            itemCount: 0,
+            invoiceCount: 0,
+            stockRemaining: 0
+          });
+        }
+        const stock = sellStockMap.get(category);
+        stock.totalSoldBeforeCutoff += saleData.totalSoldBeforeCutoff || 0;
+      }
+    });
+
+    // Add totalCheckedOut from all checkouts (for display)
+    allCheckoutsData.forEach(c => {
       const canonical = getCanonical(c.itemName);
       if (sellAllowedSet.has(canonical)) {
         if (!sellStockMap.has(canonical)) {
@@ -1313,8 +1525,10 @@ class StockService {
             totalPurchased: 0,
             totalPurchaseValue: 0,
             totalSold: 0,
+            totalSoldBeforeCutoff: 0,
             totalSalesValue: 0,
             totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
             totalDiscrepancies: 0,
             totalDiscrepancyDifference: 0,
             itemCount: 0,
@@ -1327,8 +1541,34 @@ class StockService {
       }
     });
 
+    // Add totalCheckedOutAfterCutoff (for remaining stock calculation)
+    checkoutsAfterCutoffData.forEach(c => {
+      const canonical = getCanonical(c.itemName);
+      if (sellAllowedSet.has(canonical)) {
+        if (!sellStockMap.has(canonical)) {
+          sellStockMap.set(canonical, {
+            categoryName: canonical,
+            totalPurchased: 0,
+            totalPurchaseValue: 0,
+            totalSold: 0,
+            totalSoldBeforeCutoff: 0,
+            totalSalesValue: 0,
+            totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
+            totalDiscrepancies: 0,
+            totalDiscrepancyDifference: 0,
+            itemCount: 0,
+            invoiceCount: 0,
+            stockRemaining: 0
+          });
+        }
+        const stock = sellStockMap.get(canonical);
+        stock.totalCheckedOutAfterCutoff += c.totalCheckedOutAfterCutoff || 0;
+      }
+    });
+
     discrepancies.forEach(d => {
-      const canonical = d.categoryName; 
+      const canonical = d.categoryName;
 
       if (sellAllowedSet.has(canonical)) {
         if (!sellStockMap.has(canonical)) {
@@ -1337,8 +1577,10 @@ class StockService {
             totalPurchased: 0,
             totalPurchaseValue: 0,
             totalSold: 0,
+            totalSoldBeforeCutoff: 0,
             totalSalesValue: 0,
             totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
             totalDiscrepancies: 0,
             totalDiscrepancyDifference: 0,
             itemCount: 0,
@@ -1352,11 +1594,19 @@ class StockService {
       }
     });
 
-    
+    // Calculate remaining stock with NEW cutoff date formula
     sellStockMap.forEach((item, category) => {
       const discrepancy = discrepancies.find(d => d.categoryName === category);
       const adjustment = discrepancy ? (discrepancy.approvedAdjustment || 0) : 0;
-      item.stockRemaining = item.totalPurchased - item.totalSold - item.totalCheckedOut + adjustment;
+
+      // NEW FORMULA:
+      // stockRemaining = totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + adjustment
+      item.stockRemaining = item.totalPurchased
+                          - item.totalSoldBeforeCutoff
+                          - item.totalCheckedOutAfterCutoff
+                          + adjustment;
+
+      console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
 
     forSellItems.forEach(item => {
@@ -1366,8 +1616,10 @@ class StockService {
           totalPurchased: 0,
           totalPurchaseValue: 0,
           totalSold: 0,
+          totalSoldBeforeCutoff: 0,
           totalSalesValue: 0,
           totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
           totalDiscrepancies: 0,
           totalDiscrepancyDifference: 0,
           itemCount: 0,
