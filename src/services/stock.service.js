@@ -11,71 +11,119 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
  * Business logic for stock operations
  */
 class StockService {
+  constructor() {
+    // Simple in-memory cache for metadata
+    this._cache = new Map();
+    this._cacheTTL = new Map();
+  }
+
+  /**
+   * Simple cache get with TTL check
+   */
+  _cacheGet(key) {
+    const ttl = this._cacheTTL.get(key);
+    if (ttl && Date.now() > ttl) {
+      this._cache.delete(key);
+      this._cacheTTL.delete(key);
+      return null;
+    }
+    return this._cache.get(key);
+  }
+
+  /**
+   * Simple cache set with TTL (in seconds)
+   */
+  _cacheSet(key, value, ttlSeconds) {
+    this._cache.set(key, value);
+    this._cacheTTL.set(key, Date.now() + (ttlSeconds * 1000));
+  }
+
   /**
    * Get category SKUs with purchase history
    */
   async getCategorySkus(categoryName) {
+    console.time(`[getCategorySkus] Total for ${categoryName}`);
+
     // Get mappings for this category
+    console.time('[getCategorySkus] Step 1: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
+    console.timeEnd('[getCategorySkus] Step 1: Get mappings');
 
     const skus = mappings.map(m => m.modelNumber);
 
     if (skus.length === 0) {
+      console.timeEnd(`[getCategorySkus] Total for ${categoryName}`);
       return {
         categoryName,
         skus: []
       };
     }
 
-    // Get orders containing these SKUs
-    const orders = await CustomerConnectOrder.find({
-      status: { $in: ['Complete', 'Processing', 'Shipped'] },
-      'items.sku': { $in: skus }
-    }).lean();
+    console.log(`[getCategorySkus] Found ${skus.length} SKUs for ${categoryName}`);
 
-    // Build SKU data
-    const skuData = {};
-
-    orders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
-          const sku = item.sku ? item.sku.toUpperCase() : '';
-
-          if (skus.includes(sku)) {
-            if (!skuData[sku]) {
-              skuData[sku] = {
-                sku,
-                itemName: item.name || '',
-                totalQuantity: 0,
-                totalValue: 0,
-                purchaseHistory: []
-              };
+    // Use aggregation instead of fetching all orders
+    console.time('[getCategorySkus] Step 2: Aggregate SKU data');
+    const skuAggregation = await CustomerConnectOrder.aggregate([
+      {
+        $match: {
+          status: { $in: ['Complete', 'Processing', 'Shipped'] },
+          'items.sku': { $in: skus }
+        }
+      },
+      { $unwind: '$items' },
+      {
+        $match: {
+          'items.sku': { $in: skus }
+        }
+      },
+      {
+        $group: {
+          _id: { $toUpper: '$items.sku' },
+          itemName: { $first: '$items.name' },
+          totalQuantity: { $sum: '$items.qty' },
+          totalValue: { $sum: '$items.lineTotal' },
+          purchaseHistory: {
+            $push: {
+              orderNumber: '$orderNumber',
+              orderDate: '$orderDate',
+              quantity: '$items.qty',
+              unitPrice: '$items.unitPrice',
+              lineTotal: '$items.lineTotal',
+              vendor: '$vendor.name',
+              status: '$status'
             }
-
-            skuData[sku].totalQuantity += item.qty || 0;
-            skuData[sku].totalValue += item.lineTotal || 0;
-            skuData[sku].purchaseHistory.push({
-              orderNumber: order.orderNumber,
-              orderDate: order.orderDate,
-              quantity: item.qty,
-              unitPrice: item.unitPrice,
-              lineTotal: item.lineTotal,
-              vendor: order.vendor?.name || '',
-              status: order.status
-            });
           }
-        });
-      }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          sku: '$_id',
+          itemName: 1,
+          totalQuantity: 1,
+          totalValue: 1,
+          purchaseHistory: 1
+        }
+      },
+      { $sort: { sku: 1 } }
+    ]);
+    console.timeEnd('[getCategorySkus] Step 2: Aggregate SKU data');
+
+    // Convert to object for easy lookup
+    const skuData = {};
+    skuAggregation.forEach(item => {
+      skuData[item.sku] = item;
     });
 
-    // Ensure all SKUs have an entry
+    // Ensure all SKUs have an entry (even if no orders)
     skus.forEach(sku => {
-      if (!skuData[sku]) {
+      const skuUpper = sku.toUpperCase();
+      if (!skuData[skuUpper]) {
         const mapping = mappings.find(m => m.modelNumber === sku);
-        skuData[sku] = {
-          sku,
+        skuData[skuUpper] = {
+          sku: skuUpper,
           itemName: mapping?.notes || '',
           totalQuantity: 0,
           totalValue: 0,
@@ -89,6 +137,8 @@ class StockService {
       a.sku.localeCompare(b.sku)
     );
 
+    console.timeEnd(`[getCategorySkus] Total for ${categoryName}`);
+
     return {
       categoryName,
       skus: skuArray
@@ -99,8 +149,12 @@ class StockService {
    * Get category sales with purchases, sales, checkouts, and discrepancies
    */
   async getCategorySales(categoryName) {
+    console.time(`[getCategorySales] Total for ${categoryName}`);
+
     // Load alias map
+    console.time('[getCategorySales] Step 1: Load aliases');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    console.timeEnd('[getCategorySales] Step 1: Load aliases');
 
     // Find all variations of the category name
     const variations = this._getItemVariations(categoryName, aliasMap);
@@ -108,194 +162,209 @@ class StockService {
     console.log(`Finding data for category: ${categoryName}, variations:`, variations);
 
     // Get mappings
+    console.time('[getCategorySales] Step 2: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
+    console.timeEnd('[getCategorySales] Step 2: Get mappings');
 
     const skus = mappings.map(m => m.modelNumber);
 
     if (skus.length === 0) {
+      console.timeEnd(`[getCategorySales] Total for ${categoryName}`);
       return {
         categoryName,
         skus: []
       };
     }
 
-    // Extract category keywords for sales matching
-    const categoryKeywords = ['WHITE', 'BLACK', 'BLUE', 'RED', 'GREEN', 'YELLOW', 'BROWN', 'GRAY', 'GREY', 'ORANGE', 'PINK', 'PURPLE'];
-    const routeStarItemNames = new Set([categoryName]);
+    console.log(`[getCategorySales] Found ${skus.length} SKUs`);
 
-    // Fetch all data in parallel
-    const [orders, invoices, checkouts, discrepancies] = await Promise.all([
-      CustomerConnectOrder.find({
-        status: { $in: ['Complete', 'Processing', 'Shipped'] },
-        'items.sku': { $in: skus }
-      }).lean(),
+    // Fetch all data in parallel using aggregations
+    console.time('[getCategorySales] Step 3: Parallel aggregations');
+    const [purchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
+      // Purchases aggregation
+      CustomerConnectOrder.aggregate([
+        {
+          $match: {
+            status: { $in: ['Complete', 'Processing', 'Shipped'] },
+            'items.sku': { $in: skus }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $match: {
+            'items.sku': { $in: skus }
+          }
+        },
+        {
+          $group: {
+            _id: { $toUpper: '$items.sku' },
+            itemName: { $first: '$items.name' },
+            totalPurchased: { $sum: '$items.qty' },
+            totalPurchaseValue: { $sum: '$items.lineTotal' },
+            purchaseHistory: {
+              $push: {
+                orderNumber: '$orderNumber',
+                orderDate: '$orderDate',
+                quantity: '$items.qty',
+                unitPrice: '$items.unitPrice',
+                lineTotal: '$items.lineTotal',
+                vendor: '$vendor.name',
+                status: '$status'
+              }
+            }
+          }
+        }
+      ]),
 
-      RouteStarInvoice.find({
-        status: { $in: ['Completed', 'Closed', 'Pending'] },
-        'lineItems.name': { $in: variations }
-      }).lean(),
+      // Sales aggregation
+      RouteStarInvoice.aggregate([
+        {
+          $match: {
+            status: { $in: ['Completed', 'Closed', 'Pending'] },
+            'lineItems.name': { $in: variations }
+          }
+        },
+        { $unwind: '$lineItems' },
+        {
+          $match: {
+            'lineItems.name': { $in: variations }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalSold: { $sum: '$lineItems.quantity' },
+            totalSalesValue: { $sum: '$lineItems.amount' },
+            salesHistory: {
+              $push: {
+                invoiceNumber: '$invoiceNumber',
+                invoiceDate: '$invoiceDate',
+                quantity: '$lineItems.quantity',
+                rate: '$lineItems.rate',
+                amount: '$lineItems.amount',
+                customer: '$customer.name',
+                status: '$status'
+              }
+            }
+          }
+        }
+      ]),
 
-      TruckCheckout.find({
-        status: 'checked_out',
-        $or: [
-          { 'itemsTaken.name': { $in: variations } },  // Old structure
-          { itemName: { $in: variations } }             // New structure
-        ]
-      }).lean(),
+      // Checkouts aggregation (both old and new structure)
+      TruckCheckout.aggregate([
+        {
+          $match: {
+            status: 'checked_out',
+            $or: [
+              { 'itemsTaken.name': { $in: variations } },
+              { itemName: { $in: variations } }
+            ]
+          }
+        },
+        {
+          $facet: {
+            oldStructure: [
+              { $match: { 'itemsTaken.0': { $exists: true } } },
+              { $unwind: '$itemsTaken' },
+              { $match: { 'itemsTaken.name': { $in: variations } } },
+              {
+                $group: {
+                  _id: null,
+                  totalCheckedOut: { $sum: '$itemsTaken.quantity' },
+                  checkoutHistory: {
+                    $push: {
+                      employeeName: '$employeeName',
+                      truckNumber: '$truckNumber',
+                      checkoutDate: '$checkoutDate',
+                      quantity: '$itemsTaken.quantity',
+                      notes: '$itemsTaken.notes'
+                    }
+                  }
+                }
+              }
+            ],
+            newStructure: [
+              { $match: { itemName: { $in: variations } } },
+              {
+                $group: {
+                  _id: null,
+                  totalCheckedOut: { $sum: '$quantityTaking' },
+                  checkoutHistory: {
+                    $push: {
+                      employeeName: '$employeeName',
+                      truckNumber: '$truckNumber',
+                      checkoutDate: '$checkoutDate',
+                      quantity: '$quantityTaking',
+                      notes: '$notes'
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]),
 
+      // Discrepancies (keep as is since it needs population)
       StockDiscrepancy.find({
         $or: [
           { categoryName: categoryName },
           { categoryName: { $in: variations } },
           { itemName: { $in: variations } },
-          { itemSku: { $in: skus } }  // Match by SKU as well
+          { itemSku: { $in: skus } }
         ]
       })
         .populate('reportedBy', 'username fullName')
         .populate('resolvedBy', 'username fullName')
         .lean()
     ]);
+    console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
 
-    // Extract item names from orders
-    orders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
-          if (skus.includes(item.sku?.toUpperCase())) {
-            const itemNameUpper = (item.name || '').toUpperCase();
-            categoryKeywords.forEach(keyword => {
-              if (itemNameUpper.includes(keyword)) {
-                routeStarItemNames.add(keyword);
-              }
-            });
-          }
-        });
-      }
-    });
-
+    // Build SKU data from purchase aggregation
     const skuData = {};
-
-    // Process purchases
-    orders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
-          const sku = item.sku ? item.sku.toUpperCase() : '';
-
-          if (skus.includes(sku)) {
-            if (!skuData[sku]) {
-              skuData[sku] = {
-                sku,
-                itemName: item.name || '',
-                totalPurchased: 0,
-                totalPurchaseValue: 0,
-                totalSold: 0,
-                totalSalesValue: 0,
-                totalCheckedOut: 0,
-                purchaseHistory: [],
-                salesHistory: [],
-                checkoutHistory: [],
-                discrepancyHistory: []
-              };
-            }
-
-            skuData[sku].totalPurchased += item.qty || 0;
-            skuData[sku].totalPurchaseValue += item.lineTotal || 0;
-            skuData[sku].purchaseHistory.push({
-              orderNumber: order.orderNumber,
-              orderDate: order.orderDate,
-              quantity: item.qty,
-              unitPrice: item.unitPrice,
-              lineTotal: item.lineTotal,
-              vendor: order.vendor?.name || '',
-              status: order.status
-            });
-          }
-        });
-      }
+    purchaseData.forEach(item => {
+      skuData[item._id] = {
+        sku: item._id,
+        itemName: item.itemName || '',
+        totalPurchased: item.totalPurchased || 0,
+        totalPurchaseValue: item.totalPurchaseValue || 0,
+        totalSold: 0,
+        totalSalesValue: 0,
+        totalCheckedOut: 0,
+        purchaseHistory: item.purchaseHistory || [],
+        salesHistory: [],
+        checkoutHistory: [],
+        discrepancyHistory: []
+      };
     });
 
     // Aggregate sales data
-    const categorySalesData = {
+    const categorySalesData = salesData[0] || {
       totalSold: 0,
       totalSalesValue: 0,
       salesHistory: []
     };
 
-    invoices.forEach(invoice => {
-      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
-        invoice.lineItems.forEach(item => {
-          const rawItemName = item.name ? item.name.trim() : '';
-          const canonicalItemName = this._getCanonicalName(rawItemName, aliasMap);
+    // Aggregate checkout data (combine old and new structures)
+    const checkoutResults = checkoutData[0];
+    const oldCheckoutData = checkoutResults?.oldStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
+    const newCheckoutData = checkoutResults?.newStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
 
-          if (canonicalItemName === categoryName) {
-            categorySalesData.totalSold += item.quantity || 0;
-            categorySalesData.totalSalesValue += item.amount || 0;
-            categorySalesData.salesHistory.push({
-              invoiceNumber: invoice.invoiceNumber,
-              invoiceDate: invoice.invoiceDate,
-              quantity: item.quantity,
-              rate: item.rate,
-              amount: item.amount,
-              customer: invoice.customer?.name || '',
-              status: invoice.status
-            });
-          }
-        });
-      }
-    });
-
-    // Aggregate checkout data
     const categoryCheckoutData = {
-      totalCheckedOut: 0,
-      checkoutHistory: []
+      totalCheckedOut: oldCheckoutData.totalCheckedOut + newCheckoutData.totalCheckedOut,
+      checkoutHistory: [...oldCheckoutData.checkoutHistory, ...newCheckoutData.checkoutHistory]
     };
-
-    checkouts.forEach(checkout => {
-      // Old structure: itemsTaken array
-      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
-        checkout.itemsTaken.forEach(item => {
-          const rawItemName = item.name ? item.name.trim() : '';
-          const canonicalItemName = this._getCanonicalName(rawItemName, aliasMap);
-
-          if (canonicalItemName === categoryName) {
-            categoryCheckoutData.totalCheckedOut += item.quantity || 0;
-            categoryCheckoutData.checkoutHistory.push({
-              employeeName: checkout.employeeName,
-              truckNumber: checkout.truckNumber,
-              checkoutDate: checkout.checkoutDate,
-              quantity: item.quantity,
-              notes: item.notes || ''
-            });
-          }
-        });
-      }
-
-      // New structure: itemName and quantityTaking fields directly
-      if (checkout.itemName && checkout.quantityTaking) {
-        const rawItemName = checkout.itemName.trim();
-        const canonicalItemName = this._getCanonicalName(rawItemName, aliasMap);
-
-        if (canonicalItemName === categoryName) {
-          categoryCheckoutData.totalCheckedOut += checkout.quantityTaking || 0;
-          categoryCheckoutData.checkoutHistory.push({
-            employeeName: checkout.employeeName,
-            truckNumber: checkout.truckNumber,
-            checkoutDate: checkout.checkoutDate,
-            quantity: checkout.quantityTaking,
-            notes: checkout.notes || ''
-          });
-        }
-      }
-    });
 
     // Distribute sales/checkouts evenly across SKUs
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
-      if (!skuData[sku]) {
+      const skuUpper = sku.toUpperCase();
+      if (!skuData[skuUpper]) {
         const mapping = mappings.find(m => m.modelNumber === sku);
-        skuData[sku] = {
-          sku,
+        skuData[skuUpper] = {
+          sku: skuUpper,
           itemName: mapping?.notes || '',
           totalPurchased: 0,
           totalPurchaseValue: 0,
@@ -309,86 +378,40 @@ class StockService {
         };
       }
 
-      skuData[sku].totalSold = categorySalesData.totalSold / skuCount;
-      skuData[sku].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
-      skuData[sku].salesHistory = [...categorySalesData.salesHistory];
+      // Distribute sales evenly
+      skuData[skuUpper].totalSold = categorySalesData.totalSold / skuCount;
+      skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
+      skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
 
-      skuData[sku].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
-      skuData[sku].checkoutHistory = [...categoryCheckoutData.checkoutHistory];
+      // Distribute checkouts evenly
+      skuData[skuUpper].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
+      skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
+
+      // Add discrepancies
+      skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
+        d.itemSku === sku || d.categoryName === categoryName
+      );
     });
 
-    // Group discrepancies by category
-    const discrepanciesByCategory = {};
-    discrepancies.forEach(d => {
-      if (!discrepanciesByCategory[d.categoryName]) {
-        discrepanciesByCategory[d.categoryName] = [];
-      }
-      discrepanciesByCategory[d.categoryName].push({
-        invoiceNumber: d.invoiceNumber,
-        reportedAt: d.reportedAt,
-        systemQuantity: d.systemQuantity,
-        actualQuantity: d.actualQuantity,
-        difference: d.difference,
-        discrepancyType: d.discrepancyType,
-        status: d.status,
-        reason: d.reason,
-        notes: d.notes,
-        reportedBy: d.reportedBy,
-        resolvedBy: d.resolvedBy,
-        resolvedAt: d.resolvedAt,
-        resolutionNotes: d.resolutionNotes
-      });
-    });
-
-    // Assign discrepancies and calculate stock
-    skus.forEach(sku => {
-      if (skuData[sku]) {
-        const itemNameUpper = skuData[sku].itemName.toUpperCase();
-        let matchedCategory = null;
-
-        for (const keyword of categoryKeywords) {
-          if (itemNameUpper.includes(keyword)) {
-            matchedCategory = keyword;
-            break;
-          }
-        }
-
-        skuData[sku].discrepancyHistory = [];
-        let skuDiscrepancyAdjustment = 0;
-
-        if (matchedCategory && discrepanciesByCategory[matchedCategory]) {
-          skuData[sku].discrepancyHistory = discrepanciesByCategory[matchedCategory];
-
-          discrepanciesByCategory[matchedCategory].forEach(d => {
-            if (d.status === 'Approved' && d.difference !== undefined) {
-              skuDiscrepancyAdjustment += d.difference;
-            }
-          });
-        } else if (discrepanciesByCategory[categoryName]) {
-          skuData[sku].discrepancyHistory = discrepanciesByCategory[categoryName];
-
-          const categoryDiscrepancyTotal = discrepanciesByCategory[categoryName]
-            .filter(d => d.status === 'Approved' && d.difference !== undefined)
-            .reduce((sum, d) => sum + d.difference, 0);
-
-          skuDiscrepancyAdjustment = categoryDiscrepancyTotal / skuCount;
-        }
-
-        skuData[sku].stockRemaining =
-          skuData[sku].totalPurchased -
-          skuData[sku].totalSold -
-          skuData[sku].totalCheckedOut +
-          skuDiscrepancyAdjustment;
-      }
-    });
-
+    // Sort by SKU
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
 
+    console.timeEnd(`[getCategorySales] Total for ${categoryName}`);
+
     return {
       categoryName,
-      skus: skuArray
+      skus: skuArray,
+      summary: {
+        totalPurchased: skuArray.reduce((sum, s) => sum + s.totalPurchased, 0),
+        totalPurchaseValue: skuArray.reduce((sum, s) => sum + s.totalPurchaseValue, 0),
+        totalSold: categorySalesData.totalSold,
+        totalSalesValue: categorySalesData.totalSalesValue,
+        totalCheckedOut: categoryCheckoutData.totalCheckedOut,
+        totalDiscrepancies: discrepancies.length,
+        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased, 0) - categorySalesData.totalSold - categoryCheckoutData.totalCheckedOut
+      }
     };
   }
 
@@ -750,14 +773,26 @@ class StockService {
   async getStockSummary() {
     console.time('[StockSummary] Total time');
 
-    // Step 1: Get metadata in parallel
+    // Step 1: Get metadata in parallel with caching
     console.time('[StockSummary] Step 1: Metadata');
-    const [forUseItems, forSellItems, aliasData, mappings] = await Promise.all([
-      RouteStarItem.find({ forUse: true }).select('itemName').lean(),
-      RouteStarItem.find({ forSell: true }).select('itemName').lean(),
-      RouteStarItemAlias.find({ isActive: true }).select('canonicalName aliases.name').lean(),
-      ModelCategory.find().select('modelNumber categoryItemName').lean()
-    ]);
+
+    // Use cache for metadata (10 second TTL)
+    const cacheKey = 'stock_summary_metadata';
+    let metadata = this._cacheGet(cacheKey);
+
+    if (!metadata) {
+      const [forUseItems, forSellItems, aliasData, mappings] = await Promise.all([
+        RouteStarItem.find({ forUse: true }).select('itemName').lean(),
+        RouteStarItem.find({ forSell: true }).select('itemName').lean(),
+        RouteStarItemAlias.find({ isActive: true }).select('canonicalName aliases.name').lean(),
+        ModelCategory.find().select('modelNumber categoryItemName').lean()
+      ]);
+
+      metadata = { forUseItems, forSellItems, aliasData, mappings };
+      this._cacheSet(cacheKey, metadata, 10); // 10 seconds
+    }
+
+    const { forUseItems, forSellItems, aliasData, mappings } = metadata;
     console.timeEnd('[StockSummary] Step 1: Metadata');
 
     // Build Sets for O(1) lookups
@@ -809,47 +844,82 @@ class StockService {
 
     // Step 1.6: Get SKU item names from orders and extract sales keywords dynamically
     console.time('[StockSummary] Step 1.6: Extract sales keywords from purchases');
-    const skuToItemNameMap = new Map();
-    const salesKeywordsSet = new Set(); // Dynamically extracted keywords from item names
 
-    const skuOrders = await CustomerConnectOrder.find({
-      'items.sku': { $in: sellSKUs }
-    }).select('items.sku items.name').lean();
+    // Cache keyword extraction (10 second TTL)
+    const keywordCacheKey = `sales_keywords_${sellSKUs.length}`;
+    let keywordData = this._cacheGet(keywordCacheKey);
 
-    skuOrders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
-          const sku = item.sku ? item.sku.toUpperCase() : '';
-          if (sellSKUs.includes(sku) && item.name) {
-            skuToItemNameMap.set(sku, item.name);
+    if (!keywordData) {
+      const skuToItemNameMap = new Map();
+      const salesKeywordsSet = new Set(); // Dynamically extracted keywords from item names
 
-            // Extract potential sales keywords from item name
-            // Match words in quotes: "WHITE", "BLACK", etc.
-            const quotedMatches = item.name.match(/"([^"]+)"/g);
-            if (quotedMatches) {
-              quotedMatches.forEach(match => {
-                const keyword = match.replace(/"/g, '').trim();
-                if (keyword) {
-                  salesKeywordsSet.add(keyword);
-                  salesKeywordsSet.add(keyword.toLowerCase());
-                }
-              });
+      // Optimized query: Only fetch distinct SKU-name pairs, limit to 300
+      const skuOrders = await CustomerConnectOrder.aggregate([
+        {
+          $match: {
+            status: { $in: ['Complete', 'Processing', 'Shipped'] },
+            'items.sku': { $in: sellSKUs }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $match: {
+            'items.sku': { $in: sellSKUs }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              sku: { $toUpper: '$items.sku' },
+              name: '$items.name'
             }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            sku: '$_id.sku',
+            name: '$_id.name'
+          }
+        },
+        { $limit: 300 } // Reduced from 1000
+      ]);
 
-            // Also extract uppercase words (likely categories/types)
-            const words = item.name.split(/[\s,]+/);
-            words.forEach(word => {
-              const cleaned = word.replace(/[^A-Za-z0-9]/g, '');
-              // Add words that are all uppercase and longer than 2 characters
-              if (cleaned && cleaned.length > 2 && cleaned === cleaned.toUpperCase()) {
-                salesKeywordsSet.add(cleaned);
-                salesKeywordsSet.add(cleaned.toLowerCase());
+      skuOrders.forEach(item => {
+        if (item.sku && item.name) {
+          skuToItemNameMap.set(item.sku, item.name);
+
+          // Extract potential sales keywords from item name
+          // Match words in quotes: "WHITE", "BLACK", etc.
+          const quotedMatches = item.name.match(/"([^"]+)"/g);
+          if (quotedMatches) {
+            quotedMatches.forEach(match => {
+              const keyword = match.replace(/"/g, '').trim();
+              if (keyword) {
+                salesKeywordsSet.add(keyword);
+                salesKeywordsSet.add(keyword.toLowerCase());
               }
             });
           }
-        });
-      }
-    });
+
+          // Also extract uppercase words (likely categories/types)
+          const words = item.name.split(/[\s,]+/);
+          words.forEach(word => {
+            const cleaned = word.replace(/[^A-Za-z0-9]/g, '');
+            // Add words that are all uppercase and longer than 2 characters
+            if (cleaned && cleaned.length > 2 && cleaned === cleaned.toUpperCase()) {
+              salesKeywordsSet.add(cleaned);
+              salesKeywordsSet.add(cleaned.toLowerCase());
+            }
+          });
+        }
+      });
+
+      keywordData = { skuToItemNameMap, salesKeywordsSet };
+      this._cacheSet(keywordCacheKey, keywordData, 10); // 10 seconds
+    }
+
+    const { skuToItemNameMap, salesKeywordsSet } = keywordData;
 
     // Add extracted keywords to variations array for invoice matching
     salesKeywordsSet.forEach(kw => sellVariationsSet.add(kw));
@@ -907,7 +977,7 @@ class StockService {
             ]
           }
         }
-      ]) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
+      ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
 
       // Invoices
       finalSellVariationsArray.length > 0 ? RouteStarInvoice.aggregate([

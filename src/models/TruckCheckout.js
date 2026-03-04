@@ -170,6 +170,8 @@ const truckCheckoutSchema = new mongoose.Schema({
 truckCheckoutSchema.index({ employeeName: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ status: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ invoiceNumbers: 1 });
+truckCheckoutSchema.index({ 'itemsTaken.name': 1 }); // Optimize old structure queries
+truckCheckoutSchema.index({ itemName: 1, status: 1 }); // Optimize new structure queries
 
 // Virtual to calculate total items taken
 truckCheckoutSchema.virtual('totalItemsTaken').get(function() {

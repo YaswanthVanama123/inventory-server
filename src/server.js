@@ -32,6 +32,22 @@ app.use(cors());
 
 app.use(helmet());
 
+// Performance timing middleware
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  req._startTime = startTime;
+
+  const originalJson = res.json;
+  res.json = function(data) {
+    const endTime = Date.now();
+    const totalTime = endTime - startTime;
+    console.log(`[TIMING] ${req.method} ${req.path} | Total: ${totalTime}ms | Response size: ${JSON.stringify(data).length} bytes`);
+    return originalJson.call(this, data);
+  };
+
+  next();
+});
+
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));

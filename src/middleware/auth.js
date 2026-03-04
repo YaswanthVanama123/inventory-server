@@ -2,16 +2,37 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const jwtConfig = require('../config/jwt');
 
+// Simple in-memory user cache (10 second TTL)
+const userCache = new Map();
+const userCacheTTL = new Map();
+
+function getCachedUser(userId) {
+  const ttl = userCacheTTL.get(userId);
+  if (ttl && Date.now() < ttl) {
+    return userCache.get(userId);
+  }
+  // Expired or missing
+  userCache.delete(userId);
+  userCacheTTL.delete(userId);
+  return null;
+}
+
+function setCachedUser(userId, user) {
+  userCache.set(userId, user);
+  userCacheTTL.set(userId, Date.now() + 10000); // 10 seconds
+}
 
 const authenticate = async (req, res, next) => {
+  const authStartTime = Date.now();
+
   try {
-    
+
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 
-    
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -23,11 +44,30 @@ const authenticate = async (req, res, next) => {
     }
 
     try {
-      
-      const decoded = jwt.verify(token, jwtConfig.secret);
+      const jwtStartTime = Date.now();
 
-      
-      const user = await User.findById(decoded.id).select('+password');
+      const decoded = jwt.verify(token, jwtConfig.secret);
+      const jwtTime = Date.now() - jwtStartTime;
+
+      const dbStartTime = Date.now();
+
+      // Try cache first
+      let user = getCachedUser(decoded.id);
+      let cacheHit = !!user;
+
+      if (!user) {
+        user = await User.findById(decoded.id)
+          .select('name email role isActive passwordChangedAt')
+          .lean(); // Use lean() for faster queries
+        if (user) {
+          setCachedUser(decoded.id, user);
+        }
+      }
+
+      const dbTime = Date.now() - dbStartTime;
+
+      console.log(`[TIMING] Auth - JWT verify: ${jwtTime}ms, DB lookup: ${dbTime}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
+
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -38,7 +78,7 @@ const authenticate = async (req, res, next) => {
         });
       }
 
-      
+
       if (!user.isActive) {
         return res.status(401).json({
           success: false,
@@ -49,15 +89,19 @@ const authenticate = async (req, res, next) => {
         });
       }
 
-      
-      if (user.changedPasswordAfter(decoded.iat)) {
-        return res.status(401).json({
-          success: false,
-          error: {
-            message: 'Password recently changed. Please login again.',
-            code: 'PASSWORD_CHANGED'
-          }
-        });
+
+      // Check password change with lean object
+      if (user.passwordChangedAt) {
+        const passwordChangedTimestamp = parseInt(user.passwordChangedAt.getTime() / 1000, 10);
+        if (passwordChangedTimestamp > decoded.iat) {
+          return res.status(401).json({
+            success: false,
+            error: {
+              message: 'Password recently changed. Please login again.',
+              code: 'PASSWORD_CHANGED'
+            }
+          });
+        }
       }
 
       

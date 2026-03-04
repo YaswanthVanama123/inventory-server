@@ -87,13 +87,28 @@ class StockController {
    * GET /api/stock/summary
    */
   async getStockSummary(req, res, next) {
+    const controllerStartTime = Date.now();
+    console.log('[TIMING] Controller started');
+
     try {
+      const serviceStartTime = Date.now();
+      const authTime = serviceStartTime - (req._startTime || serviceStartTime);
+      console.log(`[TIMING] Auth + Middleware overhead: ${authTime}ms`);
+
       const result = await stockService.getStockSummary();
 
+      const serviceEndTime = Date.now();
+      const serviceTime = serviceEndTime - serviceStartTime;
+      console.log(`[TIMING] Service execution: ${serviceTime}ms`);
+
+      const serializationStartTime = Date.now();
       res.json({
         success: true,
         data: result
       });
+
+      const serializationTime = Date.now() - serializationStartTime;
+      console.log(`[TIMING] Response serialization: ${serializationTime}ms`);
     } catch (error) {
       console.error('Error fetching stock summary:', error);
       next(error);
