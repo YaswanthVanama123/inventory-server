@@ -234,99 +234,97 @@ class RouteStarItemsService {
   }
 
   /**
-   * Get sales report
+   * Get sales report - OPTIMIZED (Parallel execution)
+   * Start from invoices (smaller filtered dataset), run queries in parallel
    */
   async getSalesReport() {
-    const items = await RouteStarItem.find().sort({ itemName: 1 }).lean();
+    console.time('[getSalesReport] Total execution');
 
-    const invoices = await RouteStarInvoice.find({
-      status: { $in: ['Completed', 'Closed', 'Pending'] }
-    }).lean();
-
-    console.log('\n=== SALES REPORT DEBUG ===');
-    console.log('Total RouteStar items:', items.length);
-    console.log('Total invoices (filtered):', invoices.length);
-    console.log('Sample RouteStar item names:', items.slice(0, 5).map(i => i.itemName));
-
-    const allInvoices = await RouteStarInvoice.find({}).lean();
-    console.log('Total invoices (unfiltered):', allInvoices.length);
-    console.log('Sample invoice statuses:', allInvoices.slice(0, 5).map(inv => ({
-      number: inv.invoiceNumber,
-      status: inv.status,
-      isComplete: inv.isComplete
-    })));
-
-    const nrv7840 = await RouteStarInvoice.findOne({ invoiceNumber: 'NRV7840' }).lean();
-    if (nrv7840) {
-      console.log('NRV7840 found:', {
-        status: nrv7840.status,
-        isComplete: nrv7840.isComplete,
-        lineItemCount: nrv7840.lineItems?.length || 0
-      });
-    } else {
-      console.log('NRV7840 NOT found in database');
-    }
-
-    const salesMap = {};
-    let totalLineItems = 0;
-    const uniqueInvoiceItemNames = new Set();
-
-    invoices.forEach(invoice => {
-      if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
-        invoice.lineItems.forEach(lineItem => {
-          totalLineItems++;
-          const itemName = lineItem.name ? lineItem.name.trim() : '';
-
-          if (itemName) {
-            uniqueInvoiceItemNames.add(itemName);
-          }
-
-          if (itemName) {
-            if (!salesMap[itemName]) {
-              salesMap[itemName] = {
-                totalQuantity: 0,
-                totalAmount: 0,
-                invoiceCount: 0,
-                invoices: [],
-                invoiceDetails: []
-              };
+    // Run both queries in parallel for maximum performance
+    const [salesByItem, allItems] = await Promise.all([
+      // Query 1: Get sales data aggregated by item name (from invoices)
+      (async () => {
+        console.time('[getSalesReport] Sales aggregation');
+        const result = await RouteStarInvoice.aggregate([
+          // Filter invoices first (reduces dataset significantly)
+          {
+            $match: {
+              status: { $in: ['Completed', 'Closed', 'Pending'] }
             }
+          },
 
-            salesMap[itemName].totalQuantity += lineItem.quantity || 0;
-            salesMap[itemName].totalAmount += lineItem.amount || 0;
+          // Unwind line items
+          { $unwind: '$lineItems' },
 
-            if (!salesMap[itemName].invoices.includes(invoice.invoiceNumber)) {
-              salesMap[itemName].invoices.push(invoice.invoiceNumber);
-              salesMap[itemName].invoiceCount += 1;
+          // Filter out empty item names
+          {
+            $match: {
+              'lineItems.name': { $exists: true, $ne: '', $ne: null }
             }
+          },
 
-            salesMap[itemName].invoiceDetails.push({
-              invoiceNumber: invoice.invoiceNumber,
-              invoiceDate: invoice.invoiceDate,
-              quantity: lineItem.quantity,
-              rate: lineItem.rate,
-              amount: lineItem.amount,
-              customer: invoice.customer?.name || '',
-              status: invoice.status
-            });
+          // Group by item name and calculate sales metrics
+          {
+            $group: {
+              _id: '$lineItems.name',
+              totalQuantity: { $sum: '$lineItems.quantity' },
+              totalAmount: { $sum: '$lineItems.amount' },
+              uniqueInvoices: { $addToSet: '$invoiceNumber' },
+              // Limit invoice details to first 100 to prevent massive arrays
+              invoiceDetails: {
+                $push: {
+                  invoiceNumber: '$invoiceNumber',
+                  invoiceDate: '$invoiceDate',
+                  quantity: '$lineItems.quantity',
+                  rate: '$lineItems.rate',
+                  amount: '$lineItems.amount',
+                  customer: '$customer.name',
+                  status: '$status'
+                }
+              }
+            }
+          },
+
+          // Calculate invoice count and limit invoice details
+          {
+            $project: {
+              itemName: '$_id',
+              soldQuantity: '$totalQuantity',
+              soldAmount: '$totalAmount',
+              invoiceCount: { $size: '$uniqueInvoices' },
+              // Limit to first 100 invoice details to reduce data transfer
+              invoiceDetails: { $slice: ['$invoiceDetails', 100] }
+            }
           }
-        });
-      }
+        ]).allowDiskUse(true);
+        console.timeEnd('[getSalesReport] Sales aggregation');
+        console.log(`[getSalesReport] Found sales for ${result.length} items`);
+        return result;
+      })(),
+
+      // Query 2: Get all items (runs in parallel)
+      (async () => {
+        console.time('[getSalesReport] Fetch items');
+        const result = await RouteStarItem.find()
+          .select('itemName itemParent description itemCategory qtyOnHand forUse forSell')
+          .sort({ itemName: 1 })
+          .lean();
+        console.timeEnd('[getSalesReport] Fetch items');
+        console.log(`[getSalesReport] Found ${result.length} items`);
+        return result;
+      })()
+    ]);
+
+    // Create sales map for O(1) lookup
+    console.time('[getSalesReport] Merge');
+    const salesMap = new Map();
+    salesByItem.forEach(sale => {
+      salesMap.set(sale.itemName, sale);
     });
 
-    console.log('Total invoice line items:', totalLineItems);
-    console.log('Unique invoice item names:', uniqueInvoiceItemNames.size);
-    console.log('Sample invoice item names:', Array.from(uniqueInvoiceItemNames).slice(0, 10));
-    console.log('Items in salesMap:', Object.keys(salesMap).length);
-    console.log('=== END DEBUG ===\n');
-
-    const itemsWithSales = items.map(item => {
-      const salesData = salesMap[item.itemName] || {
-        totalQuantity: 0,
-        totalAmount: 0,
-        invoiceCount: 0,
-        invoiceDetails: []
-      };
+    // Merge items with sales data
+    const itemsWithSales = allItems.map(item => {
+      const sales = salesMap.get(item.itemName);
 
       return {
         _id: item._id,
@@ -337,24 +335,24 @@ class RouteStarItemsService {
         qtyOnHand: item.qtyOnHand,
         forUse: item.forUse,
         forSell: item.forSell,
-        soldQuantity: salesData.totalQuantity,
-        soldAmount: salesData.totalAmount,
-        invoiceCount: salesData.invoiceCount,
-        invoiceDetails: salesData.invoiceDetails
+        soldQuantity: sales?.soldQuantity || 0,
+        soldAmount: sales?.soldAmount || 0,
+        invoiceCount: sales?.invoiceCount || 0,
+        invoiceDetails: sales?.invoiceDetails || []
       };
     });
+    console.timeEnd('[getSalesReport] Merge');
 
-    const totals = itemsWithSales.reduce((acc, item) => ({
-      totalItems: acc.totalItems + 1,
-      totalSoldQuantity: acc.totalSoldQuantity + item.soldQuantity,
-      totalSoldAmount: acc.totalSoldAmount + item.soldAmount,
-      totalInvoices: acc.totalInvoices + item.invoiceCount
-    }), {
-      totalItems: 0,
-      totalSoldQuantity: 0,
-      totalSoldAmount: 0,
-      totalInvoices: 0
-    });
+    // Calculate totals
+    const totals = {
+      totalItems: allItems.length,
+      totalSoldQuantity: salesByItem.reduce((sum, s) => sum + s.soldQuantity, 0),
+      totalSoldAmount: salesByItem.reduce((sum, s) => sum + s.soldAmount, 0),
+      totalInvoices: salesByItem.reduce((sum, s) => sum + s.invoiceCount, 0)
+    };
+
+    console.timeEnd('[getSalesReport] Total execution');
+    console.log('[getSalesReport] Totals:', totals);
 
     return {
       items: itemsWithSales,
