@@ -262,7 +262,21 @@ class CustomerConnectService {
       orders: [
         { $sort: { orderNumber: -1 } },
         { $skip: skip },
-        { $limit: limitNum }
+        { $limit: limitNum },
+        // Project only fields needed for list view to reduce payload size
+        {
+          $project: {
+            _id: 1,
+            orderNumber: 1,
+            orderDate: 1,
+            status: 1,
+            total: 1,
+            stockProcessed: 1,
+            verified: 1,
+            'vendor.name': 1,
+            itemCount: { $size: { $ifNull: ['$items', []] } }
+          }
+        }
       ]
     };
 

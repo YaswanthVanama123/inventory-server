@@ -154,7 +154,7 @@ class CustomerConnectController {
       const options = {
         page: parseInt(req.query.page) || 1,
         limit: parseInt(req.query.limit) || 50,
-        includeRange: req.query.includeRange === 'true'
+        includeRange: req.query.includeRange !== 'false' // Default to true, only false if explicitly set
       };
 
       const result = await customerConnectService.getOrders(filters, options);
