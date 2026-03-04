@@ -1449,11 +1449,13 @@ class RouteStarService {
    */
   async getItemInvoiceUsage() {
     try {
-      // Get alias map and reverse map (alias -> canonical)
+      console.time('getItemInvoiceUsage');
+
+      // STEP 1: Get alias map (cached in the model)
+      console.time('Step 1: Get aliases');
       const aliasMap = await RouteStarItemAlias.buildLookupMap();
 
-      // Build reverse map with ORIGINAL case aliases from database
-      // We need original case for MongoDB queries
+      // Build reverse map for aliases
       const aliasDocs = await RouteStarItemAlias.find({ isActive: true }).lean();
       const canonicalToOriginalAliases = {};
       aliasDocs.forEach(doc => {
@@ -1466,131 +1468,131 @@ class RouteStarService {
           }
         });
       });
+      console.timeEnd('Step 1: Get aliases');
 
-      // Get all unique canonical names
-      const canonicalNames = [...new Set(Object.values(aliasMap))];
+      // STEP 2: Use aggregation pipeline to get ALL item stats in ONE query
+      console.time('Step 2: Aggregation query');
+      const itemStats = await RouteStarInvoice.aggregate([
+        // Unwind line items to process each item separately
+        { $unwind: '$lineItems' },
 
-      // Get all unique item names from invoices
-      const allInvoiceItems = await RouteStarInvoice.distinct('lineItems.name');
+        // Filter out null/undefined item names
+        { $match: { 'lineItems.name': { $ne: null, $exists: true } } },
 
-      // Separate into mapped (canonical) and unmapped (unique) names
-      const mappedNames = new Set();
-      const unmappedNames = new Set();
+        // Group by item name (case-sensitive for now)
+        {
+          $group: {
+            _id: '$lineItems.name', // Item name
+            invoiceCount: { $sum: 1 }, // Count of invoices
+            totalQuantitySold: { $sum: { $ifNull: ['$lineItems.quantity', 0] } },
+            // Collect invoice details
+            invoices: {
+              $push: {
+                invoiceNumber: '$invoiceNumber',
+                invoiceDate: '$invoiceDate',
+                customer: { $ifNull: ['$customer.name', 'Unknown'] },
+                status: '$status',
+                total: '$total',
+                itemQuantity: '$lineItems.quantity',
+                itemRate: '$lineItems.rate',
+                itemAmount: '$lineItems.amount',
+                itemName: '$lineItems.name'
+              }
+            }
+          }
+        },
 
-      allInvoiceItems.forEach(itemName => {
+        // Sort by item name
+        { $sort: { _id: 1 } }
+      ]);
+      console.timeEnd('Step 2: Aggregation query');
+
+      // STEP 3: Process aggregation results and map to canonical names
+      console.time('Step 3: Process results');
+      const mappedItems = new Map(); // canonical name -> item data
+      const uniqueItems = [];
+
+      itemStats.forEach(stat => {
+        const itemName = stat._id;
+        if (!itemName) return;
+
         const nameLower = itemName.toLowerCase();
         const canonical = aliasMap[nameLower];
 
         if (canonical) {
-          // This item is mapped to a canonical name
-          mappedNames.add(canonical);
+          // This is a mapped item - merge with existing canonical entry
+          if (!mappedItems.has(canonical)) {
+            mappedItems.set(canonical, {
+              itemName: canonical,
+              type: 'mapped',
+              aliases: new Set(canonicalToOriginalAliases[canonical] || []),
+              invoiceCount: 0,
+              totalQuantitySold: 0,
+              invoices: []
+            });
+          }
+
+          const item = mappedItems.get(canonical);
+          item.invoiceCount += stat.invoiceCount;
+          item.totalQuantitySold += stat.totalQuantitySold;
+
+          // Add invoices and transform to expected format
+          stat.invoices.forEach(inv => {
+            item.invoices.push({
+              invoiceNumber: inv.invoiceNumber,
+              invoiceDate: inv.invoiceDate,
+              customer: inv.customer,
+              status: inv.status,
+              total: inv.total,
+              totalQuantity: inv.itemQuantity
+            });
+          });
         } else {
-          // This item is not mapped
-          unmappedNames.add(itemName);
+          // This is a unique (unmapped) item
+          uniqueItems.push({
+            itemName: itemName,
+            type: 'unique',
+            aliases: [],
+            invoiceCount: stat.invoiceCount,
+            totalQuantitySold: stat.totalQuantitySold,
+            invoices: stat.invoices.map(inv => ({
+              invoiceNumber: inv.invoiceNumber,
+              invoiceDate: inv.invoiceDate,
+              customer: inv.customer,
+              status: inv.status,
+              total: inv.total,
+              totalQuantity: inv.itemQuantity
+            }))
+          });
         }
       });
 
-      // Build result array with invoice usage for each item
-      const itemsWithInvoices = [];
+      // Convert mapped items to array and clean up aliases
+      const mappedItemsArray = Array.from(mappedItems.values()).map(item => ({
+        ...item,
+        aliases: Array.from(item.aliases)
+      }));
 
-      // Process mapped (canonical) names
-      for (const canonicalName of mappedNames) {
-        // Get all variations (aliases) with ORIGINAL case for this canonical name
-        const variations = [canonicalName, ...(canonicalToOriginalAliases[canonicalName] || [])];
-
-        // Find all invoices that use any of these variations (case-insensitive)
-        const invoices = await RouteStarInvoice.find({
-          'lineItems.name': { $in: variations }
-        }).select('invoiceNumber invoiceDate customer status lineItems total').lean();
-
-        // Extract relevant invoice details
-        const invoiceDetails = invoices.map(invoice => {
-          // Find the matching line items
-          const matchingItems = invoice.lineItems.filter(item =>
-            variations.map(v => v.toLowerCase()).includes(item.name.toLowerCase())
-          );
-
-          return {
-            invoiceNumber: invoice.invoiceNumber,
-            invoiceDate: invoice.invoiceDate,
-            customer: invoice.customer?.name || 'Unknown',
-            status: invoice.status,
-            total: invoice.total,
-            items: matchingItems.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              rate: item.rate,
-              amount: item.amount
-            })),
-            totalQuantity: matchingItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
-          };
-        });
-
-        itemsWithInvoices.push({
-          itemName: canonicalName,
-          type: 'mapped',
-          aliases: canonicalToOriginalAliases[canonicalName] || [],
-          invoiceCount: invoices.length,
-          totalQuantitySold: invoiceDetails.reduce((sum, inv) => sum + inv.totalQuantity, 0),
-          invoices: invoiceDetails
-        });
-      }
-
-      // Process unmapped (unique) names
-      for (const uniqueName of unmappedNames) {
-        // Find all invoices that use this exact name
-        const invoices = await RouteStarInvoice.find({
-          'lineItems.name': uniqueName
-        }).select('invoiceNumber invoiceDate customer status lineItems total').lean();
-
-        // Extract relevant invoice details
-        const invoiceDetails = invoices.map(invoice => {
-          // Find the matching line items
-          const matchingItems = invoice.lineItems.filter(item =>
-            item.name.toLowerCase() === uniqueName.toLowerCase()
-          );
-
-          return {
-            invoiceNumber: invoice.invoiceNumber,
-            invoiceDate: invoice.invoiceDate,
-            customer: invoice.customer?.name || 'Unknown',
-            status: invoice.status,
-            total: invoice.total,
-            items: matchingItems.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              rate: item.rate,
-              amount: item.amount
-            })),
-            totalQuantity: matchingItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
-          };
-        });
-
-        itemsWithInvoices.push({
-          itemName: uniqueName,
-          type: 'unique',
-          aliases: [],
-          invoiceCount: invoices.length,
-          totalQuantitySold: invoiceDetails.reduce((sum, inv) => sum + inv.totalQuantity, 0),
-          invoices: invoiceDetails
-        });
-      }
-
-      // Sort by item name
-      itemsWithInvoices.sort((a, b) => a.itemName.localeCompare(b.itemName));
+      // Combine and sort all items
+      const allItems = [...mappedItemsArray, ...uniqueItems];
+      allItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
+      console.timeEnd('Step 3: Process results');
 
       // Calculate totals
       const totals = {
-        totalMappedItems: Array.from(mappedNames).length,
-        totalUniqueItems: Array.from(unmappedNames).length,
-        totalItems: mappedNames.size + unmappedNames.size,
-        totalInvoices: itemsWithInvoices.reduce((sum, item) => sum + item.invoiceCount, 0)
+        totalMappedItems: mappedItemsArray.length,
+        totalUniqueItems: uniqueItems.length,
+        totalItems: allItems.length,
+        totalInvoices: allItems.reduce((sum, item) => sum + item.invoiceCount, 0)
       };
+
+      console.timeEnd('getItemInvoiceUsage');
+      console.log(`✅ Optimized query returned ${allItems.length} items with ${totals.totalInvoices} invoice references`);
 
       return {
         success: true,
         data: {
-          items: itemsWithInvoices,
+          items: allItems,
           totals
         }
       };

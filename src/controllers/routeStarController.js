@@ -592,10 +592,8 @@ class RouteStarController {
     try {
       const result = await routeStarService.getItemInvoiceUsage();
 
-      res.json({
-        success: true,
-        data: result
-      });
+      // Service already returns { success, data }, so just send it directly
+      res.json(result);
     } catch (error) {
       console.error('Get item invoice usage error:', error);
       next(error);
