@@ -994,15 +994,12 @@ class RouteStarService {
       console.log(`[getGroupedRouteStarItems] Returned ${items.length} items out of ${total} total`);
 
       return {
-        success: true,
-        data: {
-          items,
-          pagination: {
-            page: pageNum,
-            limit: limitNum,
-            total,
-            pages: Math.ceil(total / limitNum)
-          }
+        items,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
         }
       };
     } catch (error) {
