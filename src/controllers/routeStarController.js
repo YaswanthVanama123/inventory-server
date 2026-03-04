@@ -310,6 +310,7 @@ class RouteStarController {
   async getInvoices(req, res, next) {
     try {
       const filters = {
+        invoiceType: req.query.invoiceType,
         status: req.query.status,
         customer: req.query.customer,
         startDate: req.query.startDate,
@@ -324,10 +325,8 @@ class RouteStarController {
 
       const result = await routeStarService.getInvoices(filters, options);
 
-      res.json({
-        success: true,
-        data: result
-      });
+      // Service already returns { success, data }, don't wrap it again
+      res.json(result);
     } catch (error) {
       console.error('Get invoices error:', error);
       next(error);

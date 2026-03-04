@@ -184,6 +184,45 @@ class RouteStarItemsController {
       });
     }
   }
+
+  /**
+   * OPTIMIZED: Get items with stats in one call
+   * GET /api/routestar-items/page-data
+   * Combines items list and stats into single response
+   */
+  async getItemsWithStats(req, res, next) {
+    try {
+      const filters = {
+        search: req.query.search,
+        itemParent: req.query.itemParent,
+        type: req.query.type,
+        itemCategory: req.query.itemCategory,
+        forUse: req.query.forUse,
+        forSell: req.query.forSell
+      };
+
+      const pagination = {
+        page: req.query.page || 1,
+        limit: req.query.limit || 50,
+        sortBy: req.query.sortBy || 'itemName',
+        sortOrder: req.query.sortOrder || 'asc'
+      };
+
+      const data = await routeStarItemsService.getItemsWithStats(filters, pagination);
+
+      res.json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('Error fetching items with stats:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch items with stats',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new RouteStarItemsController();

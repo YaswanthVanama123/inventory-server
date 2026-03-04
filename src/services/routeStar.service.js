@@ -744,6 +744,7 @@ class RouteStarService {
 
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
+          .select('_id invoiceNumber invoiceDate customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
           .sort({ invoiceDate: -1 })
           .skip(skip)
           .limit(parseInt(limit))
@@ -751,10 +752,32 @@ class RouteStarService {
         RouteStarInvoice.countDocuments(query)
       ]);
 
+      // Transform invoices to include itemCount instead of full lineItems
+      const transformedInvoices = invoices.map(invoice => ({
+        _id: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDate: invoice.invoiceDate,
+        customer: {
+          name: invoice.customer?.name || 'Unknown',
+          email: invoice.customer?.email || null
+        },
+        assignedTo: invoice.assignedTo || null,
+        subtotal: invoice.subtotal || 0,
+        tax: invoice.tax || 0,
+        total: invoice.total || 0,
+        status: invoice.status || 'Pending',
+        stockProcessed: invoice.stockProcessed || false,
+        isComplete: invoice.isComplete || false,
+        itemCount: invoice.lineItems?.length || 0,
+        createdAt: invoice.createdAt,
+        updatedAt: invoice.updatedAt,
+        lastSyncedAt: invoice.lastSyncedAt
+      }));
+
       return {
         success: true,
         data: {
-          invoices,
+          invoices: transformedInvoices,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),

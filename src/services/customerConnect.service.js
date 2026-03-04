@@ -2,6 +2,13 @@ const CustomerConnectSyncService = require('./customerConnectSync.service');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const FetchHistory = require('../models/FetchHistory');
 
+// Simple in-memory cache for order range (updates every 30 seconds)
+let rangeCache = {
+  data: null,
+  timestamp: null,
+  ttl: 30000 // 30 seconds
+};
+
 /**
  * CustomerConnect Service
  * Business logic for CustomerConnect operations
@@ -254,7 +261,7 @@ class CustomerConnectService {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build facet stages
+    // Build optimized facet stages
     const facetStages = {
       metadata: [
         { $count: 'total' }
@@ -280,8 +287,12 @@ class CustomerConnectService {
       ]
     };
 
-    // Add range stages if requested
-    if (includeRange) {
+    // Check if we should use cached range
+    const now = Date.now();
+    const shouldFetchRange = includeRange && (!rangeCache.timestamp || (now - rangeCache.timestamp > rangeCache.ttl));
+
+    // Only fetch range if needed and cache is stale
+    if (shouldFetchRange) {
       facetStages.highest = [
         { $sort: { orderNumber: -1 } },
         { $limit: 1 },
@@ -298,10 +309,25 @@ class CustomerConnectService {
     const result = await CustomerConnectOrder.aggregate([
       { $match: query },
       { $facet: facetStages }
-    ]);
+    ]).allowDiskUse(true);
 
     const total = result[0]?.metadata[0]?.total || 0;
     const orders = result[0]?.orders || [];
+
+    // Update range cache if we fetched new data
+    if (shouldFetchRange) {
+      const highest = result[0]?.highest[0];
+      const lowest = result[0]?.lowest[0];
+
+      rangeCache.data = {
+        highest: highest?.orderNumber || null,
+        lowest: lowest?.orderNumber || null,
+        highestDate: highest?.orderDate || null,
+        lowestDate: lowest?.orderDate || null,
+        totalOrders: total
+      };
+      rangeCache.timestamp = now;
+    }
 
     console.timeEnd('[Orders] Query time');
 
@@ -316,18 +342,9 @@ class CustomerConnectService {
       }
     };
 
-    // Add range if requested
-    if (includeRange) {
-      const highest = result[0]?.highest[0];
-      const lowest = result[0]?.lowest[0];
-
-      response.range = {
-        highest: highest?.orderNumber || null,
-        lowest: lowest?.orderNumber || null,
-        highestDate: highest?.orderDate || null,
-        lowestDate: lowest?.orderDate || null,
-        totalOrders: total
-      };
+    // Add range from cache if requested
+    if (includeRange && rangeCache.data) {
+      response.range = rangeCache.data;
     }
 
     return response;

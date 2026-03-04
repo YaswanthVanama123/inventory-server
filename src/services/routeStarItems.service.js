@@ -361,6 +361,141 @@ class RouteStarItemsService {
       totals
     };
   }
+
+  /**
+   * OPTIMIZED: Get items list with stats in one call
+   * Builds alias map once and reuses it for both items and stats
+   */
+  async getItemsWithStats(filters = {}, pagination = {}) {
+    const {
+      search,
+      itemParent,
+      type,
+      itemCategory,
+      forUse,
+      forSell
+    } = filters;
+
+    const {
+      page = 1,
+      limit = 50,
+      sortBy = 'itemName',
+      sortOrder = 'asc'
+    } = pagination;
+
+    const query = {};
+
+    if (itemParent && itemParent !== 'all') {
+      query.itemParent = itemParent;
+    }
+
+    if (type && type !== 'all') {
+      query.type = type;
+    }
+
+    if (forUse === 'true') {
+      query.forUse = true;
+    }
+
+    if (forSell === 'true') {
+      query.forSell = true;
+    }
+
+    if (itemCategory && itemCategory !== 'all') {
+      query.itemCategory = itemCategory;
+    }
+
+    // Fetch all data in parallel
+    const [allItems, aliasMap, itemParents, types] = await Promise.all([
+      RouteStarItem.find(query).sort({ itemName: sortOrder === 'asc' ? 1 : -1 }).lean(),
+      RouteStarItemAlias.buildLookupMap(),
+      RouteStarItem.distinct('itemParent'),
+      RouteStarItem.distinct('type')
+    ]);
+
+    console.log(`[getItemsWithStats] Found ${allItems.length} items before merging`);
+
+    // Group items by canonical name (merge variations)
+    const groupedByCanonical = {};
+
+    allItems.forEach(item => {
+      const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
+
+      if (!groupedByCanonical[canonicalName]) {
+        groupedByCanonical[canonicalName] = {
+          _id: item._id,
+          itemName: canonicalName,
+          itemParent: item.itemParent,
+          description: item.description,
+          itemCategory: item.itemCategory,
+          qtyOnHand: 0,
+          forUse: item.forUse,
+          forSell: item.forSell,
+          type: item.type,
+          isMapped: !!aliasMap[item.itemName.toLowerCase()],
+          mergedCount: 0,
+          variations: []
+        };
+      }
+
+      groupedByCanonical[canonicalName].qtyOnHand += (item.qtyOnHand || 0);
+      groupedByCanonical[canonicalName].mergedCount++;
+      groupedByCanonical[canonicalName].variations.push(item.itemName);
+
+      if (item.forUse) groupedByCanonical[canonicalName].forUse = true;
+      if (item.forSell) groupedByCanonical[canonicalName].forSell = true;
+    });
+
+    let mergedItems = Object.values(groupedByCanonical);
+
+    // Apply search filter AFTER merging (on canonical names)
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      mergedItems = mergedItems.filter(item => {
+        return searchRegex.test(item.itemName) ||
+               searchRegex.test(item.itemParent || '') ||
+               searchRegex.test(item.description || '') ||
+               item.variations.some(variation => searchRegex.test(variation));
+      });
+    }
+
+    // Calculate stats from merged items
+    const statsTotal = mergedItems.length;
+    const forUseCount = mergedItems.filter(item => item.forUse).length;
+    const forSellCount = mergedItems.filter(item => item.forSell).length;
+    const bothCount = mergedItems.filter(item => item.forUse && item.forSell).length;
+    const unmarkedCount = mergedItems.filter(item => !item.forUse && !item.forSell).length;
+
+    const stats = {
+      total: statsTotal,
+      forUse: forUseCount,
+      forSell: forSellCount,
+      both: bothCount,
+      unmarked: unmarkedCount
+    };
+
+    // Paginate merged items
+    const total = mergedItems.length;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedItems = mergedItems.slice(skip, skip + parseInt(limit));
+
+    console.log(`[getItemsWithStats] Merged to ${mergedItems.length} canonical items, returning ${paginatedItems.length} for page ${page}`);
+
+    return {
+      items: paginatedItems,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      },
+      filters: {
+        itemParents: itemParents.filter(p => p).sort(),
+        types: types.filter(t => t).sort()
+      },
+      stats
+    };
+  }
 }
 
 module.exports = new RouteStarItemsService();

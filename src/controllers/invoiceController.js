@@ -278,18 +278,27 @@ const getAllInvoices = async (req, res, next) => {
     // Fetch both types of invoices in parallel
     const [regularInvoices, routeStarInvoices] = await Promise.all([
       Invoice.find(invoiceQuery)
-        .populate('createdBy', 'username fullName')
-        .populate('lastUpdatedBy', 'username fullName')
-        .populate('items.inventory', 'itemName skuCode category quantity pricing')
+        .select('_id invoiceNumber invoiceDate customer.name customer.email totalAmount status paymentStatus syncMetadata.source items')
         .lean(),
-      RouteStarInvoice.find(routeStarQuery).lean()
+      RouteStarInvoice.find(routeStarQuery)
+        .select('_id invoiceNumber invoiceDate customer.name subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
+        .lean()
     ]);
 
     // Transform regular invoices
     const transformedRegularInvoices = regularInvoices.map(invoice => ({
-      ...invoice,
-      invoiceType: 'manual',
+      _id: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.invoiceDate,
+      customer: {
+        name: invoice.customer?.name || 'N/A',
+        email: invoice.customer?.email || null
+      },
       totalAmount: invoice.totalAmount,
+      status: invoice.status,
+      paymentStatus: invoice.paymentStatus,
+      itemCount: invoice.items?.length || 0,
+      invoiceType: 'manual',
       syncInfo: {
         source: invoice.syncMetadata?.source || 'manual',
         isSynced: invoice.syncMetadata?.isSynced || false,
@@ -306,30 +315,12 @@ const getAllInvoices = async (req, res, next) => {
       invoiceDate: invoice.invoiceDate,
       customer: {
         name: invoice.customer?.name || 'Unknown',
-        email: null,
-        phone: null
+        email: null
       },
-      items: invoice.lineItems?.map(item => ({
-        itemName: item.name,
-        skuCode: item.sku || 'N/A',
-        quantity: item.quantity || 0,
-        unit: 'pieces',
-        priceAtSale: item.rate || 0,
-        subtotal: item.amount || 0,
-        description: item.description
-      })) || [],
-      subtotalAmount: invoice.subtotal || 0,
-      taxAmount: invoice.tax || 0,
+      itemCount: invoice.lineItems?.length || 0,
       totalAmount: invoice.total || 0,
-      taxRate: 0,
-      discount: { type: 'percentage', value: 0, amount: 0 },
       status: invoice.status?.toLowerCase() || 'pending',
       paymentStatus: invoice.stockProcessed ? 'paid' : 'pending',
-      dueDate: invoice.invoiceDate,
-      notes: invoice.serviceNotes || '',
-      remarks: invoice.invoiceDetails?.invoiceMemo || '',
-      stockProcessed: invoice.stockProcessed,
-      isComplete: invoice.isComplete,
       createdAt: invoice.createdAt,
       updatedAt: invoice.updatedAt,
       syncInfo: {

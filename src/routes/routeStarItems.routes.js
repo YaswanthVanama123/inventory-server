@@ -8,6 +8,9 @@ const { authenticate } = require('../middleware/auth');
  * Clean routes with no business logic - delegates to controller
  */
 
+// Get combined page data (items + stats in one call)
+router.get('/page-data', authenticate, routeStarItemsController.getItemsWithStats);
+
 // Get item statistics
 router.get('/stats', authenticate, routeStarItemsController.getItemStats);
 

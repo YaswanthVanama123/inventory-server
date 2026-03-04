@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 const path = require('path');
 const connectDB = require('./config/database');
 const initModels = require('./config/initModels');
@@ -31,6 +32,18 @@ app.use(cors());
 
 
 app.use(helmet());
+
+// Enable gzip compression for all responses (50-70% size reduction)
+app.use(compression({
+  level: 6, // Compression level (0-9, 6 is default balance)
+  threshold: 1024, // Only compress responses larger than 1KB
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
 
 // Performance timing middleware
 app.use((req, res, next) => {

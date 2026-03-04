@@ -8,6 +8,9 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
  * Clean routes with no business logic - delegates to controller
  */
 
+// Get combined page data (mappings + unique items + stats in one call)
+router.get('/page-data', authenticate, routeStarItemAliasController.getPageData);
+
 // Get all active mappings
 router.get('/mappings', authenticate, routeStarItemAliasController.getAllMappings);
 

@@ -156,9 +156,16 @@ const customerConnectOrderSchema = new mongoose.Schema({
 customerConnectOrderSchema.index({ orderDate: -1, status: 1 });
 customerConnectOrderSchema.index({ 'vendor.name': 1, orderDate: -1 });
 customerConnectOrderSchema.index({ stockProcessed: 1, status: 1 });
+customerConnectOrderSchema.index({ verified: 1, stockProcessed: 1 });
 customerConnectOrderSchema.index({ lastSyncedAt: -1 });
-customerConnectOrderSchema.index({ 'items.sku': 1 }); // Optimize items grouping queries
-customerConnectOrderSchema.index({ 'items.sku': 1, status: 1 }); // Compound index for filtered grouping
+customerConnectOrderSchema.index({ 'items.sku': 1 });
+customerConnectOrderSchema.index({ 'items.sku': 1, status: 1 });
+
+// Optimized compound index for getOrders list view with all common filters
+customerConnectOrderSchema.index(
+  { status: 1, stockProcessed: 1, verified: 1, orderNumber: -1 },
+  { name: 'orders_list_filter_index' }
+);
 
 
 customerConnectOrderSchema.virtual('shouldProcessStock').get(function() {

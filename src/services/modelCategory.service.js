@@ -10,64 +10,59 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 class ModelCategoryService {
   /**
    * Get unique models from orders with mapping status
+   * OPTIMIZED: Single aggregation pipeline with $lookup (no caching)
    */
   async getUniqueModels() {
-    // Get SKUs with names from orders
-    const skuWithNames = await CustomerConnectOrder.aggregate([
+    // Use single optimized aggregation pipeline with $lookup to join with ModelCategory
+    const result = await CustomerConnectOrder.aggregate([
+      // Unwind items array
       { $unwind: '$items' },
+
+      // Group by SKU to get unique models with first occurrence name
       {
         $group: {
-          _id: {
-            sku: '$items.sku',
-            name: '$items.name'
-          },
+          _id: '$items.sku',
           orderItemName: { $first: '$items.name' }
         }
       },
+
+      // Lookup mapping from ModelCategory collection
+      {
+        $lookup: {
+          from: 'modelcategories',
+          localField: '_id',
+          foreignField: 'modelNumber',
+          as: 'mapping'
+        }
+      },
+
+      // Unwind mapping (left join - keep items without mapping)
+      {
+        $unwind: {
+          path: '$mapping',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // Project final shape with only needed fields
       {
         $project: {
           _id: 0,
-          sku: '$_id.sku',
-          orderItemName: 1
+          modelNumber: '$_id',
+          orderItemName: 1,
+          categoryItemName: { $ifNull: ['$mapping.categoryItemName', null] },
+          categoryItemId: { $ifNull: ['$mapping.categoryItemId', null] },
+          notes: { $ifNull: ['$mapping.notes', ''] }
         }
-      }
-    ]);
+      },
 
-    const uniqueSKUs = skuWithNames.map(item => item.sku);
-
-    // Get existing mappings
-    const mappings = await ModelCategory.find({
-      modelNumber: { $in: uniqueSKUs }
-    }).lean();
-
-    // Create mappings map
-    const mappingsMap = {};
-    mappings.forEach(mapping => {
-      mappingsMap[mapping.modelNumber] = {
-        categoryItemName: mapping.categoryItemName,
-        categoryItemId: mapping.categoryItemId,
-        notes: mapping.notes
-      };
-    });
-
-    // Create order item names map
-    const orderItemNamesMap = {};
-    skuWithNames.forEach(item => {
-      orderItemNamesMap[item.sku] = item.orderItemName;
-    });
-
-    // Combine data
-    const models = uniqueSKUs.map(sku => ({
-      modelNumber: sku,
-      orderItemName: orderItemNamesMap[sku] || null,
-      categoryItemName: mappingsMap[sku]?.categoryItemName || null,
-      categoryItemId: mappingsMap[sku]?.categoryItemId || null,
-      notes: mappingsMap[sku]?.notes || ''
-    })).sort((a, b) => a.modelNumber.localeCompare(b.modelNumber));
+      // Sort by model number
+      { $sort: { modelNumber: 1 } }
+    ]).allowDiskUse(true);
 
     return {
-      models,
-      total: models.length
+      models: result,
+      total: result.length
     };
   }
 

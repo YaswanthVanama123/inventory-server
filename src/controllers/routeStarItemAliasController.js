@@ -297,6 +297,31 @@ class RouteStarItemAliasController {
       });
     }
   }
+
+  /**
+   * Get all data for item alias mapping page (combined endpoint)
+   * GET /api/routestar-item-alias/page-data
+   * Returns: { mappings, uniqueItems, stats }
+   * OPTIMIZED: Uses single service method that builds lookup map once
+   */
+  async getPageData(req, res, next) {
+    try {
+      // Use optimized service method that fetches all data efficiently
+      const data = await routeStarItemAliasService.getPageDataOptimized();
+
+      res.json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('Error fetching page data:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch page data',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new RouteStarItemAliasController();

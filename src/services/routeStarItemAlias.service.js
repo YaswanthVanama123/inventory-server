@@ -237,6 +237,70 @@ class RouteStarItemAliasService {
       unmappedItems: Math.max(0, unmappedItems)
     };
   }
+
+  /**
+   * OPTIMIZED: Get all page data in one efficient operation
+   * Builds lookup map once and reuses it for both unique items and stats
+   */
+  async getPageDataOptimized() {
+    // Run all base queries in parallel
+    const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings] = await Promise.all([
+      RouteStarItemAlias.getAllActiveMappings(),
+      RouteStarItem.find()
+        .select('itemName itemParent description qtyOnHand')
+        .sort({ itemName: 1 })
+        .lean(),
+      RouteStarItemAlias.buildLookupMap(),
+      RouteStarItemAlias.countDocuments(),
+      RouteStarItemAlias.countDocuments({ isActive: true })
+    ]);
+
+    console.log(`[page-data-optimized] Found ${routeStarItems.length} RouteStarItems, ${mappings.length} mappings`);
+
+    // Build items with mapping status (reusing lookupMap)
+    const itemsWithMappingStatus = routeStarItems.map(item => ({
+      itemName: item.itemName,
+      itemParent: item.itemParent,
+      description: item.description,
+      qtyOnHand: item.qtyOnHand || 0,
+      isMapped: !!lookupMap[item.itemName.toLowerCase()],
+      canonicalName: lookupMap[item.itemName.toLowerCase()] || null,
+      occurrences: 1,
+      totalQuantity: item.qtyOnHand || 0
+    }));
+
+    // Calculate stats (reusing computed values)
+    const totalAliases = Object.keys(lookupMap).length;
+    const mappedItemsCount = itemsWithMappingStatus.filter(i => i.isMapped).length;
+    const unmappedItemsCount = itemsWithMappingStatus.filter(i => !i.isMapped).length;
+
+    const stats = {
+      totalMappings,
+      activeMappings,
+      totalAliases,
+      totalUniqueItems: routeStarItems.length,
+      mappedItems: mappedItemsCount,
+      unmappedItems: unmappedItemsCount
+    };
+
+    console.log(`[page-data-optimized] Stats:`, stats);
+
+    return {
+      mappings: {
+        mappings,
+        total: mappings.length
+      },
+      uniqueItems: {
+        items: itemsWithMappingStatus,
+        stats: {
+          totalUniqueItems: routeStarItems.length,
+          mappedItems: mappedItemsCount,
+          unmappedItems: unmappedItemsCount
+        }
+      },
+      stats
+    };
+  }
 }
 
 module.exports = new RouteStarItemAliasService();
