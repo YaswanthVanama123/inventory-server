@@ -215,7 +215,8 @@ class CustomerConnectService {
       vendor,
       startDate,
       endDate,
-      stockProcessed
+      stockProcessed,
+      verified
     } = filters;
 
     const {
@@ -229,6 +230,19 @@ class CustomerConnectService {
     if (status) query.status = status;
     if (vendor) query['vendor.name'] = new RegExp(vendor, 'i');
     if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
+
+    // Handle verified filter - treat missing field as false (not verified)
+    if (verified !== undefined) {
+      if (verified === 'true') {
+        query.verified = true;
+      } else {
+        // For "not verified", match both false and missing field
+        query.$or = [
+          { verified: false },
+          { verified: { $exists: false } }
+        ];
+      }
+    }
 
     if (startDate || endDate) {
       query.orderDate = {};

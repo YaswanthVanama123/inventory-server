@@ -111,7 +111,19 @@ const customerConnectOrderSchema = new mongoose.Schema({
   stockProcessedAt: Date,
   stockProcessingError: String,
 
-  
+  // Order verification tracking
+  verified: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  verifiedAt: Date,
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+
   lastSyncedAt: {
     type: Date,
     default: Date.now,

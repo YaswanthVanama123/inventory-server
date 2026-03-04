@@ -147,7 +147,8 @@ class CustomerConnectController {
         vendor: req.query.vendor,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
-        stockProcessed: req.query.stockProcessed
+        stockProcessed: req.query.stockProcessed,
+        verified: req.query.verified
       };
 
       const options = {
