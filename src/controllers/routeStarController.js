@@ -2,13 +2,10 @@ const routeStarService = require('../services/routeStar.service');
 
 
 class RouteStarController {
-  
   async syncItems(req, res, next) {
     try {
       const { limit = 0, triggeredBy = 'manual' } = req.body;
-
       const result = await routeStarService.syncItems(limit, triggeredBy);
-
       res.json({
         success: true,
         message: result.message,
@@ -25,15 +22,11 @@ class RouteStarController {
       });
     }
   }
-
-  
   async syncPending(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
       const userId = req.user?._id;
-
       const result = await routeStarService.syncPending(limit, direction, triggeredBy, userId);
-
       res.json({
         success: true,
         message: result.message,
@@ -50,12 +43,9 @@ class RouteStarController {
       });
     }
   }
-
-  
   async getInvoiceRange(req, res, next) {
     try {
       const range = await routeStarService.getInvoiceRange();
-
       res.json({
         success: true,
         data: range
@@ -65,15 +55,11 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncClosed(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
       const userId = req.user?._id;
-
       const result = await routeStarService.syncClosed(limit, direction, triggeredBy, userId);
-
       res.json({
         success: true,
         message: result.message,
@@ -90,14 +76,10 @@ class RouteStarController {
       });
     }
   }
-
-  
   async syncInvoiceDetails(req, res, next) {
     try {
       const { invoiceNumber } = req.params;
-
       const invoice = await routeStarService.syncInvoiceDetails(invoiceNumber);
-
       res.json({
         success: true,
         message: 'Invoice details synced successfully',
@@ -108,14 +90,10 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncAllDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
-
       const results = await routeStarService.syncAllDetails(limit);
-
       res.json({
         success: true,
         message: 'All invoice details synced successfully',
@@ -126,14 +104,10 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncPendingDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
-
       const results = await routeStarService.syncPendingDetails(limit);
-
       res.json({
         success: true,
         message: 'Pending invoice details synced successfully',
@@ -144,14 +118,10 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncClosedDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
-
       const results = await routeStarService.syncClosedDetails(limit);
-
       res.json({
         success: true,
         message: 'Closed invoice details synced successfully',
@@ -162,14 +132,10 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncPendingWithDetails(req, res, next) {
     try {
       const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
-
       const results = await routeStarService.syncPendingWithDetails(invoicesLimit, detailsLimit, triggeredBy);
-
       res.json({
         success: true,
         message: 'Pending invoices with details synced successfully',
@@ -185,14 +151,10 @@ class RouteStarController {
       });
     }
   }
-
-  
   async syncClosedWithDetails(req, res, next) {
     try {
       const { invoicesLimit = 0, detailsLimit = 50, triggeredBy = 'manual' } = req.body;
-
       const results = await routeStarService.syncClosedWithDetails(invoicesLimit, detailsLimit, triggeredBy);
-
       res.json({
         success: true,
         message: 'Closed invoices with details synced successfully',
@@ -208,12 +170,9 @@ class RouteStarController {
       });
     }
   }
-
-  
   async checkPending(req, res, next) {
     try {
       const result = await routeStarService.checkPending();
-
       res.json({
         success: true,
         data: result
@@ -223,12 +182,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async syncStock(req, res, next) {
     try {
       const results = await routeStarService.syncStock();
-
       res.json({
         success: true,
         message: 'Stock movements processed successfully',
@@ -239,8 +195,6 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async fullSync(req, res, next) {
     try {
       const options = {
@@ -249,9 +203,7 @@ class RouteStarController {
         detailsLimit: req.body.detailsLimit || 50,
         processStock: req.body.processStock !== false
       };
-
       const results = await routeStarService.fullSync(options);
-
       res.json({
         success: true,
         message: 'Full sync completed successfully',
@@ -262,8 +214,6 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getInvoices(req, res, next) {
     try {
       const filters = {
@@ -274,36 +224,27 @@ class RouteStarController {
         endDate: req.query.endDate,
         stockProcessed: req.query.stockProcessed
       };
-
       const options = {
         page: parseInt(req.query.page) || 1,
         limit: parseInt(req.query.limit) || 50
       };
-
       const result = await routeStarService.getInvoices(filters, options);
-
-      
       res.json(result);
     } catch (error) {
       console.error('Get invoices error:', error);
       next(error);
     }
   }
-
-  
   async getInvoiceByNumber(req, res, next) {
     try {
       const { invoiceNumber } = req.params;
-
       const invoice = await routeStarService.getInvoiceByNumber(invoiceNumber);
-
       if (!invoice) {
         return res.status(404).json({
           success: false,
           message: 'Invoice not found'
         });
       }
-
       res.json({
         success: true,
         data: invoice
@@ -313,14 +254,10 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getStats(req, res, next) {
     try {
       const { startDate, endDate, status } = req.query;
-
       const stats = await routeStarService.getStats({ startDate, endDate, status });
-
       res.json({
         success: true,
         data: stats
@@ -330,12 +267,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async deleteAllPending(req, res, next) {
     try {
       const result = await routeStarService.deleteAllPending();
-
       res.json({
         success: true,
         message: result.message,
@@ -346,12 +280,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async deleteAllClosed(req, res, next) {
     try {
       const result = await routeStarService.deleteAllClosed();
-
       res.json({
         success: true,
         message: result.message,
@@ -362,8 +293,6 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getGroupedItems(req, res, next) {
     try {
       const options = {
@@ -374,9 +303,7 @@ class RouteStarController {
         search: req.query.search || '',
         minQuantity: parseInt(req.query.minQuantity) || 0
       };
-
       const result = await routeStarService.getGroupedItems(options);
-
       res.json({
         success: true,
         data: result
@@ -386,36 +313,26 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getInvoicesByItem(req, res, next) {
     try {
       const { itemName } = req.params;
-
       const result = await routeStarService.getInvoicesByItem(itemName);
-
-      // Service already returns { success, data }, don't double-wrap
       res.json(result);
     } catch (error) {
       console.error('Get invoices by item error:', error);
       next(error);
     }
   }
-
-  
   async bulkDeleteInvoices(req, res, next) {
     try {
       const { items } = req.body;
-
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'Please provide an array of items to delete'
         });
       }
-
       const result = await routeStarService.bulkDeleteInvoices(items);
-
       res.json({
         success: true,
         message: `Successfully deleted ${result.deletedCount} invoices`,
@@ -426,21 +343,16 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async bulkDeleteByNumbers(req, res, next) {
     try {
       const { invoiceNumbers } = req.body;
-
       if (!invoiceNumbers || !Array.isArray(invoiceNumbers) || invoiceNumbers.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'Please provide an array of invoice numbers to delete'
         });
       }
-
       const result = await routeStarService.bulkDeleteByNumbers(invoiceNumbers);
-
       res.json({
         success: true,
         message: `Successfully deleted ${result.deletedCount} invoices`,
@@ -451,8 +363,6 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getItems(req, res, next) {
     try {
       const options = {
@@ -462,9 +372,7 @@ class RouteStarController {
         forSell: req.query.forSell,
         forUse: req.query.forUse
       };
-
       const result = await routeStarService.getItems(options);
-
       res.json({
         success: true,
         data: result
@@ -474,12 +382,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getLowStockItems(req, res, next) {
     try {
       const items = await routeStarService.getLowStockItems();
-
       res.json({
         success: true,
         data: items
@@ -489,12 +394,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async deleteAllItems(req, res, next) {
     try {
       const result = await routeStarService.deleteAllItems();
-
       res.json({
         success: true,
         message: result.message,
@@ -505,13 +407,9 @@ class RouteStarController {
       next(error);
     }
   }
-
-  
   async getItemInvoiceUsage(req, res, next) {
     try {
       const result = await routeStarService.getItemInvoiceUsage();
-
-      
       res.json(result);
     } catch (error) {
       console.error('Get item invoice usage error:', error);
@@ -519,5 +417,4 @@ class RouteStarController {
     }
   }
 }
-
 module.exports = new RouteStarController();

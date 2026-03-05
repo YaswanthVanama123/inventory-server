@@ -157,31 +157,23 @@ const purchaseSchema = new mongoose.Schema({
 purchaseSchema.index({ inventoryItem: 1, purchaseDate: -1 });
 purchaseSchema.index({ purchaseDate: -1 });
 purchaseSchema.index({ isDeleted: 1, isActive: 1 });
-
 purchaseSchema.pre('save', function(next) {
   if (this.isModified('quantity') || this.isModified('purchasePrice')) {
     this.totalCost = this.quantity * this.purchasePrice;
   }
-
   if (!this.remainingQuantity && this.remainingQuantity !== 0) {
     this.remainingQuantity = this.quantity;
   }
-
   next();
 });
-
 purchaseSchema.virtual('isExpired').get(function() {
   if (!this.expiryDate) return false;
   return this.expiryDate < new Date();
 });
-
 purchaseSchema.virtual('isFullyConsumed').get(function() {
   return this.remainingQuantity === 0;
 });
-
 purchaseSchema.set('toJSON', { virtuals: true });
 purchaseSchema.set('toObject', { virtuals: true });
-
 const Purchase = mongoose.model('Purchase', purchaseSchema);
-
 module.exports = Purchase;

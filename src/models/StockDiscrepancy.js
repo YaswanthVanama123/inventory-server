@@ -17,8 +17,6 @@ const stockDiscrepancySchema = new mongoose.Schema({
     enum: ['RouteStarInvoice', 'CustomerConnectOrder', 'TruckCheckout'],
     required: true
   },
-
-  
   itemName: {
     type: String,
     required: true,
@@ -33,8 +31,6 @@ const stockDiscrepancySchema = new mongoose.Schema({
     trim: true,
     index: true  
   },
-
-  
   systemQuantity: {
     type: Number,
     required: true,
@@ -48,8 +44,6 @@ const stockDiscrepancySchema = new mongoose.Schema({
   difference: {
     type: Number
   },
-
-  
   discrepancyType: {
     type: String,
     enum: ['Overage', 'Shortage', 'Damage', 'Missing'],
@@ -63,24 +57,18 @@ const stockDiscrepancySchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-
-  
   status: {
     type: String,
     enum: ['Pending', 'Approved', 'Rejected', 'Resolved'],
     default: 'Pending',
     index: true
   },
-
-  
   resolvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   resolvedAt: Date,
   resolutionNotes: String,
-
-  
   reportedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -94,23 +82,15 @@ const stockDiscrepancySchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
-
-
 stockDiscrepancySchema.index({ status: 1, reportedAt: -1 });
 stockDiscrepancySchema.index({ invoiceNumber: 1, itemName: 1 });
 stockDiscrepancySchema.index({ reportedBy: 1, reportedAt: -1 });
-
-
 stockDiscrepancySchema.virtual('discrepancyPercentage').get(function() {
   if (this.systemQuantity === 0) return 0;
   return ((this.difference / this.systemQuantity) * 100).toFixed(2);
 });
-
-
 stockDiscrepancySchema.pre('save', function(next) {
   this.difference = this.actualQuantity - this.systemQuantity;
-
-  
   if (!this.discrepancyType) {
     if (this.difference > 0) {
       this.discrepancyType = 'Overage';
@@ -118,39 +98,28 @@ stockDiscrepancySchema.pre('save', function(next) {
       this.discrepancyType = 'Shortage';
     }
   }
-
   next();
 });
-
-
 stockDiscrepancySchema.statics.getPendingDiscrepancies = function(options = {}) {
   const query = { status: 'Pending' };
-
   if (options.startDate) {
     query.reportedAt = { $gte: new Date(options.startDate) };
   }
-
   if (options.endDate) {
     query.reportedAt = { ...query.reportedAt, $lte: new Date(options.endDate) };
   }
-
   return this.find(query)
     .populate('reportedBy', 'username fullName')
     .sort({ reportedAt: -1 });
 };
-
-
 stockDiscrepancySchema.statics.getSummary = async function(startDate, endDate) {
   const matchStage = {};
-
   if (startDate) {
     matchStage.reportedAt = { $gte: new Date(startDate) };
   }
-
   if (endDate) {
     matchStage.reportedAt = { ...matchStage.reportedAt, $lte: new Date(endDate) };
   }
-
   const summary = await this.aggregate([
     { $match: matchStage },
     {
@@ -161,7 +130,6 @@ stockDiscrepancySchema.statics.getSummary = async function(startDate, endDate) {
       }
     }
   ]);
-
   const typeBreakdown = await this.aggregate([
     { $match: matchStage },
     {
@@ -172,15 +140,12 @@ stockDiscrepancySchema.statics.getSummary = async function(startDate, endDate) {
       }
     }
   ]);
-
   return {
     byStatus: summary,
     byType: typeBreakdown,
     total: await this.countDocuments(matchStage)
   };
 };
-
-
 stockDiscrepancySchema.methods.approve = function(userId, notes = '') {
   this.status = 'Approved';
   this.resolvedBy = userId;
@@ -188,8 +153,6 @@ stockDiscrepancySchema.methods.approve = function(userId, notes = '') {
   this.resolutionNotes = notes;
   return this.save();
 };
-
-
 stockDiscrepancySchema.methods.reject = function(userId, notes = '') {
   this.status = 'Rejected';
   this.resolvedBy = userId;
@@ -197,7 +160,5 @@ stockDiscrepancySchema.methods.reject = function(userId, notes = '') {
   this.resolutionNotes = notes;
   return this.save();
 };
-
 const StockDiscrepancy = mongoose.model('StockDiscrepancy', stockDiscrepancySchema);
-
 module.exports = StockDiscrepancy;

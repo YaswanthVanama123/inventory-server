@@ -3,11 +3,8 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 
 
 class StockReconciliationService {
-  
   async getReconciliation() {
     console.log('[Stock Reconciliation] Starting aggregation...');
-
-    
     const purchasedItems = await CustomerConnectOrder.aggregate([
       { $match: { 'items.0': { $exists: true } } },
       { $unwind: '$items' },
@@ -35,8 +32,6 @@ class StockReconciliationService {
         }
       }
     ]);
-
-    
     const soldItemsBySKU = await RouteStarInvoice.aggregate([
       { $match: { 'lineItems.0': { $exists: true } } },
       { $unwind: '$lineItems' },
@@ -61,14 +56,10 @@ class StockReconciliationService {
         }
       }
     ]);
-
-    
     const soldMap = {};
     soldItemsBySKU.forEach(item => {
       soldMap[item.sku] = item;
     });
-
-    
     const reconciliation = purchasedItems.map(purchase => {
       const sold = soldMap[purchase.sku] || {
         totalSold: 0,
@@ -76,12 +67,10 @@ class StockReconciliationService {
         totalSaleValue: 0,
         saleCount: 0
       };
-
       const currentStock = purchase.totalPurchased - sold.totalSold;
       const profitMargin = sold.avgSalePrice > 0
         ? ((sold.avgSalePrice - purchase.avgPurchasePrice) / sold.avgSalePrice * 100).toFixed(2)
         : 0;
-
       return {
         sku: purchase.sku,
         name: purchase.name,
@@ -104,11 +93,7 @@ class StockReconciliationService {
         }
       };
     });
-
-    
     reconciliation.sort((a, b) => a.stock.current - b.stock.current);
-
-    
     const unmatchedSales = soldItemsBySKU
       .filter(sold => !purchasedItems.find(p => p.sku === sold.sku))
       .map(sold => ({
@@ -127,10 +112,7 @@ class StockReconciliationService {
           profitMargin: 0
         }
       }));
-
     const allItems = [...reconciliation, ...unmatchedSales];
-
-    
     const summary = {
       totalItems: allItems.length,
       inStock: allItems.filter(i => i.stock.current > 0).length,
@@ -140,9 +122,7 @@ class StockReconciliationService {
       totalSaleValue: allItems.reduce((sum, i) => sum + i.sold.totalValue, 0),
       totalProfit: allItems.reduce((sum, i) => sum + (i.sold.totalValue - i.purchased.totalValue), 0)
     };
-
     console.log(`[Stock Reconciliation] Found ${allItems.length} items`);
-
     return {
       items: allItems,
       summary,
@@ -150,5 +130,4 @@ class StockReconciliationService {
     };
   }
 }
-
 module.exports = new StockReconciliationService();

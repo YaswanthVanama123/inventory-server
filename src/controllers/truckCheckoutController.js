@@ -3,18 +3,15 @@ const stockCalculationService = require('../services/stockCalculation.service');
 
 
 class TruckCheckoutController {
-  
   async createCheckout(req, res, next) {
     try {
       const result = await truckCheckoutService.createCheckout(
         req.body,
         req.user?.id || req.user?.username || 'system'
       );
-
       if (!result.success) {
         return res.status(200).json(result);
       }
-
       res.status(201).json({
         success: true,
         message: result.message,
@@ -29,8 +26,6 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getCheckouts(req, res, next) {
     try {
       const filters = {
@@ -39,14 +34,11 @@ class TruckCheckoutController {
         startDate: req.query.startDate,
         endDate: req.query.endDate
       };
-
       const pagination = {
         page: req.query.page,
         limit: req.query.limit
       };
-
       const result = await truckCheckoutService.getCheckouts(filters, pagination);
-
       res.json({
         success: true,
         data: result
@@ -56,12 +48,9 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getCheckoutById(req, res, next) {
     try {
       const checkout = await truckCheckoutService.getCheckoutById(req.params.id);
-
       res.json({
         success: true,
         data: checkout
@@ -77,12 +66,9 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async deleteCheckout(req, res, next) {
     try {
       const result = await truckCheckoutService.deleteCheckout(req.params.id);
-
       res.json(result);
     } catch (error) {
       if (error.message.includes('not found') || error.message.includes('Cannot delete')) {
@@ -95,8 +81,6 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async searchItems(req, res, next) {
     try {
       const options = {
@@ -104,9 +88,7 @@ class TruckCheckoutController {
         forSell: req.query.forSell === 'true',
         limit: parseInt(req.query.limit) || 100
       };
-
       const items = await stockCalculationService.searchItemsWithStock(options);
-
       res.json({
         success: true,
         data: items
@@ -116,12 +98,9 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getItemStock(req, res, next) {
     try {
       const stock = await stockCalculationService.getCurrentStock(req.params.itemName);
-
       res.json({
         success: true,
         data: stock
@@ -131,15 +110,12 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getActiveCheckouts(req, res, next) {
     try {
       const result = await truckCheckoutService.getCheckouts(
         { status: 'checked_out' },
         { page: 1, limit: 1000 }
       );
-
       res.json({
         success: true,
         data: result.checkouts
@@ -149,17 +125,13 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getCheckoutsByEmployee(req, res, next) {
     try {
       const limit = parseInt(req.query.limit) || 50;
-
       const result = await truckCheckoutService.getCheckouts(
         { employeeName: req.params.employeeName },
         { page: 1, limit }
       );
-
       res.json({
         success: true,
         data: result.checkouts
@@ -169,20 +141,16 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
-  
   async getEmployeeStats(req, res, next) {
     try {
       const TruckCheckout = require('../models/TruckCheckout');
       const { employeeName } = req.params;
       const { startDate, endDate } = req.query;
-
       const stats = await TruckCheckout.getEmployeeStats(
         employeeName,
         startDate,
         endDate
       );
-
       res.json({
         success: true,
         data: stats[0] || {
@@ -198,11 +166,9 @@ class TruckCheckoutController {
       next(error);
     }
   }
-  
   async getCheckoutSalesTracking(req, res, next) {
     try {
       const result = await truckCheckoutService.getCheckoutSalesTracking(req.query);
-
       res.status(200).json({
         success: true,
         data: result
@@ -212,7 +178,6 @@ class TruckCheckoutController {
       next(error);
     }
   }
-
   async getAllEmployeesWithStats(req, res, next) {
     try {
       const filters = {
@@ -220,9 +185,7 @@ class TruckCheckoutController {
         endDate: req.query.endDate,
         search: req.query.search
       };
-
       const employees = await truckCheckoutService.getAllEmployeesWithStats(filters);
-
       res.status(200).json({
         success: true,
         data: employees
@@ -233,5 +196,4 @@ class TruckCheckoutController {
     }
   }
 }
-
 module.exports = new TruckCheckoutController();

@@ -120,12 +120,9 @@ const invoiceSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
 invoiceSchema.index({ source: 1, sourceInvoiceId: 1 }, { unique: true });
 invoiceSchema.index({ invoiceDate: -1, status: 1 });
 invoiceSchema.index({ 'customer.name': 1 });
-
-
 invoiceSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0) {
     this.subtotal = this.items.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -133,19 +130,15 @@ invoiceSchema.pre('save', function(next) {
   }
   next();
 });
-
-
 invoiceSchema.statics.findBySourceInvoiceId = function(source, sourceInvoiceId) {
   return this.findOne({ source, sourceInvoiceId });
 };
-
 invoiceSchema.statics.getUnprocessedInvoices = function() {
   return this.find({
     stockProcessed: false,
     status: { $in: ['paid', 'delivered', 'completed'] }
   }).sort({ invoiceDate: 1 });
 };
-
 invoiceSchema.statics.getSalesStats = async function(startDate, endDate) {
   const pipeline = [
     {
@@ -163,7 +156,6 @@ invoiceSchema.statics.getSalesStats = async function(startDate, endDate) {
       }
     }
   ];
-
   const result = await this.aggregate(pipeline);
   return result.length > 0 ? result[0] : {
     totalSales: 0,
@@ -171,7 +163,5 @@ invoiceSchema.statics.getSalesStats = async function(startDate, endDate) {
     averageInvoiceValue: 0
   };
 };
-
 const ExternalInvoice = mongoose.model('ExternalInvoice', invoiceSchema);
-
 module.exports = ExternalInvoice;

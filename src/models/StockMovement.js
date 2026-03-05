@@ -47,24 +47,18 @@ const stockMovementSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
 stockMovementSchema.index({ sku: 1, timestamp: -1 });
 stockMovementSchema.index({ refType: 1, refId: 1 });
 stockMovementSchema.index({ type: 1, timestamp: -1 });
-
-
 stockMovementSchema.statics.getMovementsBySKU = function(sku, startDate, endDate) {
   const query = { sku: sku.toUpperCase() };
-
   if (startDate || endDate) {
     query.timestamp = {};
     if (startDate) query.timestamp.$gte = startDate;
     if (endDate) query.timestamp.$lte = endDate;
   }
-
   return this.find(query).sort({ timestamp: -1 });
 };
-
 stockMovementSchema.statics.getStockSummaryBySKU = async function(sku) {
   const pipeline = [
     {
@@ -78,9 +72,7 @@ stockMovementSchema.statics.getStockSummaryBySKU = async function(sku) {
       }
     }
   ];
-
   const result = await this.aggregate(pipeline);
-
   const summary = {
     sku,
     totalIn: 0,
@@ -88,18 +80,13 @@ stockMovementSchema.statics.getStockSummaryBySKU = async function(sku) {
     totalAdjust: 0,
     currentStock: 0
   };
-
   result.forEach(item => {
     if (item._id === 'IN') summary.totalIn = item.totalQty;
     if (item._id === 'OUT') summary.totalOut = item.totalQty;
     if (item._id === 'ADJUST') summary.totalAdjust = item.totalQty;
   });
-
   summary.currentStock = summary.totalIn - summary.totalOut + summary.totalAdjust;
-
   return summary;
 };
-
 const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
-
 module.exports = StockMovement;

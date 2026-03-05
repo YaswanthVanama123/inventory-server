@@ -62,17 +62,12 @@ const syncLogSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
 syncLogSchema.index({ source: 1, startedAt: -1 });
 syncLogSchema.index({ status: 1, source: 1 });
-
-
 syncLogSchema.virtual('duration').get(function() {
   if (!this.endedAt) return null;
   return this.endedAt - this.startedAt; 
 });
-
-
 syncLogSchema.methods.complete = function(success = true, message = null) {
   this.endedAt = new Date();
   if (success) {
@@ -83,12 +78,9 @@ syncLogSchema.methods.complete = function(success = true, message = null) {
   }
   return this;
 };
-
-
 syncLogSchema.statics.getLatestSync = function(source) {
   return this.findOne({ source }).sort({ startedAt: -1 });
 };
-
 syncLogSchema.statics.getRecentSyncs = function(source, limit = 10) {
   const query = source ? { source } : {};
   return this.find(query)
@@ -96,11 +88,9 @@ syncLogSchema.statics.getRecentSyncs = function(source, limit = 10) {
     .limit(limit)
     .populate('triggeredBy', 'username fullName');
 };
-
 syncLogSchema.statics.getSyncStats = async function(source, days = 30) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
-
   const pipeline = [
     {
       $match: {
@@ -129,15 +119,10 @@ syncLogSchema.statics.getSyncStats = async function(source, days = 30) {
       }
     }
   ];
-
   const result = await this.aggregate(pipeline);
   return result.length > 0 ? result[0] : null;
 };
-
-
 syncLogSchema.set('toJSON', { virtuals: true });
 syncLogSchema.set('toObject', { virtuals: true });
-
 const SyncLog = mongoose.model('SyncLog', syncLogSchema);
-
 module.exports = SyncLog;

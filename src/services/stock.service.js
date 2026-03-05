@@ -9,12 +9,9 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
 class StockService {
   constructor() {
-    
     this._cache = new Map();
     this._cacheTTL = new Map();
   }
-
-  
   _cacheGet(key) {
     const ttl = this._cacheTTL.get(key);
     if (ttl && Date.now() > ttl) {
@@ -24,26 +21,18 @@ class StockService {
     }
     return this._cache.get(key);
   }
-
-  
   _cacheSet(key, value, ttlSeconds) {
     this._cache.set(key, value);
     this._cacheTTL.set(key, Date.now() + (ttlSeconds * 1000));
   }
-
-  
   async getCategorySkus(categoryName) {
     console.time(`[getCategorySkus] Total for ${categoryName}`);
-
-    
     console.time('[getCategorySkus] Step 1: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
     console.timeEnd('[getCategorySkus] Step 1: Get mappings');
-
     const skus = mappings.map(m => m.modelNumber);
-
     if (skus.length === 0) {
       console.timeEnd(`[getCategorySkus] Total for ${categoryName}`);
       return {
@@ -51,10 +40,7 @@ class StockService {
         skus: []
       };
     }
-
     console.log(`[getCategorySkus] Found ${skus.length} SKUs for ${categoryName}`);
-
-    
     console.time('[getCategorySkus] Step 2: Aggregate SKU data');
     const skuAggregation = await CustomerConnectOrder.aggregate([
       {
@@ -101,14 +87,10 @@ class StockService {
       { $sort: { sku: 1 } }
     ]);
     console.timeEnd('[getCategorySkus] Step 2: Aggregate SKU data');
-
-    
     const skuData = {};
     skuAggregation.forEach(item => {
       skuData[item.sku] = item;
     });
-
-    
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
       if (!skuData[skuUpper]) {
@@ -122,43 +104,28 @@ class StockService {
         };
       }
     });
-
-    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
-
     console.timeEnd(`[getCategorySkus] Total for ${categoryName}`);
-
     return {
       categoryName,
       skus: skuArray
     };
   }
-
-  
   async getCategorySales(categoryName) {
     console.time(`[getCategorySales] Total for ${categoryName}`);
-
-    
     console.time('[getCategorySales] Step 1: Load aliases');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     console.timeEnd('[getCategorySales] Step 1: Load aliases');
-
-    
     const variations = this._getItemVariations(categoryName, aliasMap);
-
     console.log(`Finding data for category: ${categoryName}, variations:`, variations);
-
-    
     console.time('[getCategorySales] Step 2: Get mappings');
     const mappings = await ModelCategory.find({
       categoryItemName: categoryName
     }).lean();
     console.timeEnd('[getCategorySales] Step 2: Get mappings');
-
     const skus = mappings.map(m => m.modelNumber);
-
     if (skus.length === 0) {
       console.timeEnd(`[getCategorySales] Total for ${categoryName}`);
       return {
@@ -166,13 +133,9 @@ class StockService {
         skus: []
       };
     }
-
     console.log(`[getCategorySales] Found ${skus.length} SKUs`);
-
-    
     console.time('[getCategorySales] Step 3: Parallel aggregations');
     const [purchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
-      
       CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -206,8 +169,6 @@ class StockService {
           }
         }
       ]),
-
-      
       RouteStarInvoice.aggregate([
         {
           $match: {
@@ -240,8 +201,6 @@ class StockService {
           }
         }
       ]),
-
-      
       TruckCheckout.aggregate([
         {
           $match: {
@@ -295,8 +254,6 @@ class StockService {
           }
         }
       ]),
-
-      
       StockDiscrepancy.find({
         $or: [
           { categoryName: categoryName },
@@ -310,8 +267,6 @@ class StockService {
         .lean()
     ]);
     console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
-
-    
     const skuData = {};
     purchaseData.forEach(item => {
       skuData[item._id] = {
@@ -328,25 +283,18 @@ class StockService {
         discrepancyHistory: []
       };
     });
-
-    
     const categorySalesData = salesData[0] || {
       totalSold: 0,
       totalSalesValue: 0,
       salesHistory: []
     };
-
-    
     const checkoutResults = checkoutData[0];
     const oldCheckoutData = checkoutResults?.oldStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
     const newCheckoutData = checkoutResults?.newStructure?.[0] || { totalCheckedOut: 0, checkoutHistory: [] };
-
     const categoryCheckoutData = {
       totalCheckedOut: oldCheckoutData.totalCheckedOut + newCheckoutData.totalCheckedOut,
       checkoutHistory: [...oldCheckoutData.checkoutHistory, ...newCheckoutData.checkoutHistory]
     };
-
-    
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -366,29 +314,19 @@ class StockService {
           discrepancyHistory: []
         };
       }
-
-      
       skuData[skuUpper].totalSold = categorySalesData.totalSold / skuCount;
       skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
-
-      
       skuData[skuUpper].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
-
-      
       skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
         d.itemSku === sku || d.categoryName === categoryName
       );
     });
-
-    
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
-
     console.timeEnd(`[getCategorySales] Total for ${categoryName}`);
-
     return {
       categoryName,
       skus: skuArray,
@@ -403,33 +341,25 @@ class StockService {
       }
     };
   }
-
-  
   async getUseStock() {
     const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
     const allowedCategories = new Set(forUseItems.map(item => item.itemName));
-
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
-
     mappings.forEach(mapping => {
       if (mapping.modelNumber && mapping.categoryItemName) {
         skuToCategoryMap[mapping.modelNumber] = mapping.categoryItemName;
       }
     });
-
     const orders = await CustomerConnectOrder.find({
       status: { $in: ['Complete', 'Processing', 'Shipped'] }
     }).lean();
-
     const categoryMap = {};
-
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
-
           if (category && allowedCategories.has(category)) {
             if (!categoryMap[category]) {
               categoryMap[category] = {
@@ -439,7 +369,6 @@ class StockService {
                 totalValue: 0
               };
             }
-
             categoryMap[category].totalQuantity += item.qty || 0;
             categoryMap[category].itemCount += 1;
             categoryMap[category].totalValue += item.lineTotal || 0;
@@ -447,8 +376,6 @@ class StockService {
         });
       }
     });
-
-    
     forUseItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -459,78 +386,58 @@ class StockService {
         };
       }
     });
-
     const stockData = Object.values(categoryMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
-
     const totals = stockData.reduce((acc, item) => ({
       totalQuantity: acc.totalQuantity + item.totalQuantity,
       totalValue: acc.totalValue + item.totalValue,
       categoryCount: acc.categoryCount + 1
     }), { totalQuantity: 0, totalValue: 0, categoryCount: 0 });
-
     return {
       items: stockData,
       totals
     };
   }
-
-  
   async getSellStock() {
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const allowedCategories = new Set(forSellItems.map(item => item.itemName));
-
     const mappings = await ModelCategory.find().lean();
     const skuToCategoryMap = {};
-
     mappings.forEach(mapping => {
       if (mapping.modelNumber && mapping.categoryItemName) {
         skuToCategoryMap[mapping.modelNumber] = mapping.categoryItemName;
       }
     });
-
-    // Get cutoff date from settings
     const Settings = require('../models/Settings');
     const settings = await Settings.getSettings();
     const cutoffDate = settings.stockCalculationCutoffDate;
-
     console.log(`[getSellStock] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
-
-
     const [orders, invoices, checkouts, discrepancies, aliasMap] = await Promise.all([
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] }
       }).lean(),
-
       RouteStarInvoice.find({
         status: { $in: ['Completed', 'Closed', 'Pending'] }
       }).lean(),
-
       TruckCheckout.find({
         status: 'checked_out'
       }).lean(),
-
       StockDiscrepancy.find({
         categoryName: { $in: Array.from(allowedCategories) }
       })
         .populate('reportedBy', 'username fullName')
         .populate('resolvedBy', 'username fullName')
         .lean(),
-
       RouteStarItemAlias.buildLookupMap()
     ]);
-
     const categoryMap = {};
     const categoryInvoices = {};
-
-    // Process purchases
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
-
           if (category && allowedCategories.has(category)) {
             if (!categoryMap[category]) {
               categoryMap[category] = {
@@ -550,7 +457,6 @@ class StockService {
                 stockRemaining: 0
               };
             }
-
             categoryMap[category].totalPurchased += item.qty || 0;
             categoryMap[category].totalPurchaseValue += item.lineTotal || 0;
             categoryMap[category].itemCount += 1;
@@ -558,18 +464,14 @@ class StockService {
         });
       }
     });
-
-    // Process invoices - track ALL for display, but separate before/after cutoff for remaining stock
     invoices.forEach(invoice => {
       if (invoice.lineItems && Array.isArray(invoice.lineItems)) {
         const invoiceDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : null;
         const isBeforeCutoff = !cutoffDate || !invoiceDate || invoiceDate < cutoffDate;
-
         invoice.lineItems.forEach(item => {
           const rawItemName = item.name ? item.name.trim() : '';
           const itemNameLower = rawItemName.toLowerCase();
           const canonicalName = aliasMap[itemNameLower] || rawItemName;
-
           if (allowedCategories.has(canonicalName)) {
             if (!categoryMap[canonicalName]) {
               categoryMap[canonicalName] = {
@@ -589,16 +491,11 @@ class StockService {
                 stockRemaining: 0
               };
             }
-
-            // Always add to totalSold (for display)
             categoryMap[canonicalName].totalSold += item.quantity || 0;
             categoryMap[canonicalName].totalSalesValue += item.amount || 0;
-
-            // Only add to totalSoldBeforeCutoff if before cutoff date (for remaining stock calculation)
             if (isBeforeCutoff) {
               categoryMap[canonicalName].totalSoldBeforeCutoff += item.quantity || 0;
             }
-
             if (!categoryInvoices[canonicalName]) {
               categoryInvoices[canonicalName] = new Set();
             }
@@ -607,19 +504,14 @@ class StockService {
         });
       }
     });
-
-    // Process checkouts - track ALL for display, but separate after cutoff for remaining stock
     checkouts.forEach(checkout => {
       const checkoutDate = checkout.checkoutDate ? new Date(checkout.checkoutDate) : null;
       const isAfterCutoff = cutoffDate && checkoutDate && checkoutDate >= cutoffDate;
-
-      // Old structure: itemsTaken array
       if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
         checkout.itemsTaken.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
           const itemNameLower = itemName.toLowerCase();
           const canonicalName = aliasMap[itemNameLower] || itemName;
-
           if (allowedCategories.has(canonicalName)) {
             if (!categoryMap[canonicalName]) {
               categoryMap[canonicalName] = {
@@ -639,15 +531,10 @@ class StockService {
                 stockRemaining: 0
               };
             }
-
-            // Always add to totalCheckedOut (for display)
             categoryMap[canonicalName].totalCheckedOut += item.quantity || 0;
-
-            // Only add to totalCheckedOutAfterCutoff if after cutoff date (for remaining stock calculation)
             if (isAfterCutoff) {
               categoryMap[canonicalName].totalCheckedOutAfterCutoff += item.quantity || 0;
             }
-
             categoryMap[canonicalName].checkoutDetails.push({
               employeeName: checkout.employeeName,
               truckNumber: checkout.truckNumber,
@@ -657,13 +544,10 @@ class StockService {
           }
         });
       }
-
-      // New structure: itemName and quantityTaking
       if (checkout.itemName && checkout.quantityTaking) {
         const itemName = checkout.itemName.trim();
         const itemNameLower = itemName.toLowerCase();
         const canonicalName = aliasMap[itemNameLower] || itemName;
-
         if (allowedCategories.has(canonicalName)) {
           if (!categoryMap[canonicalName]) {
             categoryMap[canonicalName] = {
@@ -683,15 +567,10 @@ class StockService {
               stockRemaining: 0
             };
           }
-
-          // Always add to totalCheckedOut (for display)
           categoryMap[canonicalName].totalCheckedOut += checkout.quantityTaking || 0;
-
-          // Only add to totalCheckedOutAfterCutoff if after cutoff date (for remaining stock calculation)
           if (isAfterCutoff) {
             categoryMap[canonicalName].totalCheckedOutAfterCutoff += checkout.quantityTaking || 0;
           }
-
           categoryMap[canonicalName].checkoutDetails.push({
             employeeName: checkout.employeeName,
             truckNumber: checkout.truckNumber,
@@ -701,30 +580,21 @@ class StockService {
         }
       }
     });
-
-    
     Object.keys(categoryInvoices).forEach(categoryName => {
       if (categoryMap[categoryName]) {
         categoryMap[categoryName].invoiceCount = categoryInvoices[categoryName].size;
       }
     });
-
-    
     const processedDiscrepancies = new Set();
-
     discrepancies.forEach(discrepancy => {
       const matchedCategory = discrepancy.categoryName;
-
       if (!matchedCategory) return;
-
       const discrepancyKey = `${discrepancy._id}-${matchedCategory}`;
       if (processedDiscrepancies.has(discrepancyKey)) return;
-
       if (allowedCategories.has(matchedCategory) && categoryMap[matchedCategory]) {
         categoryMap[matchedCategory].totalDiscrepancies += 1;
         categoryMap[matchedCategory].totalDiscrepancyDifference += (discrepancy.difference || 0);
         processedDiscrepancies.add(discrepancyKey);
-
         if (discrepancy.status === 'Approved' && discrepancy.difference !== undefined) {
           if (!categoryMap[matchedCategory].discrepancyAdjustment) {
             categoryMap[matchedCategory].discrepancyAdjustment = 0;
@@ -733,24 +603,15 @@ class StockService {
         }
       }
     });
-
-    // Calculate remaining stock with cutoff date logic
     Object.values(categoryMap).forEach(category => {
       const adjustment = category.discrepancyAdjustment || 0;
-
-      // NEW FORMULA with cutoff date logic:
-      // stockRemaining = totalPurchased - invoicesSoldBeforeCutoff - checkoutsAfterCutoff + discrepancyAdjustment
       category.stockRemaining = category.totalPurchased
                               - category.totalSoldBeforeCutoff
                               - category.totalCheckedOutAfterCutoff
                               + adjustment;
-
       delete category.discrepancyAdjustment;
-
       console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${category.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
-
-    // Ensure all forSell items have entries
     forSellItems.forEach(item => {
       if (!categoryMap[item.itemName]) {
         categoryMap[item.itemName] = {
@@ -771,11 +632,9 @@ class StockService {
         };
       }
     });
-
     const stockData = Object.values(categoryMap).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
-
     const totals = stockData.reduce((acc, item) => ({
       totalPurchased: acc.totalPurchased + item.totalPurchased,
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
@@ -797,24 +656,16 @@ class StockService {
       totalDiscrepancyDifference: 0,
       categoryCount: 0
     });
-
     return {
       items: stockData,
       totals
     };
   }
-
-  
   async getStockSummary() {
     console.time('[StockSummary] Total time');
-
-    
     console.time('[StockSummary] Step 1: Metadata');
-
-    
     const cacheKey = 'stock_summary_metadata';
     let metadata = this._cacheGet(cacheKey);
-
     if (!metadata) {
       const [forUseItems, forSellItems, aliasData, mappings] = await Promise.all([
         RouteStarItem.find({ forUse: true }).select('itemName').lean(),
@@ -822,31 +673,21 @@ class StockService {
         RouteStarItemAlias.find({ isActive: true }).select('canonicalName aliases.name').lean(),
         ModelCategory.find().select('modelNumber categoryItemName').lean()
       ]);
-
       metadata = { forUseItems, forSellItems, aliasData, mappings };
       this._cacheSet(cacheKey, metadata, 10); 
     }
-
     const { forUseItems, forSellItems, aliasData, mappings } = metadata;
     console.timeEnd('[StockSummary] Step 1: Metadata');
-
-    // Get cutoff date from settings
     const Settings = require('../models/Settings');
     const settings = await Settings.getSettings();
     const cutoffDate = settings.stockCalculationCutoffDate;
-
     console.log(`[StockSummary] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
-
-
     const useAllowedSet = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedSet = new Set(forSellItems.map(item => item.itemName));
-
-    
     console.time('[StockSummary] Step 1.5: Build SKU maps');
     const skuToCategoryMap = new Map();
     const useSKUs = [];
     const sellSKUs = [];
-
     mappings.forEach(m => {
       if (m.modelNumber && m.categoryItemName) {
         skuToCategoryMap.set(m.modelNumber, m.categoryItemName);
@@ -858,16 +699,12 @@ class StockService {
         }
       }
     });
-
-    
     const aliasToCanonicalMap = new Map();
     const sellVariationsSet = new Set();
-
     sellAllowedSet.forEach(c => {
       sellVariationsSet.add(c);
       sellVariationsSet.add(c.toLowerCase());
     });
-
     aliasData.forEach(mapping => {
       if (sellAllowedSet.has(mapping.canonicalName)) {
         mapping.aliases.forEach(alias => {
@@ -878,24 +715,15 @@ class StockService {
         });
       }
     });
-
     const sellVariationsArray = Array.from(sellVariationsSet);
     console.timeEnd('[StockSummary] Step 1.5: Build SKU maps');
-
     console.log(`[StockSummary] Use: ${useAllowedSet.size} cats, ${useSKUs.length} SKUs | Sell: ${sellAllowedSet.size} cats, ${sellSKUs.length} SKUs, ${sellVariationsArray.length} variations`);
-
-    
     console.time('[StockSummary] Step 1.6: Extract sales keywords from purchases');
-
-    
     const keywordCacheKey = `sales_keywords_${sellSKUs.length}`;
     let keywordData = this._cacheGet(keywordCacheKey);
-
     if (!keywordData) {
       const skuToItemNameMap = new Map();
       const salesKeywordsSet = new Set(); 
-
-      
       const skuOrders = await CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -926,13 +754,9 @@ class StockService {
         },
         { $limit: 300 } 
       ]);
-
       skuOrders.forEach(item => {
         if (item.sku && item.name) {
           skuToItemNameMap.set(item.sku, item.name);
-
-          
-          
           const quotedMatches = item.name.match(/"([^"]+)"/g);
           if (quotedMatches) {
             quotedMatches.forEach(match => {
@@ -943,12 +767,9 @@ class StockService {
               }
             });
           }
-
-          
           const words = item.name.split(/[\s,]+/);
           words.forEach(word => {
             const cleaned = word.replace(/[^A-Za-z0-9]/g, '');
-            
             if (cleaned && cleaned.length > 2 && cleaned === cleaned.toUpperCase()) {
               salesKeywordsSet.add(cleaned);
               salesKeywordsSet.add(cleaned.toLowerCase());
@@ -956,25 +777,16 @@ class StockService {
           });
         }
       });
-
       keywordData = { skuToItemNameMap, salesKeywordsSet };
       this._cacheSet(keywordCacheKey, keywordData, 10); 
     }
-
     const { skuToItemNameMap, salesKeywordsSet } = keywordData;
-
-    
     salesKeywordsSet.forEach(kw => sellVariationsSet.add(kw));
     const finalSellVariationsArray = Array.from(sellVariationsSet);
     console.timeEnd('[StockSummary] Step 1.6: Extract sales keywords from purchases');
-
     console.log(`[StockSummary] Extracted ${salesKeywordsSet.size} sales keywords from item names`);
-
-    
     console.time('[StockSummary] Step 2: Mega query');
-
     const [ordersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
-      
       (useSKUs.length > 0 || sellSKUs.length > 0) ? CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -1020,8 +832,6 @@ class StockService {
           }
         }
       ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
-
-      // Invoices aggregation with cutoff date logic
       finalSellVariationsArray.length > 0 ? RouteStarInvoice.aggregate([
         {
           $match: {
@@ -1038,7 +848,6 @@ class StockService {
         },
         {
           $facet: {
-            // ALL invoices (for display totalSold column)
             allInvoices: [
               {
                 $group: {
@@ -1058,7 +867,6 @@ class StockService {
                 }
               }
             ],
-            // Invoices BEFORE cutoff (for remaining stock calculation)
             invoicesBeforeCutoff: cutoffDate ? [
               {
                 $match: {
@@ -1079,7 +887,6 @@ class StockService {
                 }
               }
             ] : [
-              // If no cutoff, all invoices count for remaining stock
               {
                 $group: {
                   _id: { $toLower: '$lineItems.name' },
@@ -1097,8 +904,6 @@ class StockService {
           }
         }
       ]) : Promise.resolve([{ allInvoices: [], invoicesBeforeCutoff: [] }]),
-
-      // Checkouts aggregation with cutoff date logic
       finalSellVariationsArray.length > 0 ? TruckCheckout.aggregate([
         {
           $match: {
@@ -1111,7 +916,6 @@ class StockService {
         },
         {
           $facet: {
-            // ALL checkouts - old structure (for display)
             allCheckoutsOld: [
               { $match: { 'itemsTaken.0': { $exists: true } } },
               { $unwind: '$itemsTaken' },
@@ -1127,7 +931,6 @@ class StockService {
                 }
               }
             ],
-            // ALL checkouts - new structure (for display)
             allCheckoutsNew: [
               { $match: { 'itemName': { $exists: true, $in: finalSellVariationsArray } } },
               {
@@ -1137,7 +940,6 @@ class StockService {
                 }
               }
             ],
-            // Checkouts AFTER cutoff - old structure (for remaining stock calculation)
             checkoutsAfterCutoffOld: cutoffDate ? [
               {
                 $match: {
@@ -1158,7 +960,6 @@ class StockService {
                 }
               }
             ] : [{ $match: { _id: null } }],
-            // Checkouts AFTER cutoff - new structure (for remaining stock calculation)
             checkoutsAfterCutoffNew: cutoffDate ? [
               {
                 $match: {
@@ -1176,8 +977,6 @@ class StockService {
           }
         }
       ]) : Promise.resolve([{ allCheckoutsOld: [], allCheckoutsNew: [], checkoutsAfterCutoffOld: [], checkoutsAfterCutoffNew: [] }]),
-
-      
       (finalSellVariationsArray.length > 0 || sellSKUs.length > 0) ? StockDiscrepancy.find({
         $or: [
           { categoryName: { $in: finalSellVariationsArray } },
@@ -1186,21 +985,14 @@ class StockService {
         ]
       }).lean() : Promise.resolve([])
     ]);
-
     const usePurchases = ordersResult[0]?.usePurchases || [];
     const sellPurchases = ordersResult[0]?.sellPurchases || [];
-
-    // Extract invoice data from facets
     const allInvoices = invoicesResult[0]?.allInvoices || [];
     const invoicesBeforeCutoff = invoicesResult[0]?.invoicesBeforeCutoff || [];
-
-    // Extract and combine checkout data from facets (old + new structure)
     const allCheckoutsOld = checkoutsResult[0]?.allCheckoutsOld || [];
     const allCheckoutsNew = checkoutsResult[0]?.allCheckoutsNew || [];
     const checkoutsAfterCutoffOld = checkoutsResult[0]?.checkoutsAfterCutoffOld || [];
     const checkoutsAfterCutoffNew = checkoutsResult[0]?.checkoutsAfterCutoffNew || [];
-
-    // Combine old and new structure results for all checkouts (display)
     const allCheckoutsMap = new Map();
     [...allCheckoutsOld, ...allCheckoutsNew].forEach(item => {
       const key = item._id || item.itemName;
@@ -1210,8 +1002,6 @@ class StockService {
       allCheckoutsMap.get(key).totalCheckedOut += item.totalCheckedOut || 0;
     });
     const allCheckoutsData = Array.from(allCheckoutsMap.values());
-
-    // Combine old and new structure results for checkouts after cutoff (calculation)
     const checkoutsAfterCutoffMap = new Map();
     [...checkoutsAfterCutoffOld, ...checkoutsAfterCutoffNew].forEach(item => {
       const key = item._id || item.itemName;
@@ -1221,36 +1011,23 @@ class StockService {
       checkoutsAfterCutoffMap.get(key).totalCheckedOutAfterCutoff += item.totalCheckedOutAfterCutoff || 0;
     });
     const checkoutsAfterCutoffData = Array.from(checkoutsAfterCutoffMap.values());
-
     const rawDiscrepancies = discrepanciesResult;
-
-    
     const getCanonical = (name) => {
       const nameLower = name.toLowerCase();
       return aliasToCanonicalMap.get(nameLower) || name;
     };
-
-    
     const discrepancyMap = new Map();
     rawDiscrepancies.forEach(disc => {
       let targetCategory = null;
-
-      
       if (disc.itemSku && skuToCategoryMap.has(disc.itemSku)) {
         targetCategory = skuToCategoryMap.get(disc.itemSku);
       }
-
-      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         targetCategory = getCanonical(disc.categoryName || '');
       }
-
-      
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         targetCategory = getCanonical(disc.itemName || '');
       }
-
-      
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!discrepancyMap.has(targetCategory)) {
           discrepancyMap.set(targetCategory, {
@@ -1267,36 +1044,22 @@ class StockService {
         }
       }
     });
-
-    
     const discrepancies = Array.from(discrepancyMap.entries()).map(([categoryName, data]) => ({
       categoryName,
       ...data
     }));
-
     console.timeEnd('[StockSummary] Step 2: Mega query');
-
-    
     console.time('[StockSummary] Step 3: Build result maps');
-
-    
     const lowercaseToCategoryMap = new Map();
     sellAllowedSet.forEach(category => {
       lowercaseToCategoryMap.set(category.toLowerCase(), category);
     });
-
-    
-    
     const keywordToCategoriesMap = new Map();
     const extractedKeywords = Array.from(salesKeywordsSet);
-
-    
     for (const [sku, itemName] of skuToItemNameMap.entries()) {
       const category = skuToCategoryMap.get(sku);
       if (category && sellAllowedSet.has(category)) {
         const itemNameUpper = itemName.toUpperCase();
-
-        
         extractedKeywords.forEach(keyword => {
           const keywordUpper = keyword.toUpperCase();
           if (itemNameUpper.includes(keywordUpper)) {
@@ -1308,23 +1071,17 @@ class StockService {
         });
       }
     }
-
-    // Build sales maps - one for display (all invoices), one for remaining stock (before cutoff)
     const salesByCategory = new Map();
     const salesBeforeCutoffByCategory = new Map();
-
-    // Process ALL invoices (for display totalSold column)
     allInvoices.forEach(s => {
       const itemNameLower = s.itemName.toLowerCase();
       let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
-
       if (!targetCategory) {
         targetCategory = getCanonical(s.itemName);
         if (!sellAllowedSet.has(targetCategory)) {
           targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
         }
       }
-
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         const itemNameUpper = s.itemName.toUpperCase();
         if (keywordToCategoriesMap.has(itemNameUpper)) {
@@ -1345,7 +1102,6 @@ class StockService {
           return;
         }
       }
-
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!salesByCategory.has(targetCategory)) {
           salesByCategory.set(targetCategory, {
@@ -1360,19 +1116,15 @@ class StockService {
         categoryData.invoiceCount += s.invoiceCount || 0;
       }
     });
-
-    // Process invoices BEFORE cutoff (for remaining stock calculation)
     invoicesBeforeCutoff.forEach(s => {
       const itemNameLower = s.itemName.toLowerCase();
       let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
-
       if (!targetCategory) {
         targetCategory = getCanonical(s.itemName);
         if (!sellAllowedSet.has(targetCategory)) {
           targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
         }
       }
-
       if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         const itemNameUpper = s.itemName.toUpperCase();
         if (keywordToCategoriesMap.has(itemNameUpper)) {
@@ -1389,7 +1141,6 @@ class StockService {
           return;
         }
       }
-
       if (targetCategory && sellAllowedSet.has(targetCategory)) {
         if (!salesBeforeCutoffByCategory.has(targetCategory)) {
           salesBeforeCutoffByCategory.set(targetCategory, {
@@ -1400,10 +1151,7 @@ class StockService {
         categoryData.totalSoldBeforeCutoff += s.totalSoldBeforeCutoff || 0;
       }
     });
-
-    
     const useStockMap = new Map();
-
     usePurchases.forEach(p => {
       const category = skuToCategoryMap.get(p._id);
       if (category && useAllowedSet.has(category)) {
@@ -1421,7 +1169,6 @@ class StockService {
         stock.itemCount += p.itemCount || 0;
       }
     });
-
     forUseItems.forEach(item => {
       if (!useStockMap.has(item.itemName)) {
         useStockMap.set(item.itemName, {
@@ -1432,10 +1179,7 @@ class StockService {
         });
       }
     });
-
-    // Build sellStockMap
     const sellStockMap = new Map();
-
     sellPurchases.forEach(p => {
       const category = skuToCategoryMap.get(p._id);
       if (category && sellAllowedSet.has(category)) {
@@ -1462,8 +1206,6 @@ class StockService {
         stock.itemCount += p.itemCount || 0;
       }
     });
-
-    // Add totalSold from all invoices (for display)
     salesByCategory.forEach((saleData, category) => {
       if (sellAllowedSet.has(category)) {
         if (!sellStockMap.has(category)) {
@@ -1489,8 +1231,6 @@ class StockService {
         stock.invoiceCount += saleData.invoiceCount || 0;
       }
     });
-
-    // Add totalSoldBeforeCutoff (for remaining stock calculation)
     salesBeforeCutoffByCategory.forEach((saleData, category) => {
       if (sellAllowedSet.has(category)) {
         if (!sellStockMap.has(category)) {
@@ -1514,8 +1254,6 @@ class StockService {
         stock.totalSoldBeforeCutoff += saleData.totalSoldBeforeCutoff || 0;
       }
     });
-
-    // Add totalCheckedOut from all checkouts (for display)
     allCheckoutsData.forEach(c => {
       const canonical = getCanonical(c.itemName);
       if (sellAllowedSet.has(canonical)) {
@@ -1540,8 +1278,6 @@ class StockService {
         stock.totalCheckedOut += c.totalCheckedOut || 0;
       }
     });
-
-    // Add totalCheckedOutAfterCutoff (for remaining stock calculation)
     checkoutsAfterCutoffData.forEach(c => {
       const canonical = getCanonical(c.itemName);
       if (sellAllowedSet.has(canonical)) {
@@ -1566,10 +1302,8 @@ class StockService {
         stock.totalCheckedOutAfterCutoff += c.totalCheckedOutAfterCutoff || 0;
       }
     });
-
     discrepancies.forEach(d => {
       const canonical = d.categoryName;
-
       if (sellAllowedSet.has(canonical)) {
         if (!sellStockMap.has(canonical)) {
           sellStockMap.set(canonical, {
@@ -1593,22 +1327,15 @@ class StockService {
         stock.totalDiscrepancyDifference += d.totalDiscrepancyDifference || 0;
       }
     });
-
-    // Calculate remaining stock with NEW cutoff date formula
     sellStockMap.forEach((item, category) => {
       const discrepancy = discrepancies.find(d => d.categoryName === category);
       const adjustment = discrepancy ? (discrepancy.approvedAdjustment || 0) : 0;
-
-      // NEW FORMULA:
-      // stockRemaining = totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + adjustment
       item.stockRemaining = item.totalPurchased
                           - item.totalSoldBeforeCutoff
                           - item.totalCheckedOutAfterCutoff
                           + adjustment;
-
       console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
-
     forSellItems.forEach(item => {
       if (!sellStockMap.has(item.itemName)) {
         sellStockMap.set(item.itemName, {
@@ -1628,26 +1355,19 @@ class StockService {
         });
       }
     });
-
     console.timeEnd('[StockSummary] Step 3: Build result maps');
-
-    
     console.time('[StockSummary] Step 4: Sort and totals');
-
     const useStock = Array.from(useStockMap.values()).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
-
     const sellStock = Array.from(sellStockMap.values()).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
-
     const useTotals = useStock.reduce((acc, item) => ({
       totalQuantity: acc.totalQuantity + item.totalQuantity,
       totalValue: acc.totalValue + item.totalValue,
       categoryCount: acc.categoryCount + 1
     }), { totalQuantity: 0, totalValue: 0, categoryCount: 0 });
-
     const sellTotals = sellStock.reduce((acc, item) => ({
       totalPurchased: acc.totalPurchased + item.totalPurchased,
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
@@ -1669,10 +1389,8 @@ class StockService {
       totalDiscrepancyDifference: 0,
       categoryCount: 0
     });
-
     console.timeEnd('[StockSummary] Step 4: Sort and totals');
     console.timeEnd('[StockSummary] Total time');
-
     return {
       useStock: {
         items: useStock,
@@ -1684,24 +1402,17 @@ class StockService {
       }
     };
   }
-
-  
   _getItemVariations(canonicalName, aliasMap) {
     const variations = [canonicalName, canonicalName.toLowerCase()];
-
     Object.keys(aliasMap).forEach(alias => {
       if (aliasMap[alias] === canonicalName) {
         variations.push(alias);
       }
     });
-
     return variations;
   }
-
-  
   _getCanonicalName(itemName, aliasMap) {
     return aliasMap[itemName.toLowerCase()] || itemName;
   }
 }
-
 module.exports = new StockService();

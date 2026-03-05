@@ -1,8 +1,6 @@
 const AutomationError = require('./AutomationError');
 
 
-
-
 class ParsingError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);
@@ -11,7 +9,6 @@ class ParsingError extends AutomationError {
     this.dataType = options.dataType;
     this.rawData = options.rawData;
   }
-
   toJSON() {
     return {
       ...super.toJSON(),
@@ -21,5 +18,4 @@ class ParsingError extends AutomationError {
     };
   }
 }
-
 module.exports = ParsingError;

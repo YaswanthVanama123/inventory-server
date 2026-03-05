@@ -1,6 +1,5 @@
 
 
-
 module.exports = {
   AutomationError: require('./AutomationError'),
   LoginError: require('./LoginError'),

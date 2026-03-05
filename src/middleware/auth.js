@@ -5,34 +5,26 @@ const jwtConfig = require('../config/jwt');
 
 const userCache = new Map();
 const userCacheTTL = new Map();
-
 function getCachedUser(userId) {
   const ttl = userCacheTTL.get(userId);
   if (ttl && Date.now() < ttl) {
     return userCache.get(userId);
   }
-  
   userCache.delete(userId);
   userCacheTTL.delete(userId);
   return null;
 }
-
 function setCachedUser(userId, user) {
   userCache.set(userId, user);
   userCacheTTL.set(userId, Date.now() + 10000); 
 }
-
 const authenticate = async (req, res, next) => {
   const authStartTime = Date.now();
-
   try {
-
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
-
-
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -42,19 +34,13 @@ const authenticate = async (req, res, next) => {
         }
       });
     }
-
     try {
       const jwtStartTime = Date.now();
-
       const decoded = jwt.verify(token, jwtConfig.secret);
       const jwtTime = Date.now() - jwtStartTime;
-
       const dbStartTime = Date.now();
-
-      
       let user = getCachedUser(decoded.id);
       let cacheHit = !!user;
-
       if (!user) {
         user = await User.findById(decoded.id)
           .select('name email role isActive passwordChangedAt')
@@ -63,11 +49,8 @@ const authenticate = async (req, res, next) => {
           setCachedUser(decoded.id, user);
         }
       }
-
       const dbTime = Date.now() - dbStartTime;
-
       console.log(`[TIMING] Auth - JWT verify: ${jwtTime}ms, DB lookup: ${dbTime}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
-
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -77,8 +60,6 @@ const authenticate = async (req, res, next) => {
           }
         });
       }
-
-
       if (!user.isActive) {
         return res.status(401).json({
           success: false,
@@ -88,9 +69,6 @@ const authenticate = async (req, res, next) => {
           }
         });
       }
-
-
-      
       if (user.passwordChangedAt) {
         const passwordChangedTimestamp = parseInt(user.passwordChangedAt.getTime() / 1000, 10);
         if (passwordChangedTimestamp > decoded.iat) {
@@ -103,8 +81,6 @@ const authenticate = async (req, res, next) => {
           });
         }
       }
-
-      
       req.user = {
         id: user._id,
         username: user.username,
@@ -144,8 +120,6 @@ const authenticate = async (req, res, next) => {
     });
   }
 };
-
-
 const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -157,7 +131,6 @@ const requireRole = (...roles) => {
         }
       });
     }
-
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
@@ -167,17 +140,11 @@ const requireRole = (...roles) => {
         }
       });
     }
-
     next();
   };
 };
-
-
 const requireAdmin = () => requireRole('admin');
-
-
 const requireEmployee = () => requireRole('employee', 'admin');
-
 module.exports = {
   authenticate,
   requireRole,

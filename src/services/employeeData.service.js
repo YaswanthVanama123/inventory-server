@@ -3,7 +3,6 @@ const User = require('../models/User');
 
 
 class EmployeeDataService {
-  
   async getEmployeeInvoices(truckNumber, options = {}) {
     const {
       page = 1,
@@ -15,29 +14,22 @@ class EmployeeDataService {
       sortBy = 'invoiceDate',
       sortOrder = 'desc'
     } = options;
-
-    
     const query = {
       'lineItems.class': truckNumber.toUpperCase()
     };
-
     if (status) {
       query.status = status;
     }
-
     if (invoiceType) {
       query.invoiceType = invoiceType;
     }
-
     if (startDate || endDate) {
       query.invoiceDate = {};
       if (startDate) query.invoiceDate.$gte = new Date(startDate);
       if (endDate) query.invoiceDate.$lte = new Date(endDate);
     }
-
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
-
     const [invoices, total] = await Promise.all([
       RouteStarInvoice.find(query)
         .sort(sort)
@@ -46,7 +38,6 @@ class EmployeeDataService {
         .lean(),
       RouteStarInvoice.countDocuments(query)
     ]);
-
     return {
       invoices,
       pagination: {
@@ -57,8 +48,6 @@ class EmployeeDataService {
       }
     };
   }
-
-  
   async getEmployeeStatistics(truckNumber, startDate, endDate) {
     const matchQuery = {
       'lineItems.class': truckNumber.toUpperCase(),
@@ -67,7 +56,6 @@ class EmployeeDataService {
         $lte: endDate
       }
     };
-
     const stats = await RouteStarInvoice.aggregate([
       { $match: matchQuery },
       {
@@ -109,7 +97,6 @@ class EmployeeDataService {
         }
       }
     ]);
-
     return stats[0] || {
       totalInvoices: 0,
       totalRevenue: 0,
@@ -119,20 +106,15 @@ class EmployeeDataService {
       pendingInvoices: 0
     };
   }
-
-  
   async getEmployeeRecentActivity(truckNumber, limit = 10) {
     const query = {
       'lineItems.class': truckNumber.toUpperCase()
     };
-
     const recentInvoices = await RouteStarInvoice.find(query)
       .sort({ invoiceDate: -1 })
       .limit(limit)
       .select('invoiceNumber invoiceDate status customer.name total lineItems')
       .lean();
-
-    
     return recentInvoices.map(invoice => ({
       ...invoice,
       lineItems: invoice.lineItems.filter(
@@ -140,8 +122,6 @@ class EmployeeDataService {
       )
     }));
   }
-
-  
   async getEmployeePerformance(truckNumber, startDate, endDate) {
     const matchQuery = {
       'lineItems.class': truckNumber.toUpperCase(),
@@ -150,8 +130,6 @@ class EmployeeDataService {
         $lte: endDate
       }
     };
-
-    
     const dailyRevenue = await RouteStarInvoice.aggregate([
       { $match: matchQuery },
       { $unwind: '$lineItems' },
@@ -178,8 +156,6 @@ class EmployeeDataService {
       },
       { $sort: { date: 1 } }
     ]);
-
-    
     const topItems = await RouteStarInvoice.aggregate([
       { $match: matchQuery },
       { $unwind: '$lineItems' },
@@ -207,22 +183,17 @@ class EmployeeDataService {
       { $sort: { count: -1 } },
       { $limit: 10 }
     ]);
-
     return {
       dailyRevenue,
       topItems
     };
   }
-
-  
   async getEmployeeByTruckNumber(truckNumber) {
     return await User.findOne({
       truckNumber: truckNumber.toUpperCase(),
       isDeleted: false
     }).select('-password');
   }
-
-  
   async getAllTruckAssignments() {
     return await User.find({
       truckNumber: { $exists: true, $ne: null, $ne: '' },
@@ -232,7 +203,6 @@ class EmployeeDataService {
       .sort({ truckNumber: 1 })
       .lean();
   }
-
   /**
    * Optimized combined dashboard - fetches all data in a single aggregation query
    * Reduces database round trips from 3 to 1
@@ -245,15 +215,10 @@ class EmployeeDataService {
         $lte: endDate
       }
     };
-
     const result = await RouteStarInvoice.aggregate([
-      // First match: Filter invoices by truck and date range
       { $match: matchQuery },
-
-      // Use $facet to run multiple aggregations in parallel on the same data
       {
         $facet: {
-          // Statistics calculation
           statistics: [
             { $unwind: '$lineItems' },
             {
@@ -292,8 +257,6 @@ class EmployeeDataService {
               }
             }
           ],
-
-          // Recent activity - get last N invoices
           recentActivity: [
             { $sort: { invoiceDate: -1 } },
             { $limit: limit },
@@ -319,8 +282,6 @@ class EmployeeDataService {
               }
             }
           ],
-
-          // Daily revenue breakdown
           dailyRevenue: [
             { $unwind: '$lineItems' },
             {
@@ -346,8 +307,6 @@ class EmployeeDataService {
             },
             { $sort: { date: 1 } }
           ],
-
-          // Top selling items
           topItems: [
             { $unwind: '$lineItems' },
             {
@@ -377,10 +336,7 @@ class EmployeeDataService {
         }
       }
     ]);
-
-    // Extract and format the results
     const data = result[0];
-
     return {
       statistics: data.statistics[0] || {
         totalInvoices: 0,
@@ -398,5 +354,4 @@ class EmployeeDataService {
     };
   }
 }
-
 module.exports = new EmployeeDataService();

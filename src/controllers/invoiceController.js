@@ -7,13 +7,9 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const PDFDocument = require('pdfkit');
 
 
-
-
 const createInvoice = async (req, res, next) => {
   try {
     const { items, customer, taxRate, discount, notes, remarks, dueDate, paymentMethod, paymentStatus, status, coupon, syncMetadata } = req.body;
-
-
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
@@ -23,12 +19,9 @@ const createInvoice = async (req, res, next) => {
         }
       });
     }
-
-
     const processedItems = [];
     for (const item of items) {
       const inventoryItem = await Inventory.findById(item.inventory);
-
       if (!inventoryItem) {
         return res.status(404).json({
           success: false,
@@ -38,7 +31,6 @@ const createInvoice = async (req, res, next) => {
           }
         });
       }
-
       if (!inventoryItem.isActive) {
         return res.status(400).json({
           success: false,
@@ -48,8 +40,6 @@ const createInvoice = async (req, res, next) => {
           }
         });
       }
-
-
       if (inventoryItem.quantity.current < item.quantity) {
         return res.status(400).json({
           success: false,
@@ -59,7 +49,6 @@ const createInvoice = async (req, res, next) => {
           }
         });
       }
-
       processedItems.push({
         inventory: inventoryItem._id,
         itemName: inventoryItem.itemName,
@@ -71,14 +60,8 @@ const createInvoice = async (req, res, next) => {
         purchaseAllocations: item.purchaseAllocations || [] 
       });
     }
-
-
     const calculatedDueDate = dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-
     const invoiceNumber = await Invoice.generateInvoiceNumber();
-
-
     const invoice = await Invoice.create({
       invoiceNumber,
       customer,
@@ -100,14 +83,10 @@ const createInvoice = async (req, res, next) => {
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
-
-
-    
     for (const item of processedItems) {
       const inventoryItem = await Inventory.findById(item.inventory);
       const previousQuantity = inventoryItem.quantity.current;
       const newQuantity = previousQuantity - item.quantity;
-
       inventoryItem.quantity.current = newQuantity;
       inventoryItem.stockHistory.push({
         action: 'removed',
@@ -118,10 +97,7 @@ const createInvoice = async (req, res, next) => {
         updatedBy: req.user.id
       });
       inventoryItem.lastUpdatedBy = req.user.id;
-
       await inventoryItem.save();
-
-      
       await StockMovement.create({
         sku: item.skuCode,
         type: 'OUT',
@@ -132,8 +108,6 @@ const createInvoice = async (req, res, next) => {
         notes: `Sale to ${customer.name}`,
         createdBy: req.user.id
       });
-
-      
       if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
         for (const allocation of item.purchaseAllocations) {
           const purchase = await Purchase.findById(allocation.purchaseId);
@@ -145,8 +119,6 @@ const createInvoice = async (req, res, next) => {
         }
       }
     }
-
-
     await AuditLog.create({
       action: 'CREATE',
       resource: 'INVOICE',
@@ -162,13 +134,10 @@ const createInvoice = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
-
     const populatedInvoice = await Invoice.findOne({ _id: invoice._id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     res.status(201).json({
       success: true,
       data: { invoice: populatedInvoice },
@@ -179,10 +148,6 @@ const createInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getAllInvoices = async (req, res, next) => {
   try {
     const {
@@ -199,33 +164,20 @@ const getAllInvoices = async (req, res, next) => {
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
-
-
-    
     const invoiceQuery = { isDeleted: false };
-
-
     if (itemId) {
       invoiceQuery['items.inventory'] = itemId;
       invoiceQuery.status = { $in: ['issued', 'paid'] };
     }
-
-
     if (status && !itemId) {
       invoiceQuery.status = status;
     }
-
-
     if (paymentStatus) {
       invoiceQuery.paymentStatus = paymentStatus;
     }
-
-
     if (customer) {
       invoiceQuery['customer.name'] = { $regex: customer, $options: 'i' };
     }
-
-
     if (startDate || endDate) {
       invoiceQuery.invoiceDate = {};
       if (startDate) {
@@ -235,13 +187,9 @@ const getAllInvoices = async (req, res, next) => {
         invoiceQuery.invoiceDate.$lte = new Date(endDate);
       }
     }
-
-
     if (source && source !== 'all') {
       invoiceQuery['syncMetadata.source'] = source;
     }
-
-
     if (search) {
       invoiceQuery.$or = [
         { invoiceNumber: { $regex: search, $options: 'i' } },
@@ -250,14 +198,10 @@ const getAllInvoices = async (req, res, next) => {
         { notes: { $regex: search, $options: 'i' } }
       ];
     }
-
-    
     const routeStarQuery = {};
-
     if (customer) {
       routeStarQuery['customer.name'] = { $regex: customer, $options: 'i' };
     }
-
     if (startDate || endDate) {
       routeStarQuery.invoiceDate = {};
       if (startDate) {
@@ -267,15 +211,12 @@ const getAllInvoices = async (req, res, next) => {
         routeStarQuery.invoiceDate.$lte = new Date(endDate);
       }
     }
-
     if (search) {
       routeStarQuery.$or = [
         { invoiceNumber: { $regex: search, $options: 'i' } },
         { 'customer.name': { $regex: search, $options: 'i' } }
       ];
     }
-
-    
     const [regularInvoices, routeStarInvoices] = await Promise.all([
       Invoice.find(invoiceQuery)
         .select('_id invoiceNumber invoiceDate customer.name customer.email totalAmount status paymentStatus syncMetadata.source items')
@@ -284,8 +225,6 @@ const getAllInvoices = async (req, res, next) => {
         .select('_id invoiceNumber invoiceDate customer.name subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
         .lean()
     ]);
-
-    
     const transformedRegularInvoices = regularInvoices.map(invoice => ({
       _id: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
@@ -306,8 +245,6 @@ const getAllInvoices = async (req, res, next) => {
         lastSyncedAt: invoice.syncMetadata?.lastSyncedAt || null
       }
     }));
-
-    
     const transformedRouteStarInvoices = routeStarInvoices.map(invoice => ({
       _id: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
@@ -330,27 +267,19 @@ const getAllInvoices = async (req, res, next) => {
         lastSyncedAt: invoice.lastSyncedAt
       }
     }));
-
-    
     let allInvoices = [...transformedRegularInvoices, ...transformedRouteStarInvoices];
-
-    
     const sortField = sortBy === 'createdAt' ? 'createdAt' : sortBy;
     allInvoices.sort((a, b) => {
       const aValue = a[sortField] || a.invoiceDate || a.createdAt;
       const bValue = b[sortField] || b.invoiceDate || b.createdAt;
-
       if (sortOrder === 'asc') {
         return aValue > bValue ? 1 : -1;
       }
       return aValue < bValue ? 1 : -1;
     });
-
-    
     const total = allInvoices.length;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const paginatedInvoices = allInvoices.slice(skip, skip + parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -368,17 +297,12 @@ const getAllInvoices = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getInvoice = async (req, res, next) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName email')
       .populate('lastUpdatedBy', 'username fullName email');
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -388,14 +312,10 @@ const getInvoice = async (req, res, next) => {
         }
       });
     }
-
-    
     const stockMovements = await StockMovement.find({
       refType: 'INVOICE',
       refId: invoice._id
     }).sort({ timestamp: -1 });
-
-    
     const invoiceObj = invoice.toObject();
     invoiceObj.syncInfo = {
       source: invoiceObj.syncMetadata?.source || 'manual',
@@ -404,7 +324,6 @@ const getInvoice = async (req, res, next) => {
       lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
     };
     invoiceObj.stockMovements = stockMovements;
-
     res.status(200).json({
       success: true,
       data: { invoice: invoiceObj }
@@ -414,14 +333,9 @@ const getInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const updateInvoice = async (req, res, next) => {
   try {
     let invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -431,7 +345,6 @@ const updateInvoice = async (req, res, next) => {
         }
       });
     }
-
     if (invoice.status === 'cancelled') {
       return res.status(400).json({
         success: false,
@@ -441,8 +354,6 @@ const updateInvoice = async (req, res, next) => {
         }
       });
     }
-
-
     if (invoice.status === 'paid' && req.body.items) {
       return res.status(400).json({
         success: false,
@@ -452,16 +363,12 @@ const updateInvoice = async (req, res, next) => {
         }
       });
     }
-
-
     if (req.body.items) {
-
       for (const item of invoice.items) {
         const inventoryItem = await Inventory.findById(item.inventory);
         if (inventoryItem) {
           const previousQuantity = inventoryItem.quantity.current;
           const newQuantity = previousQuantity + item.quantity;
-
           inventoryItem.quantity.current = newQuantity;
           inventoryItem.stockHistory.push({
             action: 'added',
@@ -472,10 +379,7 @@ const updateInvoice = async (req, res, next) => {
             updatedBy: req.user.id
           });
           inventoryItem.lastUpdatedBy = req.user.id;
-
           await inventoryItem.save();
-
-          
           await StockMovement.create({
             sku: item.skuCode,
             type: 'IN',
@@ -488,12 +392,9 @@ const updateInvoice = async (req, res, next) => {
           });
         }
       }
-
-
       const processedItems = [];
       for (const item of req.body.items) {
         const inventoryItem = await Inventory.findById(item.inventory);
-
         if (!inventoryItem) {
           return res.status(404).json({
             success: false,
@@ -503,7 +404,6 @@ const updateInvoice = async (req, res, next) => {
             }
           });
         }
-
         if (!inventoryItem.isActive) {
           return res.status(400).json({
             success: false,
@@ -513,8 +413,6 @@ const updateInvoice = async (req, res, next) => {
             }
           });
         }
-
-
         if (inventoryItem.quantity.current < item.quantity) {
           return res.status(400).json({
             success: false,
@@ -524,7 +422,6 @@ const updateInvoice = async (req, res, next) => {
             }
           });
         }
-
         processedItems.push({
           inventory: inventoryItem._id,
           itemName: inventoryItem.itemName,
@@ -535,13 +432,10 @@ const updateInvoice = async (req, res, next) => {
           subtotal: 0
         });
       }
-
-
       for (const item of processedItems) {
         const inventoryItem = await Inventory.findById(item.inventory);
         const previousQuantity = inventoryItem.quantity.current;
         const newQuantity = previousQuantity - item.quantity;
-
         inventoryItem.quantity.current = newQuantity;
         inventoryItem.stockHistory.push({
           action: 'removed',
@@ -552,10 +446,7 @@ const updateInvoice = async (req, res, next) => {
           updatedBy: req.user.id
         });
         inventoryItem.lastUpdatedBy = req.user.id;
-
         await inventoryItem.save();
-
-        
         await StockMovement.create({
           sku: item.skuCode,
           type: 'OUT',
@@ -567,22 +458,16 @@ const updateInvoice = async (req, res, next) => {
           createdBy: req.user.id
         });
       }
-
       req.body.items = processedItems;
     }
-
-
     const allowedUpdates = ['customer', 'items', 'taxRate', 'discount', 'notes', 'remarks', 'status', 'paymentStatus', 'paymentMethod', 'dueDate'];
     allowedUpdates.forEach(field => {
       if (req.body[field] !== undefined) {
         invoice[field] = req.body[field];
       }
     });
-
     invoice.lastUpdatedBy = req.user.id;
     await invoice.save();
-
-
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -595,13 +480,10 @@ const updateInvoice = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
-
     const populatedInvoice = await Invoice.findOne({ _id: invoice._id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category')
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     res.status(200).json({
       success: true,
       data: { invoice: populatedInvoice },
@@ -612,14 +494,9 @@ const updateInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const deleteInvoice = async (req, res, next) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -629,7 +506,6 @@ const deleteInvoice = async (req, res, next) => {
         }
       });
     }
-
     if (invoice.status === 'cancelled') {
       return res.status(400).json({
         success: false,
@@ -639,8 +515,6 @@ const deleteInvoice = async (req, res, next) => {
         }
       });
     }
-
-
     if (invoice.status === 'paid') {
       return res.status(400).json({
         success: false,
@@ -650,14 +524,11 @@ const deleteInvoice = async (req, res, next) => {
         }
       });
     }
-
-    
     for (const item of invoice.items) {
       const inventoryItem = await Inventory.findById(item.inventory);
       if (inventoryItem) {
         const previousQuantity = inventoryItem.quantity.current;
         const newQuantity = previousQuantity + item.quantity;
-
         inventoryItem.quantity.current = newQuantity;
         inventoryItem.stockHistory.push({
           action: 'added',
@@ -668,10 +539,7 @@ const deleteInvoice = async (req, res, next) => {
           updatedBy: req.user.id
         });
         inventoryItem.lastUpdatedBy = req.user.id;
-
         await inventoryItem.save();
-
-        
         await StockMovement.create({
           sku: item.skuCode,
           type: 'IN',
@@ -682,8 +550,6 @@ const deleteInvoice = async (req, res, next) => {
           notes: `Invoice cancelled - stock restored`,
           createdBy: req.user.id
         });
-
-        
         if (item.purchaseAllocations && item.purchaseAllocations.length > 0) {
           for (const allocation of item.purchaseAllocations) {
             const purchase = await Purchase.findById(allocation.purchaseId);
@@ -696,8 +562,6 @@ const deleteInvoice = async (req, res, next) => {
         }
       }
     }
-
-
     invoice.status = 'cancelled';
     invoice.paymentStatus = 'cancelled';
     invoice.isDeleted = true;
@@ -705,8 +569,6 @@ const deleteInvoice = async (req, res, next) => {
     invoice.deletedBy = req.user.id;
     invoice.lastUpdatedBy = req.user.id;
     await invoice.save();
-
-
     await AuditLog.create({
       action: 'DELETE',
       resource: 'INVOICE',
@@ -720,7 +582,6 @@ const deleteInvoice = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Invoice cancelled successfully'
@@ -730,16 +591,11 @@ const deleteInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const generateInvoicePDF = async (req, res, next) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode')
       .populate('createdBy', 'username fullName');
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -749,45 +605,29 @@ const generateInvoicePDF = async (req, res, next) => {
         }
       });
     }
-
-
     const doc = new PDFDocument({ margin: 50 });
-
-
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`);
-
-
     doc.pipe(res);
-
-
     doc.fontSize(20).text('Your Company Name', 50, 50);
     doc.fontSize(10)
       .text('123 Business Street', 50, 75)
       .text('City, State 12345', 50, 90)
       .text('Email: company@example.com', 50, 105)
       .text('Phone: (123) 456-7890', 50, 120);
-
-
     doc.fontSize(25).text('INVOICE', 400, 50);
     doc.fontSize(10)
       .text(`Invoice #: ${invoice.invoiceNumber}`, 400, 85)
       .text(`Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, 400, 100)
       .text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 400, 115)
       .text(`Status: ${invoice.status.toUpperCase()}`, 400, 130);
-
-    
     const syncSource = invoice.syncMetadata?.source || 'manual';
     doc.text(`Source: ${syncSource.toUpperCase()}`, 400, 145);
-
-
     doc.fontSize(12).text('Bill To:', 50, 170);
     doc.fontSize(10)
       .text(invoice.customer.name, 50, 190)
       .text(invoice.customer.email || '', 50, 205)
       .text(invoice.customer.phone || '', 50, 220);
-
-    
     if (invoice.customer.address) {
       if (typeof invoice.customer.address === 'string') {
         doc.text(invoice.customer.address, 50, 235);
@@ -796,26 +636,17 @@ const generateInvoicePDF = async (req, res, next) => {
           .text(`${invoice.customer.address.city || ''}, ${invoice.customer.address.state || ''} ${invoice.customer.address.zipCode || ''}`, 50, 250);
       }
     }
-
-
     const tableTop = 300;
     const itemHeight = 30;
-
-
     doc.fontSize(10).font('Helvetica-Bold');
     doc.text('Item', 50, tableTop);
     doc.text('SKU', 200, tableTop);
     doc.text('Qty', 280, tableTop);
     doc.text('Unit Price', 340, tableTop);
     doc.text('Total', 450, tableTop);
-
-
     doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
-
-
     doc.font('Helvetica');
     let yPosition = tableTop + 25;
-
     invoice.items.forEach((item) => {
       doc.text(item.itemName, 50, yPosition, { width: 140 });
       doc.text(item.skuCode, 200, yPosition);
@@ -824,37 +655,27 @@ const generateInvoicePDF = async (req, res, next) => {
       doc.text(`$${item.subtotal.toFixed(2)}`, 450, yPosition);
       yPosition += itemHeight;
     });
-
-
     yPosition += 10;
     doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
-
-
     yPosition += 20;
     doc.text('Subtotal:', 350, yPosition);
     doc.text(`$${invoice.subtotalAmount.toFixed(2)}`, 450, yPosition);
-
     if (invoice.discount.amount > 0) {
       yPosition += 20;
       doc.text(`Discount (${invoice.discount.type === 'percentage' ? invoice.discount.value + '%' : 'Fixed'}):`, 350, yPosition);
       doc.text(`-$${invoice.discount.amount.toFixed(2)}`, 450, yPosition);
     }
-
     if (invoice.taxAmount > 0) {
       yPosition += 20;
       doc.text(`Tax (${invoice.taxRate}%):`, 350, yPosition);
       doc.text(`$${invoice.taxAmount.toFixed(2)}`, 450, yPosition);
     }
-
     yPosition += 20;
     doc.fontSize(12).font('Helvetica-Bold');
     doc.text('Total Amount:', 350, yPosition);
     doc.text(`$${invoice.totalAmount.toFixed(2)}`, 450, yPosition);
-
-
     doc.fontSize(10).font('Helvetica');
     yPosition += 40;
-
     if (invoice.paymentStatus === 'paid') {
       doc.text(`Payment Status: PAID`, 50, yPosition);
       yPosition += 15;
@@ -867,8 +688,6 @@ const generateInvoicePDF = async (req, res, next) => {
         yPosition += 15;
       }
     }
-
-
     yPosition += 20;
     if (invoice.notes) {
       doc.text('Notes:', 50, yPosition);
@@ -876,22 +695,15 @@ const generateInvoicePDF = async (req, res, next) => {
       doc.text(invoice.notes, 50, yPosition, { width: 500 });
       yPosition += 30;
     }
-
     if (invoice.remarks) {
       doc.text('Remarks:', 50, yPosition);
       yPosition += 15;
       doc.text(invoice.remarks, 50, yPosition, { width: 500 });
     }
-
-
     const footerY = doc.page.height - 100;
     doc.fontSize(8)
       .text('Thank you for your business!', 50, footerY, { align: 'center', width: 500 });
-
-
     doc.end();
-
-
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -909,15 +721,9 @@ const generateInvoicePDF = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getInvoiceStats = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
-
-
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.invoiceDate = {};
@@ -928,29 +734,19 @@ const getInvoiceStats = async (req, res, next) => {
         dateFilter.invoiceDate.$lte = new Date(endDate);
       }
     }
-
-
     const totalInvoices = await Invoice.countDocuments(dateFilter);
-
-
     const invoicesByStatus = await Invoice.aggregate([
       { $match: dateFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
-
-
     const invoicesByPaymentStatus = await Invoice.aggregate([
       { $match: dateFilter },
       { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
     ]);
-
-    
     const invoicesBySource = await Invoice.aggregate([
       { $match: dateFilter },
       { $group: { _id: '$syncMetadata.source', count: { $sum: 1 }, total: { $sum: '$totalAmount' } } }
     ]);
-
-
     const revenueStats = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'paid' } },
       {
@@ -962,8 +758,6 @@ const getInvoiceStats = async (req, res, next) => {
         }
       }
     ]);
-
-
     const pendingPayments = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'pending' } },
       {
@@ -974,15 +768,11 @@ const getInvoiceStats = async (req, res, next) => {
         }
       }
     ]);
-
-
     const overdueInvoices = await Invoice.countDocuments({
       ...dateFilter,
       paymentStatus: 'pending',
       dueDate: { $lt: new Date() }
     });
-
-
     const topCustomers = await Invoice.aggregate([
       { $match: { ...dateFilter, paymentStatus: 'paid' } },
       {
@@ -996,8 +786,6 @@ const getInvoiceStats = async (req, res, next) => {
       { $sort: { totalSpent: -1 } },
       { $limit: 10 }
     ]);
-
-
     const monthlyRevenue = await Invoice.aggregate([
       {
         $match: {
@@ -1017,7 +805,6 @@ const getInvoiceStats = async (req, res, next) => {
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -1043,14 +830,9 @@ const getInvoiceStats = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const sendInvoiceEmail = async (req, res, next) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -1060,7 +842,6 @@ const sendInvoiceEmail = async (req, res, next) => {
         }
       });
     }
-
     if (!invoice.customer.email) {
       return res.status(400).json({
         success: false,
@@ -1070,20 +851,13 @@ const sendInvoiceEmail = async (req, res, next) => {
         }
       });
     }
-
-
-
     console.log(`Email would be sent to: ${invoice.customer.email}`);
     console.log(`Invoice: ${invoice.invoiceNumber}`);
-
-
     if (invoice.status === 'draft') {
       invoice.status = 'issued';
       invoice.lastUpdatedBy = req.user.id;
       await invoice.save();
     }
-
-
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'INVOICE',
@@ -1097,7 +871,6 @@ const sendInvoiceEmail = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Invoice email sent successfully (placeholder - email functionality not implemented)',
@@ -1111,10 +884,6 @@ const sendInvoiceEmail = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getUnprocessedInvoices = async (req, res, next) => {
   try {
     const {
@@ -1124,25 +893,19 @@ const getUnprocessedInvoices = async (req, res, next) => {
       sortBy = 'invoiceDate',
       sortOrder = 'desc'
     } = req.query;
-
-    
     if (source === 'routestar') {
       const query = {
         stockProcessed: false,
         isComplete: true
       };
-
       const skip = (parseInt(page) - 1) * parseInt(limit);
       const total = await RouteStarInvoice.countDocuments(query);
-
       const sort = {};
       sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
       const unprocessedInvoices = await RouteStarInvoice.find(query)
         .sort(sort)
         .skip(skip)
         .limit(parseInt(limit));
-
       res.status(200).json({
         success: true,
         data: {
@@ -1157,7 +920,6 @@ const getUnprocessedInvoices = async (req, res, next) => {
         message: `Found ${total} unprocessed invoices from RouteStar`
       });
     } else {
-      
       res.status(200).json({
         success: true,
         data: {
@@ -1177,10 +939,6 @@ const getUnprocessedInvoices = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getSyncedInvoices = async (req, res, next) => {
   try {
     const {
@@ -1192,15 +950,10 @@ const getSyncedInvoices = async (req, res, next) => {
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
-
     const query = { isDeleted: false };
-
-    
     if (source) {
       query['syncMetadata.source'] = source;
     }
-
-    
     if (startDate || endDate) {
       query.invoiceDate = {};
       if (startDate) {
@@ -1210,13 +963,10 @@ const getSyncedInvoices = async (req, res, next) => {
         query.invoiceDate.$lte = new Date(endDate);
       }
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Invoice.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const invoices = await Invoice.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
@@ -1224,8 +974,6 @@ const getSyncedInvoices = async (req, res, next) => {
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
-    
     const invoicesWithSyncInfo = invoices.map(invoice => {
       const invoiceObj = invoice.toObject();
       invoiceObj.syncInfo = {
@@ -1236,7 +984,6 @@ const getSyncedInvoices = async (req, res, next) => {
       };
       return invoiceObj;
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -1254,14 +1001,9 @@ const getSyncedInvoices = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getStockMovementsByInvoice = async (req, res, next) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -1271,16 +1013,12 @@ const getStockMovementsByInvoice = async (req, res, next) => {
         }
       });
     }
-
-    
     const stockMovements = await StockMovement.find({
       refType: 'INVOICE',
       refId: invoice._id
     })
       .populate('createdBy', 'username fullName')
       .sort({ timestamp: -1 });
-
-    
     const movementsBySKU = {};
     stockMovements.forEach(movement => {
       if (!movementsBySKU[movement.sku]) {
@@ -1288,7 +1026,6 @@ const getStockMovementsByInvoice = async (req, res, next) => {
       }
       movementsBySKU[movement.sku].push(movement);
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -1308,21 +1045,11 @@ const getStockMovementsByInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
 const getGroupedInvoiceItems = async (req, res, next) => {
   try {
     console.log('[getGroupedInvoiceItems] Starting aggregation...');
-
-    
     const groupedItems = await Invoice.aggregate([
-      
       { $unwind: '$items' },
-
-      
       {
         $group: {
           _id: {
@@ -1350,11 +1077,7 @@ const getGroupedInvoiceItems = async (req, res, next) => {
           }
         }
       },
-
-      
       { $sort: { '_id.name': 1 } },
-
-      
       {
         $project: {
           _id: 0,
@@ -1368,9 +1091,7 @@ const getGroupedInvoiceItems = async (req, res, next) => {
         }
       }
     ]);
-
     console.log(`[getGroupedInvoiceItems] Found ${groupedItems.length} grouped items`);
-
     res.json({
       success: true,
       data: {
@@ -1383,7 +1104,6 @@ const getGroupedInvoiceItems = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   createInvoice,
   getAllInvoices,

@@ -3,7 +3,6 @@ const customerConnectService = require('../services/customerConnect.service');
 
 
 class CustomerConnectController {
-  
   async syncOrders(req, res, next) {
     try {
       const options = {
@@ -12,9 +11,7 @@ class CustomerConnectController {
         triggeredBy: req.body.triggeredBy || 'manual',
         userId: req.user?._id
       };
-
       const result = await customerConnectService.syncOrders(options);
-
       res.json({
         success: true,
         message: result.message,
@@ -26,12 +23,9 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getOrderRange(req, res, next) {
     try {
       const range = await customerConnectService.getOrderRange();
-
       res.json({
         success: true,
         data: range
@@ -41,14 +35,10 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async syncOrderDetails(req, res, next) {
     try {
       const { orderNumber } = req.params;
-
       const order = await customerConnectService.syncOrderDetails(orderNumber);
-
       res.json({
         success: true,
         message: 'Order details synced successfully',
@@ -59,14 +49,10 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async syncAllOrderDetails(req, res, next) {
     try {
       const { limit = 50 } = req.body;
-
       const results = await customerConnectService.syncAllOrderDetails(limit);
-
       res.json({
         success: true,
         message: 'All order details synced successfully',
@@ -77,12 +63,9 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async syncStock(req, res, next) {
     try {
       const results = await customerConnectService.syncStock();
-
       res.json({
         success: true,
         message: 'Stock movements processed successfully',
@@ -93,8 +76,6 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async fullSync(req, res, next) {
     try {
       const options = {
@@ -102,9 +83,7 @@ class CustomerConnectController {
         detailsLimit: req.body.detailsLimit || 50,
         processStock: req.body.processStock !== false
       };
-
       const results = await customerConnectService.fullSync(options);
-
       res.json({
         success: true,
         message: 'Full sync completed successfully',
@@ -115,8 +94,6 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getOrders(req, res, next) {
     try {
       const filters = {
@@ -127,15 +104,12 @@ class CustomerConnectController {
         stockProcessed: req.query.stockProcessed,
         verified: req.query.verified
       };
-
       const options = {
         page: parseInt(req.query.page) || 1,
         limit: parseInt(req.query.limit) || 50,
         includeRange: req.query.includeRange !== 'false' 
       };
-
       const result = await customerConnectService.getOrders(filters, options);
-
       res.json({
         success: true,
         data: result
@@ -145,21 +119,16 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getOrderByNumber(req, res, next) {
     try {
       const { orderNumber } = req.params;
-
       const order = await customerConnectService.getOrderByNumber(orderNumber);
-
       if (!order) {
         return res.status(404).json({
           success: false,
           message: 'Order not found'
         });
       }
-
       res.json({
         success: true,
         data: order
@@ -169,14 +138,10 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getStats(req, res, next) {
     try {
       const { startDate, endDate, vendor } = req.query;
-
       const stats = await customerConnectService.getStats({ startDate, endDate, vendor });
-
       res.json({
         success: true,
         data: stats
@@ -186,8 +151,6 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getGroupedItems(req, res, next) {
     try {
       const options = {
@@ -198,9 +161,7 @@ class CustomerConnectController {
         search: req.query.search || '',
         minQuantity: parseInt(req.query.minQuantity) || 0
       };
-
       const result = await customerConnectService.getGroupedItems(options);
-
       res.json({
         success: true,
         data: result
@@ -210,21 +171,16 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async bulkDeleteBySKUs(req, res, next) {
     try {
       const { skus } = req.body;
-
       if (!skus || !Array.isArray(skus) || skus.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'Please provide an array of SKUs to delete'
         });
       }
-
       const result = await customerConnectService.bulkDeleteBySKUs(skus);
-
       res.json({
         success: true,
         message: `Successfully deleted ${result.deletedCount} orders containing the specified SKUs`,
@@ -235,21 +191,16 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async bulkDeleteByOrderNumbers(req, res, next) {
     try {
       const { orderNumbers } = req.body;
-
       if (!orderNumbers || !Array.isArray(orderNumbers) || orderNumbers.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'Please provide an array of order numbers to delete'
         });
       }
-
       const result = await customerConnectService.bulkDeleteByOrderNumbers(orderNumbers);
-
       res.json({
         success: true,
         message: `Successfully deleted ${result.deletedCount} orders`,
@@ -260,14 +211,10 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async getOrdersBySKU(req, res, next) {
     try {
       const { sku } = req.params;
-
       const result = await customerConnectService.getOrdersBySKU(sku);
-
       res.json({
         success: true,
         data: result
@@ -277,12 +224,9 @@ class CustomerConnectController {
       next(error);
     }
   }
-
-  
   async deleteAllOrders(req, res, next) {
     try {
       const result = await customerConnectService.deleteAllOrders();
-
       res.json({
         success: true,
         message: result.message,
@@ -294,5 +238,4 @@ class CustomerConnectController {
     }
   }
 }
-
 module.exports = new CustomerConnectController();

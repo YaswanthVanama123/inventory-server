@@ -1,35 +1,20 @@
 const logger = require('../utils/logger');
 
 
-
-
-
 class BaseParser {
-  
-
-
-
-
   static async parseTable(page, selectors) {
     try {
       logger.debug('Parsing table', { selectors });
-
-      
       await page.waitForSelector(selectors.table);
-
-      
       const data = await page.evaluate((sel) => {
         const table = document.querySelector(sel.table);
         if (!table) return [];
-
         const rows = Array.from(table.querySelectorAll(sel.rows));
-        
         return rows.map(row => {
           const cells = Array.from(row.querySelectorAll('td'));
           return cells.map(cell => cell.textContent.trim());
         });
       }, selectors);
-
       logger.debug('Table parsed', { rowCount: data.length });
       return data;
     } catch (error) {
@@ -37,62 +22,40 @@ class BaseParser {
       return [];
     }
   }
-
-  
-
-
-
-
   static async parseTableWithHeaders(page, selectors) {
     try {
       const tableData = await page.evaluate((sel) => {
         const table = document.querySelector(sel.table);
         if (!table) return { headers: [], rows: [] };
-
-        
         const headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
         const headers = headerCells.map(cell => cell.textContent.trim());
-
-        
         const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
         const rows = bodyRows.map(row => {
           const cells = Array.from(row.querySelectorAll('td'));
           const rowData = {};
-          
           cells.forEach((cell, index) => {
             const header = headers[index] || `column${index}`;
             rowData[header] = cell.textContent.trim();
           });
-
           return rowData;
         });
-
         return { headers, rows };
       }, selectors);
-
       logger.debug('Table with headers parsed', { 
         headerCount: tableData.headers.length,
         rowCount: tableData.rows.length 
       });
-
       return tableData.rows;
     } catch (error) {
       logger.error('Table with headers parsing failed', { error: error.message });
       return [];
     }
   }
-
-  
-
-
-
-
   static async parseList(page, selector) {
     try {
       const items = await page.$$eval(selector, elements => 
         elements.map(el => el.textContent.trim())
       );
-
       logger.debug('List parsed', { itemCount: items.length });
       return items;
     } catch (error) {
@@ -100,21 +63,13 @@ class BaseParser {
       return [];
     }
   }
-
-  
-
-
-
-
   static async parseForm(page, formSelector) {
     try {
       const formData = await page.evaluate((sel) => {
         const form = document.querySelector(sel);
         if (!form) return {};
-
         const data = {};
         const inputs = form.querySelectorAll('input, select, textarea');
-
         inputs.forEach(input => {
           const name = input.name || input.id;
           if (name) {
@@ -125,10 +80,8 @@ class BaseParser {
             }
           }
         });
-
         return data;
       }, formSelector);
-
       logger.debug('Form parsed', { fieldCount: Object.keys(formData).length });
       return formData;
     } catch (error) {
@@ -136,30 +89,15 @@ class BaseParser {
       return {};
     }
   }
-
-  
-
-
-
   static cleanText(text) {
     if (!text) return '';
     return text.replace(/\s+/g, ' ').trim();
   }
-
-  
-
-
-
   static parseCurrency(currencyStr) {
     if (!currencyStr) return 0;
     const cleaned = currencyStr.replace(/[^0-9.-]/g, '');
     return parseFloat(cleaned) || 0;
   }
-
-  
-
-
-
   static parseDate(dateStr) {
     if (!dateStr) return null;
     try {
@@ -169,13 +107,6 @@ class BaseParser {
       return null;
     }
   }
-
-  
-
-
-
-
-
   static async extractAttribute(page, selector, attribute) {
     try {
       const values = await page.$$eval(
@@ -183,7 +114,6 @@ class BaseParser {
         (elements, attr) => elements.map(el => el.getAttribute(attr)),
         attribute
       );
-
       return values.filter(v => v !== null);
     } catch (error) {
       logger.error('Attribute extraction failed', { error: error.message });
@@ -191,5 +121,4 @@ class BaseParser {
     }
   }
 }
-
 module.exports = BaseParser;

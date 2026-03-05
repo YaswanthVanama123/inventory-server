@@ -2,11 +2,9 @@ const routeStarItemAliasService = require('../services/routeStarItemAlias.servic
 
 
 class RouteStarItemAliasController {
-  
   async getAllMappings(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getAllMappings();
-
       res.json({
         success: true,
         data
@@ -20,12 +18,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async getUniqueItems(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getUniqueItems();
-
       res.json({
         success: true,
         data
@@ -39,15 +34,12 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async createMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.createMapping(
         req.body,
         req.user._id
       );
-
       res.json({
         success: true,
         message: 'Mapping saved successfully',
@@ -55,14 +47,12 @@ class RouteStarItemAliasController {
       });
     } catch (error) {
       console.error('Error saving mapping:', error);
-
       if (error.message.includes('Canonical name and at least one alias are required')) {
         return res.status(400).json({
           success: false,
           message: error.message
         });
       }
-
       if (error.conflictingMappings) {
         return res.status(400).json({
           success: false,
@@ -70,7 +60,6 @@ class RouteStarItemAliasController {
           conflictingMappings: error.conflictingMappings
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to save mapping',
@@ -78,8 +67,6 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async updateMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.updateMapping(
@@ -87,7 +74,6 @@ class RouteStarItemAliasController {
         req.body,
         req.user._id
       );
-
       res.json({
         success: true,
         message: 'Mapping updated successfully',
@@ -95,14 +81,12 @@ class RouteStarItemAliasController {
       });
     } catch (error) {
       console.error('Error updating mapping:', error);
-
       if (error.message === 'Mapping not found') {
         return res.status(404).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to update mapping',
@@ -110,15 +94,12 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async addAlias(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.addAlias(
         req.params.id,
         req.body
       );
-
       res.json({
         success: true,
         message: 'Alias added successfully',
@@ -126,21 +107,18 @@ class RouteStarItemAliasController {
       });
     } catch (error) {
       console.error('Error adding alias:', error);
-
       if (error.message === 'Alias name is required') {
         return res.status(400).json({
           success: false,
           message: error.message
         });
       }
-
       if (error.message === 'Mapping not found') {
         return res.status(404).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to add alias',
@@ -148,15 +126,12 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async removeAlias(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.removeAlias(
         req.params.id,
         req.params.aliasName
       );
-
       res.json({
         success: true,
         message: 'Alias removed successfully',
@@ -164,14 +139,12 @@ class RouteStarItemAliasController {
       });
     } catch (error) {
       console.error('Error removing alias:', error);
-
       if (error.message === 'Mapping not found') {
         return res.status(404).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to remove alias',
@@ -179,12 +152,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async deleteMapping(req, res, next) {
     try {
       const mapping = await routeStarItemAliasService.deleteMapping(req.params.id);
-
       res.json({
         success: true,
         message: 'Mapping deleted successfully',
@@ -192,14 +162,12 @@ class RouteStarItemAliasController {
       });
     } catch (error) {
       console.error('Error deleting mapping:', error);
-
       if (error.message === 'Mapping not found') {
         return res.status(404).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to delete mapping',
@@ -207,12 +175,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async getLookupMap(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getLookupMap();
-
       res.json({
         success: true,
         data
@@ -226,12 +191,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async getSuggestedMappings(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getSuggestedMappings();
-
       res.json({
         success: true,
         data
@@ -245,12 +207,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async getStats(req, res, next) {
     try {
       const data = await routeStarItemAliasService.getStats();
-
       res.json({
         success: true,
         data
@@ -264,13 +223,9 @@ class RouteStarItemAliasController {
       });
     }
   }
-
-  
   async getPageData(req, res, next) {
     try {
-      
       const data = await routeStarItemAliasService.getPageDataOptimized();
-
       res.json({
         success: true,
         data
@@ -285,5 +240,4 @@ class RouteStarItemAliasController {
     }
   }
 }
-
 module.exports = new RouteStarItemAliasController();

@@ -14,26 +14,16 @@ exports.getAllActivities = async (req, res) => {
       endDate,
       search,
     } = req.query;
-
-    
     const query = {};
-
-    
     if (employeeId) {
       query.performedBy = employeeId;
     }
-
-    
     if (action) {
       query.action = action;
     }
-
-    
     if (resource) {
       query.resource = resource;
     }
-
-    
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) {
@@ -43,8 +33,6 @@ exports.getAllActivities = async (req, res) => {
         query.timestamp.$lte = new Date(endDate);
       }
     }
-
-    
     if (search) {
       query.$or = [
         { 'details.itemName': { $regex: search, $options: 'i' } },
@@ -53,16 +41,13 @@ exports.getAllActivities = async (req, res) => {
         { 'details.invoiceNumber': { $regex: search, $options: 'i' } },
       ];
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await AuditLog.countDocuments(query);
-
     const activities = await AuditLog.find(query)
       .populate('performedBy', 'username fullName email role')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -86,14 +71,10 @@ exports.getAllActivities = async (req, res) => {
     });
   }
 };
-
-
 exports.getEmployeeSummary = async (req, res) => {
   try {
     const { employeeId } = req.params;
     const { startDate, endDate } = req.query;
-
-    
     const employee = await User.findOne({ _id: employeeId, isDeleted: false });
     if (!employee) {
       return res.status(404).json({
@@ -104,8 +85,6 @@ exports.getEmployeeSummary = async (req, res) => {
         },
       });
     }
-
-    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.timestamp = {};
@@ -116,8 +95,6 @@ exports.getEmployeeSummary = async (req, res) => {
         dateFilter.timestamp.$lte = new Date(endDate);
       }
     }
-
-    
     const activityCounts = await AuditLog.aggregate([
       {
         $match: {
@@ -132,8 +109,6 @@ exports.getEmployeeSummary = async (req, res) => {
         },
       },
     ]);
-
-    
     const resourceCounts = await AuditLog.aggregate([
       {
         $match: {
@@ -148,8 +123,6 @@ exports.getEmployeeSummary = async (req, res) => {
         },
       },
     ]);
-
-    
     const recentActivities = await AuditLog.find({
       performedBy: employeeId,
       ...dateFilter,
@@ -157,13 +130,10 @@ exports.getEmployeeSummary = async (req, res) => {
       .sort({ timestamp: -1 })
       .limit(10)
       .populate('performedBy', 'username fullName');
-
-    
     const totalActivities = await AuditLog.countDocuments({
       performedBy: employeeId,
       ...dateFilter,
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -193,13 +163,9 @@ exports.getEmployeeSummary = async (req, res) => {
     });
   }
 };
-
-
 exports.getActivityStats = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-
-    
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.timestamp = {};
@@ -210,8 +176,6 @@ exports.getActivityStats = async (req, res) => {
         dateFilter.timestamp.$lte = new Date(endDate);
       }
     }
-
-    
     const mostActiveEmployees = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -240,8 +204,6 @@ exports.getActivityStats = async (req, res) => {
         },
       },
     ]);
-
-    
     const actionBreakdown = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -252,8 +214,6 @@ exports.getActivityStats = async (req, res) => {
       },
       { $sort: { count: -1 } },
     ]);
-
-    
     const resourceBreakdown = await AuditLog.aggregate([
       { $match: dateFilter },
       {
@@ -264,11 +224,8 @@ exports.getActivityStats = async (req, res) => {
       },
       { $sort: { count: -1 } },
     ]);
-
-    
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
     const dailyTrend = await AuditLog.aggregate([
       {
         $match: {
@@ -285,10 +242,7 @@ exports.getActivityStats = async (req, res) => {
       },
       { $sort: { _id: 1 } },
     ]);
-
-    
     const totalActivities = await AuditLog.countDocuments(dateFilter);
-
     res.status(200).json({
       success: true,
       data: {
@@ -310,22 +264,16 @@ exports.getActivityStats = async (req, res) => {
     });
   }
 };
-
-
 exports.getSalesActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
-
-    
     const query = {
       action: 'CREATE',
       resource: 'INVOICE',
     };
-
     if (employeeId) {
       query.performedBy = employeeId;
     }
-
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) {
@@ -335,16 +283,13 @@ exports.getSalesActivities = async (req, res) => {
         query.timestamp.$lte = new Date(endDate);
       }
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await AuditLog.countDocuments(query);
-
     const salesActivities = await AuditLog.find(query)
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -368,22 +313,16 @@ exports.getSalesActivities = async (req, res) => {
     });
   }
 };
-
-
 exports.getStockActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
-
-    
     const query = {
       action: { $in: ['STOCK_ADD', 'STOCK_REDUCE', 'STOCK_ADJUST', 'CREATE', 'UPDATE'] },
       resource: 'INVENTORY',
     };
-
     if (employeeId) {
       query.performedBy = employeeId;
     }
-
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) {
@@ -393,16 +332,13 @@ exports.getStockActivities = async (req, res) => {
         query.timestamp.$lte = new Date(endDate);
       }
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await AuditLog.countDocuments(query);
-
     const stockActivities = await AuditLog.find(query)
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -426,21 +362,15 @@ exports.getStockActivities = async (req, res) => {
     });
   }
 };
-
-
 exports.getDeleteActivities = async (req, res) => {
   try {
     const { employeeId, startDate, endDate, page = 1, limit = 20 } = req.query;
-
-
     const query = {
       action: 'DELETE',
     };
-
     if (employeeId) {
       query.performedBy = employeeId;
     }
-
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) {
@@ -450,16 +380,13 @@ exports.getDeleteActivities = async (req, res) => {
         query.timestamp.$lte = new Date(endDate);
       }
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await AuditLog.countDocuments(query);
-
     const deleteActivities = await AuditLog.find(query)
       .populate('performedBy', 'username fullName')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -483,9 +410,6 @@ exports.getDeleteActivities = async (req, res) => {
     });
   }
 };
-
-
-
 exports.getPageData = async (req, res) => {
   try {
     const {
@@ -498,8 +422,6 @@ exports.getPageData = async (req, res) => {
       endDate,
       search,
     } = req.query;
-
-    
     const activityQuery = {};
     if (employeeId) activityQuery.performedBy = employeeId;
     if (action) activityQuery.action = action;
@@ -517,39 +439,27 @@ exports.getPageData = async (req, res) => {
         { 'details.invoiceNumber': { $regex: search, $options: 'i' } },
       ];
     }
-
-    
     const statsDateFilter = {};
     if (startDate || endDate) {
       statsDateFilter.timestamp = {};
       if (startDate) statsDateFilter.timestamp.$gte = new Date(startDate);
       if (endDate) statsDateFilter.timestamp.$lte = new Date(endDate);
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    
     const [activities, total, users, stats] = await Promise.all([
-      
       AuditLog.find(activityQuery)
         .populate('performedBy', 'username fullName email role')
         .sort({ timestamp: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
-
-      
       AuditLog.countDocuments(activityQuery),
-
-      
       User.find({ isDeleted: false })
         .select('_id username fullName email role')
         .sort({ fullName: 1 })
         .lean(),
-
-      
       (async () => {
         const [
           mostActiveEmployees,
@@ -558,7 +468,6 @@ exports.getPageData = async (req, res) => {
           dailyTrend,
           totalActivities
         ] = await Promise.all([
-          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -587,8 +496,6 @@ exports.getPageData = async (req, res) => {
               },
             },
           ]),
-
-          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -599,8 +506,6 @@ exports.getPageData = async (req, res) => {
             },
             { $sort: { count: -1 } },
           ]),
-
-          
           AuditLog.aggregate([
             { $match: statsDateFilter },
             {
@@ -611,8 +516,6 @@ exports.getPageData = async (req, res) => {
             },
             { $sort: { count: -1 } },
           ]),
-
-          
           AuditLog.aggregate([
             {
               $match: {
@@ -629,11 +532,8 @@ exports.getPageData = async (req, res) => {
             },
             { $sort: { _id: 1 } },
           ]),
-
-          
           AuditLog.countDocuments(statsDateFilter),
         ]);
-
         return {
           totalActivities,
           mostActiveEmployees,
@@ -643,7 +543,6 @@ exports.getPageData = async (req, res) => {
         };
       })(),
     ]);
-
     res.status(200).json({
       success: true,
       data: {

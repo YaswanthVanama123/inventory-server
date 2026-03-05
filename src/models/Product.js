@@ -59,23 +59,16 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
-
 productSchema.index({ name: 'text', aliases: 'text' });
 productSchema.index({ category: 1, isActive: 1 });
-
-
 productSchema.methods.addAlias = function(alias) {
   if (!this.aliases.includes(alias.toLowerCase())) {
     this.aliases.push(alias.toLowerCase());
   }
   return this;
 };
-
-
 productSchema.statics.findBySKUOrAlias = async function(searchTerm) {
   const normalizedSearch = searchTerm.toLowerCase().trim();
-
   return this.findOne({
     $or: [
       { sku: normalizedSearch.toUpperCase() },
@@ -84,7 +77,5 @@ productSchema.statics.findBySKUOrAlias = async function(searchTerm) {
     isActive: true
   });
 };
-
 const Product = mongoose.model('Product', productSchema);
-
 module.exports = Product;

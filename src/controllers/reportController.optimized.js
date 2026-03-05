@@ -8,8 +8,6 @@ const SyncLog = require('../models/SyncLog');
 const getDashboard = async (req, res, next) => {
   try {
     const startTime = Date.now();
-
-    
     const [
       inventoryStats,
       categoryStats,
@@ -17,7 +15,6 @@ const getDashboard = async (req, res, next) => {
       salesData,
       syncStats
     ] = await Promise.all([
-      
       Inventory.aggregate([
         { $match: { isActive: true, isDeleted: false } },
         {
@@ -57,19 +54,13 @@ const getDashboard = async (req, res, next) => {
           }
         }
       ]),
-
-      
       Promise.resolve([]),
-
-      
       AuditLog.find({ resource: 'INVENTORY' })
         .select('action resource resourceId details timestamp performedBy')
         .populate('performedBy', 'username fullName') 
         .sort({ timestamp: -1 })
         .limit(5) 
         .lean(), 
-
-      
       RouteStarInvoice.aggregate([
         {
           $match: {
@@ -120,12 +111,8 @@ const getDashboard = async (req, res, next) => {
           }
         }
       ]),
-
-      
       getSyncStatisticsOptimized()
     ]);
-
-    
     const invStats = inventoryStats[0];
     const totals = invStats.totals[0] || {
       totalItems: 0,
@@ -134,16 +121,12 @@ const getDashboard = async (req, res, next) => {
       reorderCount: 0
     };
     const categories = invStats.categories || [];
-
-    
     const salesInfo = salesData[0];
     const salesTotals = salesInfo.totals[0] || { totalRevenue: 0, totalOrders: 0 };
     const invoiceStatusStats = {};
     salesInfo.byStatus.forEach(s => {
       invoiceStatusStats[s._id] = s.count;
     });
-
-    
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const topSellingItemsArray = salesInfo.topItems.map(item => ({
       name: item._id.name || 'Unknown',
@@ -152,7 +135,6 @@ const getDashboard = async (req, res, next) => {
       totalQty: item.totalQty,
       orderCount: item.orderCount
     }));
-
     const topSellingItems = {
       labels: topSellingItemsArray.map(item => {
         const name = item.name || 'Unknown';
@@ -162,7 +144,6 @@ const getDashboard = async (req, res, next) => {
         data: topSellingItemsArray.map(item => Math.round(item.totalRevenue))
       }]
     };
-
     const topSellingItemsDetailed = topSellingItemsArray.map(item => ({
       itemName: item.name,
       skuCode: item.sku,
@@ -170,28 +151,21 @@ const getDashboard = async (req, res, next) => {
       quantity: item.totalQty,
       orderCount: item.orderCount
     }));
-
-    
     const salesTrend = salesInfo.byMonth.map(m => ({
       month: monthNames[m._id.month - 1],
       revenue: m.revenue,
       profit: 0, 
       orders: m.orders
     }));
-
-    
     const currentMonth = new Date().getMonth();
     const lastMonthData = salesTrend[salesTrend.length - 1] || { revenue: 0, orders: 0 };
     const prevMonthData = salesTrend[salesTrend.length - 2] || { revenue: 0, orders: 0 };
-
     const revenueChange = prevMonthData.revenue > 0
       ? (((lastMonthData.revenue - prevMonthData.revenue) / prevMonthData.revenue) * 100).toFixed(1)
       : 0;
-
     const ordersChange = prevMonthData.orders > 0
       ? (((lastMonthData.orders - prevMonthData.orders) / prevMonthData.orders) * 100).toFixed(1)
       : 0;
-
     const responseData = {
       success: true,
       data: {
@@ -223,18 +197,14 @@ const getDashboard = async (req, res, next) => {
         syncStatus: syncStats
       }
     };
-
     const elapsed = Date.now() - startTime;
     console.log(`Dashboard API completed in ${elapsed}ms`);
-
     res.status(200).json(responseData);
   } catch (error) {
     console.error('Get dashboard error:', error);
     next(error);
   }
 };
-
-
 const getSyncStatisticsOptimized = async () => {
   try {
     const [latestSync, last24HoursCount, weekSuccessRate] = await Promise.all([
@@ -255,12 +225,9 @@ const getSyncStatisticsOptimized = async () => {
         }
       ])
     ]);
-
     const weekStats = weekSuccessRate[0] || { total: 0, successful: 0 };
     const successRate = weekStats.total > 0 ? ((weekStats.successful / weekStats.total) * 100).toFixed(2) : 0;
-
     const isDataStale = last24HoursCount === 0;
-
     return {
       lastSync: latestSync ? {
         timestamp: latestSync.startedAt,
@@ -300,7 +267,6 @@ const getSyncStatisticsOptimized = async () => {
     return null;
   }
 };
-
 module.exports = {
   getDashboard
 };

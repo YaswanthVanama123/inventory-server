@@ -1,12 +1,8 @@
 
 
-
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
-
 async function getOptimizedSummary() {
   console.time('[StockSummary] Total time');
-
-  
   console.time('[StockSummary] Step 1: Get items + aliases');
   const [forUseItems, forSellItems, aliasMap, mappings] = await Promise.all([
     RouteStarItem.find({ forUse: true }).select('itemName').lean(),
@@ -15,20 +11,14 @@ async function getOptimizedSummary() {
     ModelCategory.find().select('modelNumber categoryItemName').lean()
   ]);
   console.timeEnd('[StockSummary] Step 1: Get items + aliases');
-
-  
   const useAllowedCategories = forUseItems.map(item => item.itemName);
   const sellAllowedCategories = forSellItems.map(item => item.itemName);
-
-  
   const skuToCategoryMap = {};
   mappings.forEach(m => {
     if (m.modelNumber && m.categoryItemName) {
       skuToCategoryMap[m.modelNumber] = m.categoryItemName;
     }
   });
-
-  
   const useSKUs = [];
   const sellSKUs = [];
   mappings.forEach(m => {
@@ -41,17 +31,11 @@ async function getOptimizedSummary() {
       }
     }
   });
-
   console.log(`[StockSummary] Use categories: ${useAllowedCategories.length}, SKUs: ${useSKUs.length}`);
   console.log(`[StockSummary] Sell categories: ${sellAllowedCategories.length}, SKUs: ${sellSKUs.length}`);
-
-  
   console.time('[StockSummary] Step 2: Aggregate purchases');
-
   const [usePurchases, sellPurchases] = await Promise.all([
-    
     CustomerConnectOrder.aggregate([
-      
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
@@ -78,10 +62,7 @@ async function getOptimizedSummary() {
         }
       }
     ]),
-
-    
     CustomerConnectOrder.aggregate([
-      
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
@@ -109,15 +90,11 @@ async function getOptimizedSummary() {
       }
     ])
   ]);
-
   console.timeEnd('[StockSummary] Step 2: Aggregate purchases');
-
-  
   console.time('[StockSummary] Step 3: Build variations');
   const sellVariations = [];
   sellAllowedCategories.forEach(category => {
     sellVariations.push(category);
-    
     Object.keys(aliasMap).forEach(alias => {
       if (aliasMap[alias] === category && alias !== category.toLowerCase()) {
         sellVariations.push(alias);
@@ -126,12 +103,8 @@ async function getOptimizedSummary() {
   });
   console.log(`[StockSummary] Sell variations for lookup: ${sellVariations.length}`);
   console.timeEnd('[StockSummary] Step 3: Build variations');
-
-  
   console.time('[StockSummary] Step 4: Aggregate sales + checkouts + discrepancies');
-
   const [sales, checkouts, discrepancies] = await Promise.all([
-    
     RouteStarInvoice.aggregate([
       {
         $match: {
@@ -169,8 +142,6 @@ async function getOptimizedSummary() {
         }
       }
     ]),
-
-    
     TruckCheckout.aggregate([
       {
         $match: {
@@ -203,8 +174,6 @@ async function getOptimizedSummary() {
         }
       }
     ]),
-
-    
     StockDiscrepancy.aggregate([
       {
         $match: {
@@ -243,22 +212,13 @@ async function getOptimizedSummary() {
       }
     ])
   ]);
-
   console.timeEnd('[StockSummary] Step 4: Aggregate sales + checkouts + discrepancies');
-
-  
   console.time('[StockSummary] Step 5: Build result maps');
-
-  
   const getCanonical = (name) => {
     const nameLower = name.toLowerCase();
     return aliasMap[nameLower] || name;
   };
-
-  
   const useStockMap = {};
-
-  
   usePurchases.forEach(p => {
     const category = skuToCategoryMap[p._id];
     if (category && useAllowedCategories.includes(category)) {
@@ -275,8 +235,6 @@ async function getOptimizedSummary() {
       useStockMap[category].itemCount += p.itemCount || 0;
     }
   });
-
-  
   forUseItems.forEach(item => {
     if (!useStockMap[item.itemName]) {
       useStockMap[item.itemName] = {
@@ -287,11 +245,7 @@ async function getOptimizedSummary() {
       };
     }
   });
-
-  
   const sellStockMap = {};
-
-  
   sellPurchases.forEach(p => {
     const category = skuToCategoryMap[p._id];
     if (category && sellAllowedCategories.includes(category)) {
@@ -315,8 +269,6 @@ async function getOptimizedSummary() {
       sellStockMap[category].itemCount += p.itemCount || 0;
     }
   });
-
-  
   sales.forEach(s => {
     const canonical = getCanonical(s.itemName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -340,8 +292,6 @@ async function getOptimizedSummary() {
       sellStockMap[canonical].invoiceCount += s.invoiceCount || 0;
     }
   });
-
-  
   checkouts.forEach(c => {
     const canonical = getCanonical(c.itemName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -363,8 +313,6 @@ async function getOptimizedSummary() {
       sellStockMap[canonical].totalCheckedOut += c.totalCheckedOut || 0;
     }
   });
-
-  
   discrepancies.forEach(d => {
     const canonical = getCanonical(d.categoryName);
     if (sellAllowedCategories.includes(canonical)) {
@@ -385,8 +333,6 @@ async function getOptimizedSummary() {
       }
       sellStockMap[canonical].totalDiscrepancies += d.totalDiscrepancies || 0;
       sellStockMap[canonical].totalDiscrepancyDifference += d.totalDiscrepancyDifference || 0;
-
-      
       const adjustment = d.approvedAdjustment || 0;
       sellStockMap[canonical].stockRemaining =
         sellStockMap[canonical].totalPurchased -
@@ -395,8 +341,6 @@ async function getOptimizedSummary() {
         adjustment;
     }
   });
-
-  
   forSellItems.forEach(item => {
     if (!sellStockMap[item.itemName]) {
       sellStockMap[item.itemName] = {
@@ -413,33 +357,25 @@ async function getOptimizedSummary() {
         stockRemaining: 0
       };
     } else if (sellStockMap[item.itemName].stockRemaining === 0) {
-      
       sellStockMap[item.itemName].stockRemaining =
         sellStockMap[item.itemName].totalPurchased -
         sellStockMap[item.itemName].totalSold -
         sellStockMap[item.itemName].totalCheckedOut;
     }
   });
-
   console.timeEnd('[StockSummary] Step 5: Build result maps');
-
-  
   console.time('[StockSummary] Step 6: Sort and totals');
-
   const useStock = Object.values(useStockMap).sort((a, b) =>
     a.categoryName.localeCompare(b.categoryName)
   );
-
   const sellStock = Object.values(sellStockMap).sort((a, b) =>
     a.categoryName.localeCompare(b.categoryName)
   );
-
   const useTotals = useStock.reduce((acc, item) => ({
     totalQuantity: acc.totalQuantity + item.totalQuantity,
     totalValue: acc.totalValue + item.totalValue,
     categoryCount: acc.categoryCount + 1
   }), { totalQuantity: 0, totalValue: 0, categoryCount: 0 });
-
   const sellTotals = sellStock.reduce((acc, item) => ({
     totalPurchased: acc.totalPurchased + item.totalPurchased,
     totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
@@ -461,10 +397,8 @@ async function getOptimizedSummary() {
     totalDiscrepancyDifference: 0,
     categoryCount: 0
   });
-
   console.timeEnd('[StockSummary] Step 6: Sort and totals');
   console.timeEnd('[StockSummary] Total time');
-
   return {
     useStock: {
       items: useStock,
@@ -476,5 +410,4 @@ async function getOptimizedSummary() {
     }
   };
 }
-
 module.exports = { getOptimizedSummary };

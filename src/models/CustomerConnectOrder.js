@@ -1,41 +1,28 @@
 const mongoose = require('mongoose');
 
 
-
-
-
-
 const customerConnectOrderSchema = new mongoose.Schema({
-  
   orderNumber: {
     type: String,
     required: [true, 'Order number is required'],
     unique: true,
     trim: true
   },
-
-
   poNumber: {
     type: String,
     trim: true
   },
-
-  
   status: {
     type: String,
     required: [true, 'Status is required'],
     enum: ['Pending', 'Processing', 'Shipped', 'Complete', 'Cancelled', 'Denied', 'Canceled Reversal', 'Failed', 'Refunded', 'Reversed', 'Chargeback', 'Expired', 'Voided'],
     index: true
   },
-
-  
   orderDate: {
     type: Date,
     required: [true, 'Order date is required'],
     index: true
   },
-
-  
   vendor: {
     name: {
       type: String,
@@ -45,8 +32,6 @@ const customerConnectOrderSchema = new mongoose.Schema({
     email: String,
     phone: String
   },
-
-  
   items: [{
     sku: {
       type: String,
@@ -75,8 +60,6 @@ const customerConnectOrderSchema = new mongoose.Schema({
       min: [0, 'Line total cannot be negative']
     }
   }],
-
-  
   subtotal: {
     type: Number,
     default: 0,
@@ -98,11 +81,7 @@ const customerConnectOrderSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Total cannot be negative']
   },
-
-  
   detailUrl: String,
-
-  
   stockProcessed: {
     type: Boolean,
     default: false,
@@ -110,8 +89,6 @@ const customerConnectOrderSchema = new mongoose.Schema({
   },
   stockProcessedAt: Date,
   stockProcessingError: String,
-
-  
   verified: {
     type: Boolean,
     default: false,
@@ -122,20 +99,14 @@ const customerConnectOrderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-
-
   lastSyncedAt: {
     type: Date,
     default: Date.now,
     index: true
   },
-
-  
   rawData: {
     type: mongoose.Schema.Types.Mixed
   },
-
-  
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -147,12 +118,6 @@ const customerConnectOrderSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
-
-
-
-
-
-
 customerConnectOrderSchema.index({ orderDate: -1, status: 1 });
 customerConnectOrderSchema.index({ 'vendor.name': 1, orderDate: -1 });
 customerConnectOrderSchema.index({ stockProcessed: 1, status: 1 });
@@ -160,40 +125,28 @@ customerConnectOrderSchema.index({ verified: 1, stockProcessed: 1 });
 customerConnectOrderSchema.index({ lastSyncedAt: -1 });
 customerConnectOrderSchema.index({ 'items.sku': 1 });
 customerConnectOrderSchema.index({ 'items.sku': 1, status: 1 });
-
-
 customerConnectOrderSchema.index(
   { status: 1, stockProcessed: 1, verified: 1, orderNumber: -1 },
   { name: 'orders_list_filter_index' }
 );
-
-
 customerConnectOrderSchema.virtual('shouldProcessStock').get(function() {
   return !this.stockProcessed &&
          (this.status === 'Complete' || this.status === 'Processing' || this.status === 'Shipped') &&
          this.items &&
          this.items.length > 0;
 });
-
-
 customerConnectOrderSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0 && !this.subtotal) {
     this.subtotal = this.items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
   }
-
   if (this.subtotal && !this.total) {
     this.total = this.subtotal + (this.tax || 0) + (this.shipping || 0);
   }
-
   next();
 });
-
-
 customerConnectOrderSchema.statics.findByOrderNumber = function(orderNumber) {
   return this.findOne({ orderNumber });
 };
-
-
 customerConnectOrderSchema.statics.getUnprocessedOrders = function() {
   return this.find({
     stockProcessed: false,
@@ -201,18 +154,14 @@ customerConnectOrderSchema.statics.getUnprocessedOrders = function() {
     'items.0': { $exists: true }
   }).sort({ orderDate: 1 });
 };
-
-
 customerConnectOrderSchema.statics.getPurchaseStats = async function(startDate, endDate, options = {}) {
   const matchStage = {
     orderDate: { $gte: startDate, $lte: endDate },
     status: { $in: ['Complete', 'Processing', 'Shipped'] }
   };
-
   if (options.vendor) {
     matchStage['vendor.name'] = options.vendor;
   }
-
   const pipeline = [
     { $match: matchStage },
     {
@@ -227,7 +176,6 @@ customerConnectOrderSchema.statics.getPurchaseStats = async function(startDate, 
       }
     }
   ];
-
   const result = await this.aggregate(pipeline);
   return result.length > 0 ? result[0] : {
     totalPurchases: 0,
@@ -238,8 +186,6 @@ customerConnectOrderSchema.statics.getPurchaseStats = async function(startDate, 
     totalShipping: 0
   };
 };
-
-
 customerConnectOrderSchema.statics.getTopVendors = async function(startDate, endDate, limit = 10) {
   const pipeline = [
     {
@@ -259,11 +205,8 @@ customerConnectOrderSchema.statics.getTopVendors = async function(startDate, end
     { $sort: { totalPurchases: -1 } },
     { $limit: limit }
   ];
-
   return this.aggregate(pipeline);
 };
-
-
 customerConnectOrderSchema.statics.getTopProducts = async function(startDate, endDate, limit = 10) {
   const pipeline = [
     {
@@ -287,14 +230,10 @@ customerConnectOrderSchema.statics.getTopProducts = async function(startDate, en
     { $sort: { totalQuantity: -1 } },
     { $limit: limit }
   ];
-
   return this.aggregate(pipeline);
 };
-
-
 customerConnectOrderSchema.statics.upsertOrder = async function(orderData) {
   const { orderNumber } = orderData;
-
   return this.findOneAndUpdate(
     { orderNumber },
     {
@@ -308,8 +247,6 @@ customerConnectOrderSchema.statics.upsertOrder = async function(orderData) {
     }
   );
 };
-
-
 customerConnectOrderSchema.methods.markStockProcessed = function(error = null) {
   this.stockProcessed = !error;
   this.stockProcessedAt = new Date();
@@ -318,7 +255,5 @@ customerConnectOrderSchema.methods.markStockProcessed = function(error = null) {
   }
   return this.save();
 };
-
 const CustomerConnectOrder = mongoose.model('CustomerConnectOrder', customerConnectOrderSchema);
-
 module.exports = CustomerConnectOrder;

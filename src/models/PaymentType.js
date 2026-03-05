@@ -50,8 +50,5 @@ const paymentTypeSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
-
-
 paymentTypeSchema.index({ order: 1 });
-
 module.exports = mongoose.model('PaymentType', paymentTypeSchema);

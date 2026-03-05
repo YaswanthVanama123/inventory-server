@@ -3,15 +3,12 @@
 const { generateInvoicePDF } = require('./pdfGenerator');
 const fs = require('fs').promises;
 const path = require('path');
-
-
 const sampleInvoice = {
   invoiceNumber: 'INV-2026-001',
   invoiceDate: new Date('2026-02-01'),
   dueDate: new Date('2026-03-03'), 
   status: 'sent',
   currency: 'USD',
-
   company: {
     name: 'Acme Corporation',
     email: 'billing@acmecorp.com',
@@ -24,9 +21,7 @@ const sampleInvoice = {
       zipCode: '10001',
       country: 'USA'
     }
-    
   },
-
   customer: {
     name: 'Global Tech Solutions Inc.',
     email: 'accounts@globaltech.com',
@@ -39,7 +34,6 @@ const sampleInvoice = {
       country: 'USA'
     }
   },
-
   items: [
     {
       itemName: 'Laptop Computer - Dell XPS 15',
@@ -82,100 +76,53 @@ const sampleInvoice = {
       total: 399.95
     }
   ],
-
   subtotal: 7719.72,
-
   discount: {
     type: 'percentage',
     value: 10,
     amount: 771.97
   },
-
   tax: {
     rate: 8.5,
     amount: 590.56
   },
-
   grandTotal: 7538.31,
-
   paymentTerms: 'Net 30 - Payment is due within 30 days of invoice date. Accepted payment methods: Bank Transfer, Credit Card, PayPal. Late payments may incur a 1.5% monthly interest charge.',
-
   notes: 'Thank you for your business! Please include the invoice number with your payment.\n\nFor any questions regarding this invoice, please contact our billing department at billing@acmecorp.com or call +1 (555) 123-4567.\n\nAll sales are final. Returns accepted within 30 days with original receipt.'
 };
-
-
 async function generateSampleInvoice() {
   try {
     console.log('Generating invoice PDF...');
-
-    
     const pdfBuffer = await generateInvoicePDF(sampleInvoice, {
       includeQR: true 
     });
-
-    
     const outputPath = path.join(__dirname, '../../temp', `${sampleInvoice.invoiceNumber}.pdf`);
-
-    
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
-
-    
     await fs.writeFile(outputPath, pdfBuffer);
-
     console.log(`✓ Invoice PDF generated successfully!`);
     console.log(`✓ Saved to: ${outputPath}`);
     console.log(`✓ File size: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
-
     return pdfBuffer;
   } catch (error) {
     console.error('Error generating invoice:', error);
     throw error;
   }
 }
-
-
 async function generateInvoiceFromDB(invoiceId) {
   try {
-    
-    
-    
-
-    
     const invoice = sampleInvoice;
-
-    
     const pdfBuffer = await generateInvoicePDF(invoice, {
       includeQR: true
     });
-
     return pdfBuffer;
   } catch (error) {
     console.error('Error generating invoice from database:', error);
     throw error;
   }
 }
-
-
 async function generateAndEmailInvoice(invoice, recipientEmail) {
   try {
-    
     const pdfBuffer = await generateInvoicePDF(invoice);
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
     console.log(`Invoice would be emailed to: ${recipientEmail}`);
     return pdfBuffer;
   } catch (error) {
@@ -183,8 +130,6 @@ async function generateAndEmailInvoice(invoice, recipientEmail) {
     throw error;
   }
 }
-
-
 if (require.main === module) {
   generateSampleInvoice()
     .then(() => {
@@ -196,7 +141,6 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
 module.exports = {
   generateSampleInvoice,
   generateInvoiceFromDB,

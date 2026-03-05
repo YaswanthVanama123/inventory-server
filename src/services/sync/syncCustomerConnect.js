@@ -5,67 +5,39 @@ const SKUMapper = require('../skuMapper');
 const StockProcessor = require('../stockProcessor');
 
 
-
-
-
 class SyncCustomerConnect {
   constructor(userId = null) {
     this.userId = userId;
     this.automation = null;
     this.syncLog = null;
   }
-
-  
-
-
-
-
-
-
   async run(options = {}) {
     const { limit = 50, processStock = true } = options;
-
-    
     this.syncLog = await SyncLog.create({
       source: 'customerconnect',
       startedAt: new Date(),
       status: 'RUNNING',
       triggeredBy: this.userId
     });
-
     try {
       console.log('Starting CustomerConnect sync...');
-
-      
       this.automation = await new CustomerConnectAutomation().init();
-
-      
       await this.automation.login();
-
-      
       const ordersList = await this.automation.fetchOrdersList(limit);
       this.syncLog.recordsFound = ordersList.length;
       await this.syncLog.save();
-
       let inserted = 0;
       let updated = 0;
       let failed = 0;
-
-      
       for (const orderSummary of ordersList) {
         try {
-          
           if (!orderSummary.detailUrl) {
             console.warn(`No detail URL for order ${orderSummary.orderNumber}, skipping`);
             failed++;
             continue;
           }
-
           const orderDetails = await this.automation.fetchOrderDetails(orderSummary.detailUrl);
-
-          
           const result = await this.savePurchaseOrder(orderDetails);
-
           if (result.isNew) {
             inserted++;
           } else {
@@ -76,8 +48,6 @@ class SyncCustomerConnect {
           failed++;
         }
       }
-
-      
       if (processStock) {
         console.log('Processing stock movements...');
         const processedCount = await StockProcessor.processUnprocessedPurchaseOrders(this.userId);
@@ -86,16 +56,12 @@ class SyncCustomerConnect {
           stockMovementsProcessed: processedCount
         };
       }
-
-      
       this.syncLog.recordsInserted = inserted;
       this.syncLog.recordsUpdated = updated;
       this.syncLog.recordsFailed = failed;
       this.syncLog.complete(true);
       await this.syncLog.save();
-
       console.log(`CustomerConnect sync completed: ${inserted} inserted, ${updated} updated, ${failed} failed`);
-
       return {
         success: true,
         recordsFound: ordersList.length,
@@ -106,42 +72,24 @@ class SyncCustomerConnect {
       };
     } catch (error) {
       console.error('CustomerConnect sync failed:', error);
-
-      
       if (this.automation && this.automation.page) {
         const screenshotPath = await this.automation.takeScreenshot('sync-error');
         this.syncLog.screenshotPath = screenshotPath;
       }
-
-      
       this.syncLog.complete(false, error.message);
       this.syncLog.errorStack = error.stack;
       await this.syncLog.save();
-
       throw error;
     } finally {
-      
       if (this.automation) {
         await this.automation.close();
       }
     }
   }
-
-  
-
-
-
-
   async savePurchaseOrder(orderDetails) {
-    
     let purchaseOrder = await PurchaseOrder.findBySourceOrderId('customerconnect', orderDetails.orderNumber);
-
     const isNew = !purchaseOrder;
-
-    
     const mappedItems = await SKUMapper.mapItems(orderDetails.items, 'customerconnect');
-
-    
     const items = mappedItems.map(mapped => ({
       sku: mapped.sku,
       name: mapped.externalName || mapped.product?.name || 'Unknown',
@@ -150,12 +98,8 @@ class SyncCustomerConnect {
       lineTotal: orderDetails.items.find(i => i.name === mapped.externalName || i.sku === mapped.externalSKU)?.lineTotal || 0,
       rawText: mapped.externalName
     }));
-
-    
     const orderDate = this.parseDate(orderDetails.orderDate);
-
     if (isNew) {
-      
       purchaseOrder = await PurchaseOrder.create({
         source: 'customerconnect',
         sourceOrderId: orderDetails.orderNumber,
@@ -173,10 +117,8 @@ class SyncCustomerConnect {
         createdBy: this.userId,
         lastUpdatedBy: this.userId
       });
-
       console.log(`Created new purchase order: ${orderDetails.orderNumber}`);
     } else {
-      
       purchaseOrder.status = this.normalizeStatus(orderDetails.status);
       purchaseOrder.orderDate = orderDate;
       purchaseOrder.vendor = orderDetails.vendor;
@@ -188,23 +130,13 @@ class SyncCustomerConnect {
       purchaseOrder.raw = orderDetails;
       purchaseOrder.lastSyncedAt = new Date();
       purchaseOrder.lastUpdatedBy = this.userId;
-
       await purchaseOrder.save();
-
       console.log(`Updated purchase order: ${orderDetails.orderNumber}`);
     }
-
     return { purchaseOrder, isNew };
   }
-
-  
-
-
-
-
   normalizeStatus(status) {
     const statusLower = (status || '').toLowerCase();
-
     if (statusLower.includes('confirm') || statusLower.includes('approved')) {
       return 'confirmed';
     }
@@ -217,21 +149,12 @@ class SyncCustomerConnect {
     if (statusLower.includes('cancel')) {
       return 'cancelled';
     }
-
     return 'pending';
   }
-
-  
-
-
-
-
   parseDate(dateStr) {
     if (!dateStr) return new Date();
-
     const parsed = new Date(dateStr);
     return isNaN(parsed.getTime()) ? new Date() : parsed;
   }
 }
-
 module.exports = SyncCustomerConnect;

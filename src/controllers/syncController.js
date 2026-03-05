@@ -8,17 +8,11 @@ const StockProcessor = require('../services/stockProcessor');
 const Inventory = require('../models/Inventory');
 
 
-
-
-
-
 const syncCustomerConnect = async (req, res, next) => {
   try {
     const { limit = 50, processStock = true } = req.body;
-
     const syncService = new SyncCustomerConnect(req.user.id);
     const result = await syncService.run({ limit, processStock });
-
     res.status(200).json({
       success: true,
       message: 'CustomerConnect sync completed',
@@ -29,19 +23,11 @@ const syncCustomerConnect = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const syncRouteStar = async (req, res, next) => {
   try {
     const { limit = 50, processStock = true } = req.body;
-
     const syncService = new SyncRouteStar(req.user.id);
     const result = await syncService.run({ limit, processStock });
-
     res.status(200).json({
       success: true,
       message: 'RouteStar sync completed',
@@ -52,12 +38,6 @@ const syncRouteStar = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncLogs = async (req, res, next) => {
   try {
     const {
@@ -66,21 +46,16 @@ const getSyncLogs = async (req, res, next) => {
       page = 1,
       limit = 20
     } = req.query;
-
     const query = {};
-
     if (source) query.source = source;
     if (status) query.status = status;
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await SyncLog.countDocuments(query);
-
     const logs = await SyncLog.find(query)
       .populate('triggeredBy', 'username fullName')
       .sort({ startedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -98,17 +73,10 @@ const getSyncLogs = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncStatus = async (req, res, next) => {
   try {
     const customerConnectSync = await SyncLog.getLatestSync('customerconnect');
     const routeStarSync = await SyncLog.getLatestSync('routestar');
-
     res.status(200).json({
       success: true,
       data: {
@@ -121,16 +89,9 @@ const getSyncStatus = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncStats = async (req, res, next) => {
   try {
     const { source, days = 30 } = req.query;
-
     if (!source) {
       return res.status(400).json({
         success: false,
@@ -140,9 +101,7 @@ const getSyncStats = async (req, res, next) => {
         }
       });
     }
-
     const stats = await SyncLog.getSyncStats(source, parseInt(days));
-
     res.status(200).json({
       success: true,
       data: { stats }
@@ -152,52 +111,33 @@ const getSyncStats = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncHealth = async (req, res, next) => {
   try {
     const { days = 7 } = req.query;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
-
-    
     const customerConnectSyncs = await SyncLog.find({
       source: 'customerconnect',
       startedAt: { $gte: startDate }
     }).sort({ startedAt: -1 });
-
     const routeStarSyncs = await SyncLog.find({
       source: 'routestar',
       startedAt: { $gte: startDate }
     }).sort({ startedAt: -1 });
-
-    
     const ccHealth = calculateHealthMetrics(customerConnectSyncs);
     const rsHealth = calculateHealthMetrics(routeStarSyncs);
-
-    
     const unprocessedPurchaseOrders = await PurchaseOrder.countDocuments({
       stockProcessed: false,
       status: { $in: ['confirmed', 'received', 'completed'] }
     });
-
     const unprocessedInvoices = await ExternalInvoice.countDocuments({
       stockProcessed: false,
       status: { $in: ['paid', 'delivered', 'completed'] }
     });
-
-    
     const failedMovements = await StockMovement.countDocuments({
       error: { $exists: true, $ne: null }
     });
-
-    
     const overallHealth = determineOverallHealth(ccHealth, rsHealth, unprocessedPurchaseOrders, unprocessedInvoices);
-
     res.status(200).json({
       success: true,
       data: {
@@ -234,10 +174,6 @@ const getSyncHealth = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const calculateHealthMetrics = (syncs) => {
   if (syncs.length === 0) {
     return {
@@ -251,25 +187,20 @@ const calculateHealthMetrics = (syncs) => {
       averageRecordsProcessed: 0
     };
   }
-
   const successfulSyncs = syncs.filter(s => s.status === 'SUCCESS').length;
   const failedSyncs = syncs.filter(s => s.status === 'FAILED').length;
   const partialSyncs = syncs.filter(s => s.status === 'PARTIAL').length;
   const successRate = (successfulSyncs / syncs.length) * 100;
-
   const completedSyncs = syncs.filter(s => s.endedAt);
   const averageDuration = completedSyncs.length > 0
     ? completedSyncs.reduce((sum, s) => sum + (s.endedAt - s.startedAt), 0) / completedSyncs.length
     : 0;
-
   const averageRecordsProcessed = syncs.length > 0
     ? syncs.reduce((sum, s) => sum + (s.recordsInserted + s.recordsUpdated), 0) / syncs.length
     : 0;
-
   let status = 'healthy';
   if (successRate < 50) status = 'critical';
   else if (successRate < 80) status = 'warning';
-
   return {
     status,
     totalSyncs: syncs.length,
@@ -281,53 +212,32 @@ const calculateHealthMetrics = (syncs) => {
     averageRecordsProcessed: Math.round(averageRecordsProcessed * 100) / 100
   };
 };
-
-
-
-
 const determineOverallHealth = (ccHealth, rsHealth, unprocessedPOs, unprocessedInvoices) => {
   const ccScore = calculateHealthScore(ccHealth);
   const rsScore = calculateHealthScore(rsHealth);
   const stockScore = 100 - Math.min((unprocessedPOs + unprocessedInvoices) * 2, 50);
-
   const overallScore = (ccScore + rsScore + stockScore) / 3;
-
   let status = 'healthy';
   if (overallScore < 50) status = 'critical';
   else if (overallScore < 75) status = 'warning';
-
   return {
     status,
     score: Math.round(overallScore * 100) / 100
   };
 };
-
-
-
-
 const calculateHealthScore = (health) => {
   if (health.status === 'no_data') return 50;
-
   const successRateWeight = 0.7;
   const performanceWeight = 0.3;
-
   const successScore = health.successRate;
   const performanceScore = health.averageDuration < 60000 ? 100 :
                           health.averageDuration < 120000 ? 80 :
                           health.averageDuration < 300000 ? 60 : 40;
-
   return (successScore * successRateWeight) + (performanceScore * performanceWeight);
 };
-
-
-
-
-
-
 const retryFailedSyncs = async (req, res, next) => {
   try {
     const { source, syncLogId, hours = 24 } = req.body;
-
     if (!source && !syncLogId) {
       return res.status(400).json({
         success: false,
@@ -337,18 +247,14 @@ const retryFailedSyncs = async (req, res, next) => {
         }
       });
     }
-
     let results = {
       attempted: 0,
       successful: 0,
       failed: 0,
       syncs: []
     };
-
-    
     if (syncLogId) {
       const syncLog = await SyncLog.findById(syncLogId);
-
       if (!syncLog) {
         return res.status(404).json({
           success: false,
@@ -358,7 +264,6 @@ const retryFailedSyncs = async (req, res, next) => {
           }
         });
       }
-
       if (syncLog.status !== 'FAILED' && syncLog.status !== 'PARTIAL') {
         return res.status(400).json({
           success: false,
@@ -368,7 +273,6 @@ const retryFailedSyncs = async (req, res, next) => {
           }
         });
       }
-
       const retryResult = await retrySingleSync(syncLog, req.user.id);
       results.attempted = 1;
       if (retryResult.success) {
@@ -377,20 +281,15 @@ const retryFailedSyncs = async (req, res, next) => {
         results.failed = 1;
       }
       results.syncs.push(retryResult);
-
     } else {
-      
       const startDate = new Date();
       startDate.setHours(startDate.getHours() - parseInt(hours));
-
       const failedSyncs = await SyncLog.find({
         source,
         status: { $in: ['FAILED', 'PARTIAL'] },
         startedAt: { $gte: startDate }
       }).sort({ startedAt: 1 });
-
       results.attempted = failedSyncs.length;
-
       for (const syncLog of failedSyncs) {
         const retryResult = await retrySingleSync(syncLog, req.user.id);
         if (retryResult.success) {
@@ -401,7 +300,6 @@ const retryFailedSyncs = async (req, res, next) => {
         results.syncs.push(retryResult);
       }
     }
-
     res.status(200).json({
       success: true,
       message: `Retry completed: ${results.successful} successful, ${results.failed} failed out of ${results.attempted} attempted`,
@@ -412,14 +310,9 @@ const retryFailedSyncs = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const retrySingleSync = async (syncLog, userId) => {
   try {
     let syncService;
-
     if (syncLog.source === 'customerconnect') {
       syncService = new SyncCustomerConnect(userId);
     } else if (syncLog.source === 'routestar') {
@@ -432,12 +325,10 @@ const retrySingleSync = async (syncLog, userId) => {
         error: 'Unknown sync source'
       };
     }
-
     const result = await syncService.run({
       limit: syncLog.details?.limit || 50,
       processStock: true
     });
-
     return {
       syncLogId: syncLog._id,
       source: syncLog.source,
@@ -454,24 +345,15 @@ const retrySingleSync = async (syncLog, userId) => {
     };
   }
 };
-
-
-
-
-
-
 const reprocessFailedStock = async (req, res, next) => {
   try {
     const { source, type, recordIds, all = false } = req.body;
-
     let results = {
       processed: 0,
       successful: 0,
       failed: 0,
       errors: []
     };
-
-    
     if (recordIds && recordIds.length > 0) {
       for (const recordId of recordIds) {
         try {
@@ -483,7 +365,6 @@ const reprocessFailedStock = async (req, res, next) => {
             }
             results.processed++;
           }
-
           if (type === 'invoice' || !type) {
             const invoice = await ExternalInvoice.findById(recordId);
             if (invoice && !invoice.stockProcessed) {
@@ -502,16 +383,13 @@ const reprocessFailedStock = async (req, res, next) => {
         }
       }
     }
-    
     else if (all) {
       try {
         if (type === 'purchase_order' || !type) {
           const query = { stockProcessed: false };
           if (source) query.source = source;
-
           const unprocessedPOs = await PurchaseOrder.find(query);
           results.processed += unprocessedPOs.length;
-
           for (const po of unprocessedPOs) {
             try {
               await StockProcessor.processPurchaseOrder(po, req.user.id);
@@ -527,14 +405,11 @@ const reprocessFailedStock = async (req, res, next) => {
             }
           }
         }
-
         if (type === 'invoice' || !type) {
           const query = { stockProcessed: false };
           if (source) query.source = source;
-
           const unprocessedInvoices = await ExternalInvoice.find(query);
           results.processed += unprocessedInvoices.length;
-
           for (const invoice of unprocessedInvoices) {
             try {
               await StockProcessor.processInvoice(invoice, req.user.id);
@@ -563,7 +438,6 @@ const reprocessFailedStock = async (req, res, next) => {
         }
       });
     }
-
     res.status(200).json({
       success: true,
       message: `Reprocessed ${results.successful} records successfully, ${results.failed} failed out of ${results.processed} total`,
@@ -574,16 +448,9 @@ const reprocessFailedStock = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncPerformanceMetrics = async (req, res, next) => {
   try {
     const { source, days = 30 } = req.query;
-
     if (!source) {
       return res.status(400).json({
         success: false,
@@ -593,16 +460,12 @@ const getSyncPerformanceMetrics = async (req, res, next) => {
         }
       });
     }
-
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
-
-    
     const syncs = await SyncLog.find({
       source,
       startedAt: { $gte: startDate }
     }).sort({ startedAt: 1 });
-
     if (syncs.length === 0) {
       return res.status(200).json({
         success: true,
@@ -614,39 +477,28 @@ const getSyncPerformanceMetrics = async (req, res, next) => {
         }
       });
     }
-
-    
     const completedSyncs = syncs.filter(s => s.endedAt);
     const successfulSyncs = syncs.filter(s => s.status === 'SUCCESS');
     const failedSyncs = syncs.filter(s => s.status === 'FAILED');
     const partialSyncs = syncs.filter(s => s.status === 'PARTIAL');
-
     const durations = completedSyncs.map(s => s.endedAt - s.startedAt);
     const avgDuration = durations.length > 0
       ? durations.reduce((sum, d) => sum + d, 0) / durations.length
       : 0;
     const minDuration = durations.length > 0 ? Math.min(...durations) : 0;
     const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
-
     const totalRecordsFound = syncs.reduce((sum, s) => sum + (s.recordsFound || 0), 0);
     const totalRecordsInserted = syncs.reduce((sum, s) => sum + (s.recordsInserted || 0), 0);
     const totalRecordsUpdated = syncs.reduce((sum, s) => sum + (s.recordsUpdated || 0), 0);
     const totalRecordsFailed = syncs.reduce((sum, s) => sum + (s.recordsFailed || 0), 0);
-
     const avgRecordsPerSync = syncs.length > 0
       ? (totalRecordsInserted + totalRecordsUpdated) / syncs.length
       : 0;
-
     const recordsPerMinute = avgDuration > 0
       ? (avgRecordsPerSync / (avgDuration / 60000))
       : 0;
-
-    
     const dailyBreakdown = calculateDailyBreakdown(syncs);
-
-    
     const hourlyPerformance = calculateHourlyPerformance(syncs);
-
     const metrics = {
       overview: {
         totalSyncs: syncs.length,
@@ -683,7 +535,6 @@ const getSyncPerformanceMetrics = async (req, res, next) => {
         recentTrend: calculateRecentTrend(syncs)
       }
     };
-
     res.status(200).json({
       success: true,
       data: {
@@ -701,13 +552,8 @@ const getSyncPerformanceMetrics = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const calculateDailyBreakdown = (syncs) => {
   const breakdown = {};
-
   syncs.forEach(sync => {
     const date = sync.startedAt.toISOString().split('T')[0];
     if (!breakdown[date]) {
@@ -720,23 +566,16 @@ const calculateDailyBreakdown = (syncs) => {
         recordsProcessed: 0
       };
     }
-
     breakdown[date].total++;
     if (sync.status === 'SUCCESS') breakdown[date].successful++;
     if (sync.status === 'FAILED') breakdown[date].failed++;
     if (sync.status === 'PARTIAL') breakdown[date].partial++;
     breakdown[date].recordsProcessed += (sync.recordsInserted || 0) + (sync.recordsUpdated || 0);
   });
-
   return Object.values(breakdown).sort((a, b) => a.date.localeCompare(b.date));
 };
-
-
-
-
 const calculateHourlyPerformance = (syncs) => {
   const hourlyStats = {};
-
   syncs.forEach(sync => {
     const hour = sync.startedAt.getHours();
     if (!hourlyStats[hour]) {
@@ -748,15 +587,12 @@ const calculateHourlyPerformance = (syncs) => {
         durations: []
       };
     }
-
     hourlyStats[hour].count++;
     if (sync.status === 'SUCCESS') hourlyStats[hour].successful++;
     if (sync.endedAt) {
       hourlyStats[hour].durations.push(sync.endedAt - sync.startedAt);
     }
   });
-
-  
   Object.keys(hourlyStats).forEach(hour => {
     const stats = hourlyStats[hour];
     if (stats.durations.length > 0) {
@@ -766,83 +602,47 @@ const calculateHourlyPerformance = (syncs) => {
     }
     delete stats.durations;
   });
-
   return Object.values(hourlyStats).sort((a, b) => a.hour - b.hour);
 };
-
-
-
-
 const calculateMTBF = (syncs) => {
   const failures = syncs.filter(s => s.status === 'FAILED');
   if (failures.length <= 1) return Infinity;
-
   const intervals = [];
   for (let i = 1; i < failures.length; i++) {
     intervals.push(failures[i].startedAt - failures[i - 1].startedAt);
   }
-
   const avgInterval = intervals.reduce((sum, i) => sum + i, 0) / intervals.length;
   return Math.round(avgInterval / 1000 / 60); 
 };
-
-
-
-
 const calculateConsistency = (syncs) => {
   if (syncs.length < 2) return 100;
-
   const completedSyncs = syncs.filter(s => s.endedAt);
   if (completedSyncs.length < 2) return 100;
-
   const durations = completedSyncs.map(s => s.endedAt - s.startedAt);
   const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length;
-
-  
   const variance = durations.reduce((sum, d) => sum + Math.pow(d - avg, 2), 0) / durations.length;
   const stdDev = Math.sqrt(variance);
-
-  
   const cv = avg > 0 ? (stdDev / avg) : 0;
-
-  
   const consistencyScore = Math.max(0, Math.min(100, 100 - (cv * 100)));
-
   return Math.round(consistencyScore * 100) / 100;
 };
-
-
-
-
 const calculateRecentTrend = (syncs) => {
   if (syncs.length < 4) return 'stable';
-
   const halfPoint = Math.floor(syncs.length / 2);
   const firstHalf = syncs.slice(0, halfPoint);
   const secondHalf = syncs.slice(halfPoint);
-
   const firstHalfSuccess = firstHalf.filter(s => s.status === 'SUCCESS').length / firstHalf.length;
   const secondHalfSuccess = secondHalf.filter(s => s.status === 'SUCCESS').length / secondHalf.length;
-
   const difference = secondHalfSuccess - firstHalfSuccess;
-
   if (difference > 0.1) return 'improving';
   if (difference < -0.1) return 'degrading';
   return 'stable';
 };
-
-
-
-
-
-
 const getInventoryAnalytics = async (req, res, next) => {
   try {
     const { days = 30 } = req.query;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
-
-    
     const stockMovementStats = await StockMovement.aggregate([
       {
         $match: {
@@ -858,8 +658,6 @@ const getInventoryAnalytics = async (req, res, next) => {
         }
       }
     ]);
-
-    
     const syncDrivenChanges = await StockMovement.aggregate([
       {
         $match: {
@@ -875,8 +673,6 @@ const getInventoryAnalytics = async (req, res, next) => {
         }
       }
     ]);
-
-    
     const topMovingSKUs = await StockMovement.aggregate([
       {
         $match: {
@@ -906,12 +702,9 @@ const getInventoryAnalytics = async (req, res, next) => {
         $limit: 10
       }
     ]);
-
-    
     const lowStockItems = await Inventory.find({ isActive: true, isDeleted: false })
       .select('skuCode itemName quantity')
       .lean();
-
     const lowStock = lowStockItems
       .filter(item => item.quantity?.current <= item.quantity?.minimum)
       .map(item => ({
@@ -923,21 +716,15 @@ const getInventoryAnalytics = async (req, res, next) => {
       }))
       .sort((a, b) => b.deficit - a.deficit)
       .slice(0, 20);
-
-    
     const customerConnectOrders = await PurchaseOrder.countDocuments({
       stockProcessed: true,
       stockProcessedAt: { $gte: startDate }
     });
-
     const routeStarInvoices = await ExternalInvoice.countDocuments({
       stockProcessed: true,
       stockProcessedAt: { $gte: startDate }
     });
-
-    
     const inventoryTurnover = await calculateInventoryTurnover(startDate);
-
     res.status(200).json({
       success: true,
       data: {
@@ -973,10 +760,6 @@ const getInventoryAnalytics = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const calculateInventoryTurnover = async (startDate) => {
   try {
     const totalOut = await StockMovement.aggregate([
@@ -993,7 +776,6 @@ const calculateInventoryTurnover = async (startDate) => {
         }
       }
     ]);
-
     const totalInventory = await Inventory.aggregate([
       {
         $match: {
@@ -1008,12 +790,9 @@ const calculateInventoryTurnover = async (startDate) => {
         }
       }
     ]);
-
     const outQty = totalOut.length > 0 ? totalOut[0].totalQty : 0;
     const avgInventory = totalInventory.length > 0 ? totalInventory[0].totalQty : 0;
-
     const turnoverRate = avgInventory > 0 ? (outQty / avgInventory) : 0;
-
     return {
       totalOut: outQty,
       averageInventory: avgInventory,
@@ -1025,7 +804,6 @@ const calculateInventoryTurnover = async (startDate) => {
     return null;
   }
 };
-
 module.exports = {
   syncCustomerConnect,
   syncRouteStar,

@@ -1,6 +1,5 @@
 
 
-
 module.exports = {
   login: {
     username: 'input[name="email"]',
@@ -12,12 +11,10 @@ module.exports = {
     cookieAcceptButton: 'button:has-text("Accept"), button:has-text("I Agree")',
     loggedInIndicator: 'a:has-text("logout"), a[href*="logout"], .account-logout'
   },
-
   navigation: {
     ordersLink: 'a[href*="account/orders"]',
     logoutLink: 'a[href*="account/logout"]'
   },
-
   ordersList: {
     ordersTable: '#content',
     orderRows: '#content .order-list-item, #content > div:has(a[href*="order/info"]), #content > div:has-text("Status:"):has-text("Date Added:")',
@@ -27,7 +24,6 @@ module.exports = {
     orderLink: 'a[href*="order/info"], a[href*="order_id"]',
     noOrders: '.alert-info, :has-text("No orders")'
   },
-
   orderDetails: {
     orderInfo: 'table.list tbody tr td.left',
     itemsTable: 'table.list',
@@ -38,7 +34,6 @@ module.exports = {
     itemPrice: 'td:nth-child(4)',
     itemTotal: 'td:nth-child(5)'
   },
-
   pagination: {
     paginationContainer: '.pagination',
     nextButton: 'a:has-text(">")',

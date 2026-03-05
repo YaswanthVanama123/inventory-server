@@ -9,43 +9,33 @@ class RouteStarService {
   async syncItems(limit, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
-
     try {
-      
       fetchRecord = await FetchHistory.startFetch('routestar_items', 'items', {
         limit: limit,
         triggeredBy: triggeredBy
       });
-
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
         limit = Infinity;
       } else {
         limit = parseInt(limit);
       }
-
       console.log(`\n========================================`);
       console.log(`Starting items sync request`);
       console.log(`Limit: ${limit === Infinity ? 'Infinity' : limit}`);
       console.log(`========================================\n`);
-
       syncService = new RouteStarSyncService();
       console.log('Created sync service, initializing...');
       await syncService.init();
       console.log('Sync service initialized, starting items sync...');
-
       const results = await syncService.syncItems(limit);
-
-      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
         updated: results.updated || 0
       });
-
       console.log(`\n========================================`);
       console.log(`Items sync completed successfully`);
       console.log(`========================================\n`);
-
       return {
         success: true,
         message: `Items synced successfully (${limit === Infinity ? 'all' : limit} items requested)`,
@@ -58,12 +48,9 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
-      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
-
       throw error;
     } finally {
       if (syncService) {
@@ -73,53 +60,40 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncPending(limit, direction = 'new', triggeredBy = 'manual', userId = null) {
     let syncService = null;
     let fetchRecord = null;
-
     try {
-
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending', {
         limit: limit,
         direction: direction,
         triggeredBy: triggeredBy,
         userId: userId
       });
-
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
         limit = Infinity;
       } else {
         limit = parseInt(limit);
       }
-
       console.log(`\n========================================`);
       console.log(`Starting pending invoices sync request`);
       console.log(`Limit: ${limit}, Direction: ${direction}`);
       console.log(`========================================\n`);
-
       syncService = new RouteStarSyncService();
       console.log('Created sync service, initializing...');
       await syncService.init();
       console.log('Sync service initialized, starting sync...');
-
       const results = await syncService.syncPendingInvoices(limit);
-
-      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
         updated: results.updated || 0,
         deleted: results.deleted || 0
       });
-
       const limitText = limit === Infinity ? 'all available' : limit;
-
       console.log(`\n========================================`);
       console.log(`Pending invoices sync completed successfully`);
       console.log(`========================================\n`);
-
       return {
         success: true,
         message: `Pending invoices synced successfully (${limitText} ${direction} invoices requested)`,
@@ -132,12 +106,9 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
-      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
-
       throw error;
     } finally {
       if (syncService) {
@@ -147,24 +118,18 @@ class RouteStarService {
       }
     }
   }
-
-  
   async getInvoiceRange(invoiceType) {
     try {
       const query = invoiceType ? { invoiceType } : {};
-
       const highestInvoice = await RouteStarInvoice.findOne(query)
         .sort({ invoiceNumber: -1 })
         .select('invoiceNumber invoiceDate invoiceType')
         .lean();
-
       const lowestInvoice = await RouteStarInvoice.findOne(query)
         .sort({ invoiceNumber: 1 })
         .select('invoiceNumber invoiceDate invoiceType')
         .lean();
-
       const totalInvoices = await RouteStarInvoice.countDocuments(query);
-
       return {
         success: true,
         data: {
@@ -181,41 +146,30 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null) {
     let syncService = null;
     let fetchRecord = null;
-
     try {
-
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
         limit: limit,
         direction: direction,
         triggeredBy: triggeredBy,
         userId: userId
       });
-
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
         limit = Infinity;
       } else {
         limit = parseInt(limit);
       }
-
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       const results = await syncService.syncClosedInvoices(limit);
-
-      
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
         updated: results.updated || 0
       });
-
       const limitText = limit === Infinity ? 'all available' : limit;
-
       return {
         success: true,
         message: `Closed invoices synced successfully (${limitText} ${direction} invoices requested)`,
@@ -224,12 +178,9 @@ class RouteStarService {
       };
     } catch (error) {
       console.error('Closed invoices sync error:', error);
-
-      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
-
       throw error;
     } finally {
       if (syncService) {
@@ -237,17 +188,12 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncInvoiceDetails(invoiceNumber) {
     let syncService = null;
-
     try {
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       const invoice = await syncService.syncInvoiceDetails(invoiceNumber);
-
       return {
         success: true,
         message: 'Invoice details synced successfully',
@@ -262,28 +208,21 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncAllDetails(limit = 0) {
     let syncService = null;
-
     try {
       console.log('\n========================================');
       console.log('Starting sync all invoice details request');
       console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
       console.log('========================================\n');
-
       console.log('Created sync service, initializing...');
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       console.log('Sync service initialized, starting sync...');
       const results = await syncService.syncAllInvoiceDetails(limit);
-
       console.log('\n========================================');
       console.log('Invoice details sync completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Invoice details synced successfully',
@@ -295,7 +234,6 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
       throw error;
     } finally {
       if (syncService) {
@@ -305,28 +243,21 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncPendingDetails(limit = 0) {
     let syncService = null;
-
     try {
       console.log('\n========================================');
       console.log('Starting sync pending invoice details request');
       console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
       console.log('========================================\n');
-
       console.log('Created sync service, initializing...');
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       console.log('Sync service initialized, starting sync...');
       const results = await syncService.syncAllInvoiceDetails(limit, 'Pending');
-
       console.log('\n========================================');
       console.log('Pending invoice details sync completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Pending invoice details synced successfully',
@@ -338,7 +269,6 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
       throw error;
     } finally {
       if (syncService) {
@@ -348,28 +278,21 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncClosedDetails(limit = 0) {
     let syncService = null;
-
     try {
       console.log('\n========================================');
       console.log('Starting sync closed invoice details request');
       console.log(`Limit: ${limit === 0 ? 'Infinity' : limit}`);
       console.log('========================================\n');
-
       console.log('Created sync service, initializing...');
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       console.log('Sync service initialized, starting sync...');
       const results = await syncService.syncAllInvoiceDetails(limit, 'Closed');
-
       console.log('\n========================================');
       console.log('Closed invoice details sync completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Closed invoice details synced successfully',
@@ -381,7 +304,6 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
       throw error;
     } finally {
       if (syncService) {
@@ -391,42 +313,29 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncPendingWithDetails(invoicesLimit = 0, detailsLimit = 0, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
-
     try {
       const direction = 'new';
-
-      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending_with_details', {
         limit: invoicesLimit,
         direction: direction,
         triggeredBy: triggeredBy
       });
-
       console.log('\n========================================');
       console.log('Starting pending invoices + details sync');
       console.log(`Limit: ${invoicesLimit === 0 ? 'Infinity' : invoicesLimit}, Direction: ${direction}`);
       console.log(`Fetch ID: ${fetchRecord._id}`);
       console.log('========================================\n');
-
       console.log('Created sync service, initializing...');
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       console.log('Sync service initialized, starting sync...');
-
       const invoiceResults = await syncService.syncPendingInvoices(invoicesLimit, direction);
       console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
-
-      
       const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Pending');
       console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
-
-      
       const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
       await fetchRecord.markCompleted({
         totalFetched: invoiceResults.total || 0,
@@ -434,11 +343,9 @@ class RouteStarService {
         updated: invoiceResults.updated || 0,
         detailsSynced: totalDetailsSynced
       });
-
       console.log('\n========================================');
       console.log('Pending invoices + details sync completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Pending invoices and details synced successfully',
@@ -454,12 +361,9 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
-      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
-
       throw error;
     } finally {
       if (syncService) {
@@ -469,42 +373,29 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncClosedWithDetails(invoicesLimit = 0, detailsLimit = 0, triggeredBy = 'manual') {
     let syncService = null;
     let fetchRecord = null;
-
     try {
       const direction = 'new';
-
-      
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed_with_details', {
         limit: invoicesLimit,
         direction: direction,
         triggeredBy: triggeredBy
       });
-
       console.log('\n========================================');
       console.log('Starting closed invoices + details sync');
       console.log(`Limit: ${invoicesLimit === 0 ? 'Infinity' : invoicesLimit}, Direction: ${direction}`);
       console.log(`Fetch ID: ${fetchRecord._id}`);
       console.log('========================================\n');
-
       console.log('Created sync service, initializing...');
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       console.log('Sync service initialized, starting sync...');
-
       const invoiceResults = await syncService.syncClosedInvoices(invoicesLimit, direction);
       console.log(`\nStep 1 complete: ${invoiceResults.created} created, ${invoiceResults.updated} updated, ${invoiceResults.detailsFetched || 0} details fetched inline`);
-
-      
       const detailsResults = await syncService.syncAllInvoiceDetails(0, 'Closed', false);
       console.log(`\nStep 2 complete: ${detailsResults.synced} additional details synced`);
-
-      
       const totalDetailsSynced = (invoiceResults.detailsFetched || 0) + (detailsResults.synced || 0);
       await fetchRecord.markCompleted({
         totalFetched: invoiceResults.total || 0,
@@ -512,11 +403,9 @@ class RouteStarService {
         updated: invoiceResults.updated || 0,
         detailsSynced: totalDetailsSynced
       });
-
       console.log('\n========================================');
       console.log('Closed invoices + details sync completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Closed invoices and details synced successfully',
@@ -532,12 +421,9 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
-      
       if (fetchRecord) {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
       }
-
       throw error;
     } finally {
       if (syncService) {
@@ -547,25 +433,18 @@ class RouteStarService {
       }
     }
   }
-
-  
   async checkPending() {
     let syncService = null;
-
     try {
       console.log('\n========================================');
       console.log('Checking pending invoices in RouteStar');
       console.log('========================================\n');
-
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       const result = await syncService.checkPendingInvoicesInRouteStar();
-
       console.log('\n========================================');
       console.log('Check completed successfully');
       console.log('========================================\n');
-
       return {
         success: true,
         message: 'Pending invoices check completed',
@@ -577,7 +456,6 @@ class RouteStarService {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('========================================\n');
-
       throw error;
     } finally {
       if (syncService) {
@@ -587,17 +465,12 @@ class RouteStarService {
       }
     }
   }
-
-  
   async syncStock() {
     let syncService = null;
-
     try {
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       const results = await syncService.processStockMovements();
-
       return {
         success: true,
         message: 'Stock movements processed successfully',
@@ -612,27 +485,21 @@ class RouteStarService {
       }
     }
   }
-
-  
   async fullSync(options = {}) {
     let syncService = null;
-
     try {
       const {
         pendingLimit = 100,
         closedLimit = 100,
         processStock = true
       } = options;
-
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       const results = await syncService.fullSync({
         pendingLimit,
         closedLimit,
         processStock
       });
-
       return {
         success: true,
         message: 'Full sync completed successfully',
@@ -647,8 +514,6 @@ class RouteStarService {
       }
     }
   }
-
-  
   async getInvoices(filters = {}, options = {}) {
     try {
       const {
@@ -661,22 +526,17 @@ class RouteStarService {
         endDate,
         stockProcessed
       } = { ...filters, ...options };
-
       const query = {};
-
       if (invoiceType) query.invoiceType = invoiceType;
       if (status) query.status = status;
       if (customer) query['customer.name'] = new RegExp(customer, 'i');
       if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
-
       if (startDate || endDate) {
         query.invoiceDate = {};
         if (startDate) query.invoiceDate.$gte = new Date(startDate);
         if (endDate) query.invoiceDate.$lte = new Date(endDate);
       }
-
       const skip = (page - 1) * limit;
-
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
           .select('_id invoiceNumber invoiceDate customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
@@ -686,8 +546,6 @@ class RouteStarService {
           .lean(),
         RouteStarInvoice.countDocuments(query)
       ]);
-
-      
       const transformedInvoices = invoices.map(invoice => ({
         _id: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
@@ -708,7 +566,6 @@ class RouteStarService {
         updatedAt: invoice.updatedAt,
         lastSyncedAt: invoice.lastSyncedAt
       }));
-
       return {
         success: true,
         data: {
@@ -726,12 +583,9 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getInvoiceByNumber(invoiceNumber) {
     try {
       const invoice = await RouteStarInvoice.findByInvoiceNumber(invoiceNumber);
-
       if (!invoice) {
         return {
           success: false,
@@ -739,7 +593,6 @@ class RouteStarService {
           notFound: true
         };
       }
-
       return {
         success: true,
         data: invoice
@@ -749,18 +602,13 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getStats(options = {}) {
     try {
       const { startDate, endDate, customer, assignedTo } = options;
-
       const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
       const end = endDate ? new Date(endDate) : new Date();
-
       const stats = await RouteStarInvoice.getSalesStats(start, end, { customer, assignedTo });
       const topCustomers = await RouteStarInvoice.getTopCustomers(start, end, 10);
-
       const statusCounts = await RouteStarInvoice.aggregate([
         {
           $match: {
@@ -774,7 +622,6 @@ class RouteStarService {
           }
         }
       ]);
-
       return {
         success: true,
         data: {
@@ -789,12 +636,9 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async deleteAllPending() {
     try {
       const result = await RouteStarInvoice.deleteMany({ invoiceType: 'pending' });
-
       return {
         success: true,
         message: `Deleted ${result.deletedCount} pending invoices`,
@@ -807,12 +651,9 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async deleteAllClosed() {
     try {
       const result = await RouteStarInvoice.deleteMany({ invoiceType: 'closed' });
-
       return {
         success: true,
         message: `Deleted ${result.deletedCount} closed invoices`,
@@ -825,8 +666,6 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getGroupedItems(options = {}) {
     try {
       const {
@@ -837,38 +676,26 @@ class RouteStarService {
         search = '',
         minQuantity = 0
       } = options;
-
-      
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       const skip = (pageNum - 1) * limitNum;
       const sortDirection = sortOrder === 'desc' ? -1 : 1;
       const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
       const minQty = parseInt(minQuantity);
-
       console.log('[getGroupedRouteStarItems] Starting ultra-optimized aggregation...');
       console.time('[getGroupedRouteStarItems] Total time');
-
-      
       const result = await RouteStarInvoice.aggregate([
-        
         {
           $match: {
             'lineItems.0': { $exists: true }
           }
         },
-
-        
         {
           $project: {
             lineItems: 1
           }
         },
-
-        
         { $unwind: '$lineItems' },
-
-        
         {
           $match: {
             'lineItems.name': { $exists: true, $ne: null, $ne: '' },
@@ -880,8 +707,6 @@ class RouteStarService {
             } : {})
           }
         },
-
-        
         {
           $group: {
             _id: '$lineItems.name',
@@ -892,15 +717,11 @@ class RouteStarService {
             sku: { $first: { $ifNull: ['$lineItems.sku', '$lineItems.name'] } }
           }
         },
-
-        
         {
           $addFields: {
             nameLower: { $toLower: '$_id' }
           }
         },
-
-        
         {
           $lookup: {
             from: 'routestaritemaliases',
@@ -926,8 +747,6 @@ class RouteStarService {
             as: 'aliasDoc'
           }
         },
-
-        
         {
           $addFields: {
             canonicalName: {
@@ -939,8 +758,6 @@ class RouteStarService {
             }
           }
         },
-
-        
         {
           $group: {
             _id: '$canonicalName',
@@ -951,15 +768,11 @@ class RouteStarService {
             sku: { $first: '$sku' }
           }
         },
-
-        
         ...(minQty > 0 ? [{
           $match: {
             totalQuantity: { $gte: minQty }
           }
         }] : []),
-
-        
         {
           $project: {
             _id: 0,
@@ -976,11 +789,7 @@ class RouteStarService {
             invoiceCount: '$countRates'
           }
         },
-
-        
         { $sort: { [sortField]: sortDirection } },
-
-        
         {
           $facet: {
             metadata: [{ $count: 'total' }],
@@ -988,13 +797,10 @@ class RouteStarService {
           }
         }
       ]);
-
       const total = result[0].metadata[0]?.total || 0;
       const items = result[0].data || [];
-
       console.timeEnd('[getGroupedRouteStarItems] Total time');
       console.log(`[getGroupedRouteStarItems] Returned ${items.length} items out of ${total} total`);
-
       return {
         items,
         pagination: {
@@ -1009,24 +815,15 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getInvoicesByItem(itemName, options = {}) {
     try {
       const { page = 1, limit = 100 } = options;
-
-      
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       const skip = (pageNum - 1) * limitNum;
-
       console.log(`[getInvoicesByItem] Starting ultra-optimized query for item: ${itemName}`);
       console.time('[getInvoicesByItem] Total time');
-
       const itemNameLower = itemName.toLowerCase();
-
-      
-      
       const aliasDoc = await RouteStarItemAlias.findOne({
         isActive: true,
         aliases: {
@@ -1035,11 +832,8 @@ class RouteStarService {
           }
         }
       }).select('canonicalName aliases').lean();
-
-      
       let searchNames;
       let canonicalName;
-
       if (aliasDoc) {
         canonicalName = aliasDoc.canonicalName;
         searchNames = aliasDoc.aliases.map(a => a.name.toLowerCase());
@@ -1047,12 +841,8 @@ class RouteStarService {
         canonicalName = itemName;
         searchNames = [itemNameLower];
       }
-
       console.log(`[getInvoicesByItem] Searching for ${searchNames.length} variations`);
-
-      
       const result = await RouteStarInvoice.aggregate([
-        
         {
           $match: {
             'lineItems.0': { $exists: true },
@@ -1061,8 +851,6 @@ class RouteStarService {
             }
           }
         },
-
-        
         {
           $project: {
             invoiceNumber: 1,
@@ -1074,11 +862,7 @@ class RouteStarService {
             lineItems: 1
           }
         },
-
-        
         { $unwind: '$lineItems' },
-
-        
         {
           $match: {
             $expr: {
@@ -1089,8 +873,6 @@ class RouteStarService {
             }
           }
         },
-
-        
         {
           $project: {
             _id: 1,
@@ -1107,11 +889,7 @@ class RouteStarService {
             sku: { $ifNull: ['$lineItems.sku', '$lineItems.name'] }
           }
         },
-
-        
         { $sort: { invoiceDate: -1 } },
-
-        
         {
           $facet: {
             metadata: [
@@ -1147,13 +925,10 @@ class RouteStarService {
           }
         }
       ]);
-
       const metadata = result[0].metadata[0] || { total: 0, totalQuantity: 0 };
       const entries = result[0].data || [];
-
       console.timeEnd('[getInvoicesByItem] Total time');
       console.log(`[getInvoicesByItem] Returned ${entries.length} entries out of ${metadata.total} total`);
-
       return {
         success: true,
         data: {
@@ -1173,8 +948,6 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async bulkDeleteInvoices(items) {
     try {
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -1184,15 +957,11 @@ class RouteStarService {
           validationError: true
         };
       }
-
       console.log(`[Bulk Delete Invoices] Deleting invoices with SKUs: ${items.join(', ')}`);
-
       const result = await RouteStarInvoice.deleteMany({
         'lineItems.sku': { $in: items }
       });
-
       console.log(`[Bulk Delete Invoices] Deleted ${result.deletedCount} invoices`);
-
       return {
         success: true,
         message: `Successfully deleted ${result.deletedCount} invoices containing the specified SKUs`,
@@ -1206,8 +975,6 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async bulkDeleteByNumbers(invoiceNumbers) {
     try {
       if (!invoiceNumbers || !Array.isArray(invoiceNumbers) || invoiceNumbers.length === 0) {
@@ -1217,15 +984,11 @@ class RouteStarService {
           validationError: true
         };
       }
-
       console.log(`[Bulk Delete Invoices] Deleting invoices with numbers: ${invoiceNumbers.join(', ')}`);
-
       const result = await RouteStarInvoice.deleteMany({
         invoiceNumber: { $in: invoiceNumbers }
       });
-
       console.log(`[Bulk Delete Invoices] Deleted ${result.deletedCount} invoices`);
-
       return {
         success: true,
         message: `Successfully deleted ${result.deletedCount} invoices`,
@@ -1239,8 +1002,6 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getItems(options = {}) {
     try {
       const {
@@ -1252,9 +1013,7 @@ class RouteStarService {
         inStock,
         searchTerm
       } = options;
-
       const query = {};
-
       if (category) query.category = category;
       if (department) query.department = department;
       if (type) query.type = type;
@@ -1266,9 +1025,7 @@ class RouteStarService {
           { mfgPartNumber: new RegExp(searchTerm, 'i') }
         ];
       }
-
       const skip = (page - 1) * limit;
-
       const [items, total] = await Promise.all([
         RouteStarItem.find(query)
           .sort({ itemName: 1 })
@@ -1277,7 +1034,6 @@ class RouteStarService {
           .lean(),
         RouteStarItem.countDocuments(query)
       ]);
-
       return {
         success: true,
         data: {
@@ -1295,12 +1051,9 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getLowStockItems(threshold = 10) {
     try {
       const items = await RouteStarItem.getLowStock(parseInt(threshold));
-
       return {
         success: true,
         data: {
@@ -1314,12 +1067,9 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async deleteAllItems() {
     try {
       const result = await RouteStarItem.deleteMany({});
-
       return {
         success: true,
         message: `Deleted ${result.deletedCount} items`,
@@ -1332,17 +1082,11 @@ class RouteStarService {
       throw error;
     }
   }
-
-  
   async getItemInvoiceUsage() {
     try {
       console.time('getItemInvoiceUsage');
-
-      
       console.time('Step 1: Get aliases');
       const aliasMap = await RouteStarItemAlias.buildLookupMap();
-
-      
       const aliasDocs = await RouteStarItemAlias.find({ isActive: true }).lean();
       const canonicalToOriginalAliases = {};
       aliasDocs.forEach(doc => {
@@ -1356,23 +1100,15 @@ class RouteStarService {
         });
       });
       console.timeEnd('Step 1: Get aliases');
-
-      
       console.time('Step 2: Aggregation query');
       const itemStats = await RouteStarInvoice.aggregate([
-        
         { $unwind: '$lineItems' },
-
-        
         { $match: { 'lineItems.name': { $ne: null, $exists: true } } },
-
-        
         {
           $group: {
             _id: '$lineItems.name', 
             invoiceCount: { $sum: 1 }, 
             totalQuantitySold: { $sum: { $ifNull: ['$lineItems.quantity', 0] } },
-            
             invoices: {
               $push: {
                 invoiceNumber: '$invoiceNumber',
@@ -1388,26 +1124,18 @@ class RouteStarService {
             }
           }
         },
-
-        
         { $sort: { _id: 1 } }
       ]);
       console.timeEnd('Step 2: Aggregation query');
-
-      
       console.time('Step 3: Process results');
       const mappedItems = new Map(); 
       const uniqueItems = [];
-
       itemStats.forEach(stat => {
         const itemName = stat._id;
         if (!itemName) return;
-
         const nameLower = itemName.toLowerCase();
         const canonical = aliasMap[nameLower];
-
         if (canonical) {
-          
           if (!mappedItems.has(canonical)) {
             mappedItems.set(canonical, {
               itemName: canonical,
@@ -1418,12 +1146,9 @@ class RouteStarService {
               invoices: []
             });
           }
-
           const item = mappedItems.get(canonical);
           item.invoiceCount += stat.invoiceCount;
           item.totalQuantitySold += stat.totalQuantitySold;
-
-          
           stat.invoices.forEach(inv => {
             item.invoices.push({
               invoiceNumber: inv.invoiceNumber,
@@ -1435,7 +1160,6 @@ class RouteStarService {
             });
           });
         } else {
-          
           uniqueItems.push({
             itemName: itemName,
             type: 'unique',
@@ -1453,29 +1177,21 @@ class RouteStarService {
           });
         }
       });
-
-      
       const mappedItemsArray = Array.from(mappedItems.values()).map(item => ({
         ...item,
         aliases: Array.from(item.aliases)
       }));
-
-      
       const allItems = [...mappedItemsArray, ...uniqueItems];
       allItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
       console.timeEnd('Step 3: Process results');
-
-      
       const totals = {
         totalMappedItems: mappedItemsArray.length,
         totalUniqueItems: uniqueItems.length,
         totalItems: allItems.length,
         totalInvoices: allItems.reduce((sum, item) => sum + item.invoiceCount, 0)
       };
-
       console.timeEnd('getItemInvoiceUsage');
       console.log(`✅ Optimized query returned ${allItems.length} items with ${totals.totalInvoices} invoice references`);
-
       return {
         success: true,
         data: {
@@ -1489,5 +1205,4 @@ class RouteStarService {
     }
   }
 }
-
 module.exports = new RouteStarService();

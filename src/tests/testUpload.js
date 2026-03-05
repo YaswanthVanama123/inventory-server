@@ -2,10 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-
 console.log('\n=== Upload Middleware Test ===\n');
-
-
 console.log('Test 1: Checking upload middleware...');
 try {
   const uploadMiddleware = require('../middleware/upload');
@@ -20,10 +17,7 @@ try {
   console.error(error.message);
   process.exit(1);
 }
-
 console.log('\n');
-
-
 console.log('Test 2: Checking upload directories...');
 const uploadsDir = path.join(__dirname, '../../uploads/items');
 if (fs.existsSync(uploadsDir)) {
@@ -35,10 +29,7 @@ if (fs.existsSync(uploadsDir)) {
   console.log('✗ Uploads directory does not exist');
   process.exit(1);
 }
-
 console.log('\n');
-
-
 console.log('Test 3: Checking multer package...');
 try {
   const multer = require('multer');
@@ -49,10 +40,7 @@ try {
   console.error(error.message);
   process.exit(1);
 }
-
 console.log('\n');
-
-
 console.log('Test 4: Checking error handler...');
 try {
   const errorHandlerPath = path.join(__dirname, '../middleware/errorHandler.js');
@@ -66,24 +54,17 @@ try {
   console.log('✗ Could not check error handler');
   console.error(error.message);
 }
-
 console.log('\n');
-
-
 console.log('Test 5: Testing filename sanitization logic...');
 const testFilename = 'test file with spaces & special!@#chars.jpg';
 const sanitized = testFilename.replace(/[^a-zA-Z0-9.]/g, '_');
 console.log('  Original:', testFilename);
 console.log('  Sanitized:', sanitized);
 console.log('✓ Filename sanitization works');
-
 console.log('\n');
-
-
 console.log('Test 6: Testing file type validation...');
 const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
 const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-
 const testCases = [
   { name: 'image.jpg', mime: 'image/jpeg', expected: true },
   { name: 'image.png', mime: 'image/png', expected: true },
@@ -91,17 +72,13 @@ const testCases = [
   { name: 'document.pdf', mime: 'application/pdf', expected: false },
   { name: 'script.js', mime: 'application/javascript', expected: false }
 ];
-
 testCases.forEach(test => {
   const ext = path.extname(test.name).toLowerCase();
   const isValid = allowedExtensions.includes(ext) && allowedMimeTypes.includes(test.mime);
   const status = isValid === test.expected ? '✓' : '✗';
   console.log(`  ${status} ${test.name} (${test.mime}): ${isValid ? 'ALLOWED' : 'REJECTED'}`);
 });
-
 console.log('\n');
-
-
 console.log('Test 7: Testing file size limits...');
 const maxSize = 5 * 1024 * 1024; 
 const testSizes = [
@@ -112,27 +89,21 @@ const testSizes = [
   { size: 6 * 1024 * 1024, expected: false, label: '6MB' },
   { size: 10 * 1024 * 1024, expected: false, label: '10MB' }
 ];
-
 testSizes.forEach(test => {
   const isValid = test.size <= maxSize;
   const status = isValid === test.expected ? '✓' : '✗';
   console.log(`  ${status} ${test.label}: ${isValid ? 'ALLOWED' : 'REJECTED'}`);
 });
-
 console.log('\n');
-
-
 console.log('Test 8: Checking server configuration...');
 try {
   const serverPath = path.join(__dirname, '../server.js');
   const serverContent = fs.readFileSync(serverPath, 'utf8');
-
   if (serverContent.includes("'/uploads'") || serverContent.includes('"/uploads"')) {
     console.log('✓ Static file serving configured for /uploads');
   } else {
     console.log('⚠ Warning: Static file serving might not be configured');
   }
-
   if (serverContent.includes('path')) {
     console.log('✓ Path module imported in server.js');
   } else {
@@ -142,10 +113,7 @@ try {
   console.log('✗ Could not check server configuration');
   console.error(error.message);
 }
-
 console.log('\n');
-
-
 console.log('=== Test Summary ===');
 console.log('All core functionality tests passed!');
 console.log('\nNext steps:');

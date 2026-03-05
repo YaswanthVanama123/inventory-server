@@ -200,15 +200,9 @@ const inventorySchema = new mongoose.Schema({
     default: null
   }
 });
-
-
-
-
 inventorySchema.index({ category: 1, isActive: 1 });
 inventorySchema.index({ 'quantity.current': 1 });
 inventorySchema.index({ createdAt: -1 });
-
-
 inventorySchema.pre('save', function(next) {
   if (this.pricing && this.pricing.purchasePrice && this.pricing.sellingPrice) {
     const profit = this.pricing.sellingPrice - this.pricing.purchasePrice;
@@ -216,8 +210,6 @@ inventorySchema.pre('save', function(next) {
       ? (profit / this.pricing.purchasePrice) * 100
       : 0;
   }
-
-  
   if (this.images && this.images.length > 0) {
     if (this.primaryImage >= this.images.length) {
       this.primaryImage = 0;
@@ -225,54 +217,36 @@ inventorySchema.pre('save', function(next) {
   } else {
     this.primaryImage = 0;
   }
-
   this.updatedAt = Date.now();
   next();
 });
-
-
 inventorySchema.virtual('isLowStock').get(function() {
   return this.quantity.current <= this.quantity.minimum;
 });
-
-
 inventorySchema.virtual('needsReorder').get(function() {
   return this.quantity.current <= this.supplier.reorderPoint;
 });
-
-
 inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) {
   const Purchase = require('./Purchase');
-
-  
   const purchases = await Purchase.find({
     inventoryItem: inventoryId,
     isDeleted: false,
     remainingQuantity: { $gt: 0 }
   });
-
   if (!purchases || purchases.length === 0) {
     return 0;
   }
-
-  
   let totalValue = 0;
   let totalQuantity = 0;
-
   purchases.forEach(purchase => {
     const qty = purchase.remainingQuantity || 0;
     const price = purchase.sellingPrice || purchase.purchasePrice || 0;
     totalValue += qty * price;
     totalQuantity += qty;
   });
-
   return totalQuantity > 0 ? totalValue / totalQuantity : 0;
 };
-
-
 inventorySchema.set('toJSON', { virtuals: true });
 inventorySchema.set('toObject', { virtuals: true });
-
 const Inventory = mongoose.model('Inventory', inventorySchema);
-
 module.exports = Inventory;

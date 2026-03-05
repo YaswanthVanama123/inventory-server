@@ -249,113 +249,70 @@ const invoiceSchema = new mongoose.Schema({
     default: null
   }
 });
-
-
-
-
 invoiceSchema.index({ 'customer.email': 1, invoiceDate: -1 });
 invoiceSchema.index({ status: 1, paymentStatus: 1 });
 invoiceSchema.index({ invoiceDate: -1, createdAt: -1 });
 invoiceSchema.index({ createdBy: 1, status: 1 });
 invoiceSchema.index({ dueDate: 1, paymentStatus: 1 }); 
-
-
 invoiceSchema.statics.generateInvoiceNumber = async function() {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   const datePrefix = `INV-${year}${month}${day}`;
-
-  
   const lastInvoice = await this.findOne({
     invoiceNumber: new RegExp(`^${datePrefix}`)
   })
   .sort({ invoiceNumber: -1 })
   .select('invoiceNumber')
   .lean();
-
   let sequence = 1;
   if (lastInvoice) {
-    
     const lastSequence = parseInt(lastInvoice.invoiceNumber.split('-')[2]);
     sequence = lastSequence + 1;
   }
-
-  
   const sequenceStr = String(sequence).padStart(4, '0');
   return `${datePrefix}-${sequenceStr}`;
 };
-
-
 invoiceSchema.pre('save', async function(next) {
   try {
-    
     if (this.isNew && !this.invoiceNumber) {
       this.invoiceNumber = await this.constructor.generateInvoiceNumber();
     }
-
-    
     if (this.items && this.items.length > 0) {
       this.items.forEach(item => {
         item.subtotal = item.quantity * item.priceAtSale;
       });
     }
-
-    
     this.subtotalAmount = this.items.reduce((sum, item) => sum + item.subtotal, 0);
-
-    
     if (this.discount.type === 'percentage') {
       this.discount.amount = (this.subtotalAmount * this.discount.value) / 100;
     } else {
       this.discount.amount = this.discount.value;
     }
-
-    
     const amountAfterDiscount = this.subtotalAmount - this.discount.amount;
-
-    
     this.taxAmount = (amountAfterDiscount * this.taxRate) / 100;
-
-    
     this.totalAmount = amountAfterDiscount + this.taxAmount;
-
-    
     if (this.isModified('paymentStatus') && this.paymentStatus === 'paid' && !this.paymentDate) {
       this.paymentDate = Date.now();
     }
-
-    
     if (this.paymentStatus === 'paid' && this.status !== 'paid') {
       this.status = 'paid';
     }
-
-    
     this.updatedAt = Date.now();
-
     next();
   } catch (error) {
     next(error);
   }
 });
-
-
 invoiceSchema.pre('findOneAndUpdate', async function(next) {
   const update = this.getUpdate();
-
-  
   if (update.$set && update.$set.items) {
-    
     update.$set.items.forEach(item => {
       item.subtotal = item.quantity * item.priceAtSale;
     });
-
-    
     const subtotalAmount = update.$set.items.reduce((sum, item) => sum + item.subtotal, 0);
     update.$set.subtotalAmount = subtotalAmount;
-
-    
     const discount = update.$set.discount || {};
     if (discount.type === 'percentage') {
       discount.amount = (subtotalAmount * (discount.value || 0)) / 100;
@@ -363,43 +320,28 @@ invoiceSchema.pre('findOneAndUpdate', async function(next) {
       discount.amount = discount.value || 0;
     }
     update.$set.discount = discount;
-
-    
     const amountAfterDiscount = subtotalAmount - discount.amount;
-
-    
     const taxRate = update.$set.taxRate || 0;
     update.$set.taxAmount = (amountAfterDiscount * taxRate) / 100;
-
-    
     update.$set.totalAmount = amountAfterDiscount + update.$set.taxAmount;
   }
-
-  
   if (update.$set) {
     update.$set.updatedAt = Date.now();
   }
-
   next();
 });
-
-
 invoiceSchema.virtual('isOverdue').get(function() {
   if (this.paymentStatus === 'paid' || this.status === 'cancelled') {
     return false;
   }
   return new Date() > this.dueDate;
 });
-
-
 invoiceSchema.virtual('daysUntilDue').get(function() {
   const today = new Date();
   const diffTime = this.dueDate - today;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
 });
-
-
 invoiceSchema.virtual('daysOverdue').get(function() {
   if (!this.isOverdue) {
     return 0;
@@ -409,57 +351,33 @@ invoiceSchema.virtual('daysOverdue').get(function() {
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
 });
-
-
 invoiceSchema.virtual('amountPaid').get(function() {
   return this.paymentStatus === 'paid' ? this.totalAmount : 0;
 });
-
-
 invoiceSchema.virtual('amountDue').get(function() {
   return this.paymentStatus === 'paid' ? 0 : this.totalAmount;
 });
-
-
 invoiceSchema.virtual('totalItems').get(function() {
   return this.items.length;
 });
-
-
 invoiceSchema.virtual('totalQuantity').get(function() {
   return this.items.reduce((sum, item) => sum + item.quantity, 0);
 });
-
-
 invoiceSchema.methods.calculateTotals = function() {
-  
   this.items.forEach(item => {
     item.subtotal = item.quantity * item.priceAtSale;
   });
-
-  
   this.subtotalAmount = this.items.reduce((sum, item) => sum + item.subtotal, 0);
-
-  
   if (this.discount.type === 'percentage') {
     this.discount.amount = (this.subtotalAmount * this.discount.value) / 100;
   } else {
     this.discount.amount = this.discount.value;
   }
-
-  
   const amountAfterDiscount = this.subtotalAmount - this.discount.amount;
-
-  
   this.taxAmount = (amountAfterDiscount * this.taxRate) / 100;
-
-  
   this.totalAmount = amountAfterDiscount + this.taxAmount;
-
   return this;
 };
-
-
 invoiceSchema.methods.markAsPaid = function(paymentMethod) {
   this.paymentStatus = 'paid';
   this.status = 'paid';
@@ -469,8 +387,6 @@ invoiceSchema.methods.markAsPaid = function(paymentMethod) {
   }
   return this;
 };
-
-
 invoiceSchema.methods.markAsCancelled = function(reason) {
   this.status = 'cancelled';
   this.paymentStatus = 'cancelled';
@@ -481,8 +397,6 @@ invoiceSchema.methods.markAsCancelled = function(reason) {
   }
   return this;
 };
-
-
 invoiceSchema.methods.issueInvoice = function() {
   if (this.status === 'draft') {
     this.status = 'issued';
@@ -490,8 +404,6 @@ invoiceSchema.methods.issueInvoice = function() {
   }
   return this;
 };
-
-
 invoiceSchema.statics.getOverdueInvoices = function() {
   return this.find({
     dueDate: { $lt: new Date() },
@@ -499,8 +411,6 @@ invoiceSchema.statics.getOverdueInvoices = function() {
     status: { $ne: 'cancelled' }
   }).sort({ dueDate: 1 });
 };
-
-
 invoiceSchema.statics.getInvoicesByDateRange = function(startDate, endDate) {
   return this.find({
     invoiceDate: {
@@ -509,8 +419,6 @@ invoiceSchema.statics.getInvoicesByDateRange = function(startDate, endDate) {
     }
   }).sort({ invoiceDate: -1 });
 };
-
-
 invoiceSchema.statics.getRevenueStats = async function(startDate, endDate) {
   const stats = await this.aggregate([
     {
@@ -545,22 +453,15 @@ invoiceSchema.statics.getRevenueStats = async function(startDate, endDate) {
       }
     }
   ]);
-
   return stats.length > 0 ? stats[0] : null;
 };
-
-
 invoiceSchema.set('toJSON', {
   virtuals: true,
   transform: function(doc, ret) {
-    
     delete ret.__v;
     return ret;
   }
 });
-
 invoiceSchema.set('toObject', { virtuals: true });
-
 const Invoice = mongoose.model('Invoice', invoiceSchema);
-
 module.exports = Invoice;

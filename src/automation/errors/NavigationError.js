@@ -1,8 +1,6 @@
 const AutomationError = require('./AutomationError');
 
 
-
-
 class NavigationError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);
@@ -12,7 +10,6 @@ class NavigationError extends AutomationError {
     this.actualUrl = options.actualUrl;
     this.timeout = options.timeout;
   }
-
   toJSON() {
     return {
       ...super.toJSON(),
@@ -23,5 +20,4 @@ class NavigationError extends AutomationError {
     };
   }
 }
-
 module.exports = NavigationError;

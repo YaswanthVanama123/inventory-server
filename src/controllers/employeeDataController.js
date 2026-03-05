@@ -4,16 +4,13 @@ const User = require('../models/User');
 
 const getMyWorkData = async (req, res) => {
   try {
-    
     const user = await User.findById(req.user.id).select('truckNumber');
-
     if (!user || !user.truckNumber) {
       return res.status(400).json({
         success: false,
         message: 'No truck number assigned to your account. Please contact your administrator.'
       });
     }
-
     const {
       page = 1,
       limit = 50,
@@ -24,12 +21,10 @@ const getMyWorkData = async (req, res) => {
       sortBy = 'invoiceDate',
       sortOrder = 'desc'
     } = req.query;
-
     const result = await employeeDataService.getEmployeeInvoices(
       user.truckNumber,
       { page, limit, status, invoiceType, startDate, endDate, sortBy, sortOrder }
     );
-
     res.json({
       success: true,
       data: result
@@ -43,34 +38,25 @@ const getMyWorkData = async (req, res) => {
     });
   }
 };
-
-
 const getMyStatistics = async (req, res) => {
   try {
-    
     const user = await User.findById(req.user.id).select('truckNumber');
-
     if (!user || !user.truckNumber) {
       return res.status(400).json({
         success: false,
         message: 'No truck number assigned to your account'
       });
     }
-
     const { startDate, endDate } = req.query;
-
-    
     const end = endDate ? new Date(endDate) : new Date();
     const start = startDate
       ? new Date(startDate)
       : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-
     const stats = await employeeDataService.getEmployeeStatistics(
       user.truckNumber,
       start,
       end
     );
-
     res.json({
       success: true,
       data: {
@@ -87,27 +73,20 @@ const getMyStatistics = async (req, res) => {
     });
   }
 };
-
-
 const getMyRecentActivity = async (req, res) => {
   try {
-    
     const user = await User.findById(req.user.id).select('truckNumber');
-
     if (!user || !user.truckNumber) {
       return res.status(400).json({
         success: false,
         message: 'No truck number assigned to your account'
       });
     }
-
     const { limit = 10 } = req.query;
-
     const recentActivity = await employeeDataService.getEmployeeRecentActivity(
       user.truckNumber,
       parseInt(limit)
     );
-
     res.json({
       success: true,
       data: recentActivity
@@ -121,34 +100,25 @@ const getMyRecentActivity = async (req, res) => {
     });
   }
 };
-
-
 const getMyPerformance = async (req, res) => {
   try {
-    
     const user = await User.findById(req.user.id).select('truckNumber');
-
     if (!user || !user.truckNumber) {
       return res.status(400).json({
         success: false,
         message: 'No truck number assigned to your account'
       });
     }
-
     const { startDate, endDate } = req.query;
-
-    
     const end = endDate ? new Date(endDate) : new Date();
     const start = startDate
       ? new Date(startDate)
       : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-
     const performance = await employeeDataService.getEmployeePerformance(
       user.truckNumber,
       start,
       end
     );
-
     res.json({
       success: true,
       data: {
@@ -165,8 +135,6 @@ const getMyPerformance = async (req, res) => {
     });
   }
 };
-
-
 const getEmployeeDataByTruckNumber = async (req, res) => {
   try {
     const { truckNumber } = req.params;
@@ -178,12 +146,10 @@ const getEmployeeDataByTruckNumber = async (req, res) => {
       startDate,
       endDate
     } = req.query;
-
     const result = await employeeDataService.getEmployeeInvoices(
       truckNumber,
       { page, limit, status, invoiceType, startDate, endDate }
     );
-
     res.json({
       success: true,
       data: result
@@ -197,12 +163,9 @@ const getEmployeeDataByTruckNumber = async (req, res) => {
     });
   }
 };
-
-
 const getAllTruckAssignments = async (req, res) => {
   try {
     const assignments = await employeeDataService.getAllTruckAssignments();
-
     res.json({
       success: true,
       data: assignments
@@ -216,36 +179,26 @@ const getAllTruckAssignments = async (req, res) => {
     });
   }
 };
-
-
 const getMyCombinedDashboard = async (req, res) => {
   try {
-    // Get user's truck number
     const user = await User.findById(req.user.id).select('truckNumber');
-
     if (!user || !user.truckNumber) {
       return res.status(400).json({
         success: false,
         message: 'No truck number assigned to your account'
       });
     }
-
     const { startDate, endDate, limit = 10 } = req.query;
-
-    // Calculate date range
     const end = endDate ? new Date(endDate) : new Date();
     const start = startDate
       ? new Date(startDate)
       : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    // Use optimized single-query method instead of three separate calls
     const dashboardData = await employeeDataService.getEmployeeCombinedDashboard(
       user.truckNumber,
       start,
       end,
       parseInt(limit)
     );
-
     res.json({
       success: true,
       data: {
@@ -269,7 +222,6 @@ const getMyCombinedDashboard = async (req, res) => {
     });
   }
 };
-
 module.exports = {
   getMyWorkData,
   getMyStatistics,

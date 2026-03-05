@@ -15,15 +15,9 @@ const generateToken = (userId) => {
     }
   );
 };
-
-
-
-
 const createInitialAdmin = async (req, res, next) => {
   try {
-    
     const existingAdmin = await User.findOne({ role: 'admin' });
-
     if (existingAdmin) {
       return res.status(400).json({
         success: false,
@@ -33,10 +27,7 @@ const createInitialAdmin = async (req, res, next) => {
         }
       });
     }
-
     const { username, email, password, fullName } = req.body;
-
-    
     if (!username || !email || !password || !fullName) {
       return res.status(400).json({
         success: false,
@@ -46,8 +37,6 @@ const createInitialAdmin = async (req, res, next) => {
         }
       });
     }
-
-    
     const adminUser = await User.create({
       username,
       email,
@@ -56,8 +45,6 @@ const createInitialAdmin = async (req, res, next) => {
       role: 'admin',
       isActive: true
     });
-
-    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'USER',
@@ -71,7 +58,6 @@ const createInitialAdmin = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(201).json({
       success: true,
       data: {
@@ -87,8 +73,6 @@ const createInitialAdmin = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Create admin error:', error);
-
-    
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
@@ -99,21 +83,13 @@ const createInitialAdmin = async (req, res, next) => {
         }
       });
     }
-
     next(error);
   }
 };
-
-
-
-
 const adminLogin = async (req, res, next) => {
   try {
     const { username, password } = req.body;
-
-    
     const user = await User.findOne({ username }).select('+password');
-
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -123,8 +99,6 @@ const adminLogin = async (req, res, next) => {
         }
       });
     }
-
-    
     if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -134,8 +108,6 @@ const adminLogin = async (req, res, next) => {
         }
       });
     }
-
-    
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -145,10 +117,7 @@ const adminLogin = async (req, res, next) => {
         }
       });
     }
-
-    
     const isPasswordMatch = await user.comparePassword(password);
-
     if (!isPasswordMatch) {
       return res.status(401).json({
         success: false,
@@ -158,12 +127,8 @@ const adminLogin = async (req, res, next) => {
         }
       });
     }
-
-    
     user.lastLogin = new Date();
     await user.save();
-
-    
     await AuditLog.create({
       action: 'LOGIN',
       resource: 'AUTH',
@@ -176,10 +141,7 @@ const adminLogin = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
-    
     const token = generateToken(user._id);
-
     res.status(200).json({
       success: true,
       data: {
@@ -200,17 +162,10 @@ const adminLogin = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const login = async (req, res, next) => {
   try {
     const { username, password } = req.body;
-
-    
     const user = await User.findOne({ username }).select('+password');
-
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -220,8 +175,6 @@ const login = async (req, res, next) => {
         }
       });
     }
-
-    
     if (user.role === 'admin') {
       return res.status(403).json({
         success: false,
@@ -231,8 +184,6 @@ const login = async (req, res, next) => {
         }
       });
     }
-
-    
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -242,10 +193,7 @@ const login = async (req, res, next) => {
         }
       });
     }
-
-    
     const isPasswordMatch = await user.comparePassword(password);
-
     if (!isPasswordMatch) {
       return res.status(401).json({
         success: false,
@@ -255,12 +203,8 @@ const login = async (req, res, next) => {
         }
       });
     }
-
-    
     user.lastLogin = new Date();
     await user.save();
-
-    
     await AuditLog.create({
       action: 'LOGIN',
       resource: 'AUTH',
@@ -273,10 +217,7 @@ const login = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
-    
     const token = generateToken(user._id);
-
     res.status(200).json({
       success: true,
       data: {
@@ -297,14 +238,9 @@ const login = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -314,7 +250,6 @@ const getMe = async (req, res, next) => {
         }
       });
     }
-
     res.status(200).json({
       success: true,
       data: {
@@ -334,17 +269,10 @@ const getMe = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
-    
     const user = await User.findById(req.user.id).select('+password');
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -354,10 +282,7 @@ const changePassword = async (req, res, next) => {
         }
       });
     }
-
-    
     const isPasswordMatch = await user.comparePassword(currentPassword);
-
     if (!isPasswordMatch) {
       return res.status(401).json({
         success: false,
@@ -367,12 +292,8 @@ const changePassword = async (req, res, next) => {
         }
       });
     }
-
-    
     user.password = newPassword;
     await user.save();
-
-    
     await AuditLog.create({
       action: 'PASSWORD_CHANGE',
       resource: 'AUTH',
@@ -381,7 +302,6 @@ const changePassword = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Password changed successfully. Please login again.'
@@ -391,13 +311,8 @@ const changePassword = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const logout = async (req, res, next) => {
   try {
-    
     await AuditLog.create({
       action: 'LOGOUT',
       resource: 'AUTH',
@@ -405,7 +320,6 @@ const logout = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Logout successful'
@@ -415,7 +329,6 @@ const logout = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   createInitialAdmin,
   adminLogin,

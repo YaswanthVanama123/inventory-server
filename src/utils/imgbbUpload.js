@@ -7,22 +7,15 @@ const uploadToImgBB = async (filePath, fileName) => {
   try {
     const apiKey = process.env.IMGBB_API_KEY;
     const apiUrl = process.env.IMGBB_API_URL || 'https://api.imgbb.com/1/upload';
-
     if (!apiKey) {
       throw new Error('ImgBB API key not configured');
     }
-
-    
     const imageBuffer = fs.readFileSync(filePath);
     const base64Image = imageBuffer.toString('base64');
-
-    
     const formData = new FormData();
     formData.append('key', apiKey);
     formData.append('image', base64Image);
     formData.append('name', fileName);
-
-    
     const response = await axios.post(apiUrl, formData, {
       headers: {
         ...formData.getHeaders(),
@@ -31,14 +24,10 @@ const uploadToImgBB = async (filePath, fileName) => {
         key: apiKey,
       },
     });
-
     if (!response.data || !response.data.success) {
       throw new Error('ImgBB upload failed');
     }
-
     const { data } = response.data;
-
-    
     return {
       success: true,
       data: {
@@ -61,21 +50,16 @@ const uploadToImgBB = async (filePath, fileName) => {
     };
   } catch (error) {
     console.error('ImgBB upload error:', error.response?.data || error.message);
-
-    
     if (process.env.IMGBB_API_KEY_BACKUP && !error.retried) {
       try {
         const backupApiKey = process.env.IMGBB_API_KEY_BACKUP;
         const apiUrl = process.env.IMGBB_API_URL || 'https://api.imgbb.com/1/upload';
-
         const imageBuffer = fs.readFileSync(filePath);
         const base64Image = imageBuffer.toString('base64');
-
         const formData = new FormData();
         formData.append('key', backupApiKey);
         formData.append('image', base64Image);
         formData.append('name', fileName);
-
         const response = await axios.post(apiUrl, formData, {
           headers: {
             ...formData.getHeaders(),
@@ -84,7 +68,6 @@ const uploadToImgBB = async (filePath, fileName) => {
             key: backupApiKey,
           },
         });
-
         if (response.data && response.data.success) {
           const { data } = response.data;
           return {
@@ -112,7 +95,6 @@ const uploadToImgBB = async (filePath, fileName) => {
         console.error('Backup ImgBB upload also failed:', backupError.message);
       }
     }
-
     throw new Error(
       error.response?.data?.error?.message ||
       error.message ||
@@ -120,8 +102,6 @@ const uploadToImgBB = async (filePath, fileName) => {
     );
   }
 };
-
-
 const uploadMultipleToImgBB = async (files) => {
   const uploadPromises = files.map(async (file) => {
     try {
@@ -137,11 +117,8 @@ const uploadMultipleToImgBB = async (files) => {
       };
     }
   });
-
   return Promise.all(uploadPromises);
 };
-
-
 const deleteLocalFile = async (filePath) => {
   try {
     if (fs.existsSync(filePath)) {
@@ -151,7 +128,6 @@ const deleteLocalFile = async (filePath) => {
     console.error('Error deleting local file:', error.message);
   }
 };
-
 module.exports = {
   uploadToImgBB,
   uploadMultipleToImgBB,

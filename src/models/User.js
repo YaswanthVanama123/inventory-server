@@ -82,47 +82,31 @@ const userSchema = new mongoose.Schema({
     default: null
   }
 });
-
-
 userSchema.index({ isDeleted: 1, createdAt: -1 }); 
 userSchema.index({ isDeleted: 1, role: 1 }); 
 userSchema.index({ isDeleted: 1, username: 1 }); 
 userSchema.index({ isDeleted: 1, email: 1 }); 
 userSchema.index({ isDeleted: 1, fullName: 1 }); 
-
-
 userSchema.pre('save', async function(next) {
-  
   if (!this.isModified('password')) return next();
-
   try {
-    
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-
-    
     if (!this.isNew) {
       this.passwordChangedAt = Date.now() - 1000; 
     }
-
     next();
   } catch (error) {
     next(error);
   }
 });
-
-
 userSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();
 });
-
-
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
-
-
 userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
   if (this.passwordChangedAt) {
     const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
@@ -130,7 +114,5 @@ userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
   }
   return false;
 };
-
 const User = mongoose.model('User', userSchema);
-
 module.exports = User;

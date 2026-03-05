@@ -2,11 +2,9 @@ const stockReconciliationService = require('../services/stockReconciliation.serv
 
 
 class StockReconciliationController {
-  
   async getReconciliation(req, res, next) {
     try {
       const data = await stockReconciliationService.getReconciliation();
-
       res.json({
         success: true,
         data
@@ -21,5 +19,4 @@ class StockReconciliationController {
     }
   }
 }
-
 module.exports = new StockReconciliationController();

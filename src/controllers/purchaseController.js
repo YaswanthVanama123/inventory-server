@@ -21,19 +21,13 @@ const createPurchase = async (req, res, next) => {
       syncMetadata
     } = req.body;
 
-    
     const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
-
     console.log(`[createPurchase] Looking for inventory: ${inventoryId}`);
-
     let inventoryItem;
     if (isValidObjectId && inventoryId.length === 24) {
-      
       inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
       console.log(`[createPurchase] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
     }
-
-    
     if (!inventoryItem) {
       console.log(`[createPurchase] Trying SKU code search: ${inventoryId}`);
       inventoryItem = await Inventory.findOne({
@@ -42,7 +36,6 @@ const createPurchase = async (req, res, next) => {
       });
       console.log(`[createPurchase] Search by SKU result:`, inventoryItem ? `Found: ${inventoryItem.skuCode}` : 'Not found');
     }
-
     if (!inventoryItem) {
       return res.status(404).json({
         success: false,
@@ -52,10 +45,7 @@ const createPurchase = async (req, res, next) => {
         }
       });
     }
-
     const totalCost = quantity * purchasePrice;
-
-    
     let sellingPrice = providedSellingPrice || purchasePrice;
     if (!providedSellingPrice && inventoryItem.profitSettings) {
       const { profitType, profitValue } = inventoryItem.profitSettings;
@@ -65,7 +55,6 @@ const createPurchase = async (req, res, next) => {
         sellingPrice = purchasePrice + profitValue;
       }
     }
-
     const purchase = await Purchase.create({
       inventoryItem: inventoryItem._id,
       purchaseDate: purchaseDate || Date.now(),
@@ -87,10 +76,8 @@ const createPurchase = async (req, res, next) => {
       createdBy: req.user.id,
       lastUpdatedBy: req.user.id
     });
-
     const previousQuantity = inventoryItem.quantity.current;
     const newQuantity = previousQuantity + quantity;
-
     inventoryItem.quantity.current = newQuantity;
     inventoryItem.stockHistory.push({
       action: 'added',
@@ -101,10 +88,7 @@ const createPurchase = async (req, res, next) => {
       updatedBy: req.user.id
     });
     inventoryItem.lastUpdatedBy = req.user.id;
-
     await inventoryItem.save();
-
-    
     await StockMovement.create({
       sku: inventoryItem.skuCode,
       type: 'IN',
@@ -116,7 +100,6 @@ const createPurchase = async (req, res, next) => {
       notes: `Purchase added: ${notes || ''}`,
       createdBy: req.user.id
     });
-
     await AuditLog.create({
       action: 'CREATE',
       resource: 'PURCHASE',
@@ -133,11 +116,9 @@ const createPurchase = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     const populatedPurchase = await Purchase.findById(purchase._id)
       .populate('inventoryItem', 'itemName skuCode category')
       .populate('createdBy', 'username fullName');
-
     res.status(201).json({
       success: true,
       data: { purchase: populatedPurchase },
@@ -148,7 +129,6 @@ const createPurchase = async (req, res, next) => {
     next(error);
   }
 };
-
 const getPurchasesByInventoryItem = async (req, res, next) => {
   try {
     const { inventoryId } = req.params;
@@ -160,21 +140,14 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
       includeConsumed = 'true',
       source = 'all' 
     } = req.query;
-
-    
     const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
-
     console.log(`[getPurchasesByInventoryItem] Looking for inventory: ${inventoryId}`);
     console.log(`[getPurchasesByInventoryItem] Is valid ObjectId: ${isValidObjectId}`);
-
     let inventoryItem;
     if (isValidObjectId && inventoryId.length === 24) {
-      
       inventoryItem = await Inventory.findOne({ _id: inventoryId, isDeleted: false });
       console.log(`[getPurchasesByInventoryItem] Search by ObjectId result:`, inventoryItem ? 'Found' : 'Not found');
     }
-
-    
     if (!inventoryItem) {
       console.log(`[getPurchasesByInventoryItem] Trying SKU code search (case-insensitive): ${inventoryId}`);
       inventoryItem = await Inventory.findOne({
@@ -183,7 +156,6 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
       });
       console.log(`[getPurchasesByInventoryItem] Search by SKU result:`, inventoryItem ? `Found: ${inventoryItem.skuCode}` : 'Not found');
     }
-
     if (!inventoryItem) {
       console.log(`[getPurchasesByInventoryItem] Item not found. Searched for: ${inventoryId}`);
       return res.status(404).json({
@@ -194,47 +166,35 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
         }
       });
     }
-
     console.log(`[getPurchasesByInventoryItem] Found inventory item: ${inventoryItem.itemName} (${inventoryItem.skuCode})`);
-
     const query = {
       inventoryItem: inventoryItem._id,
       isDeleted: false
     };
-
     if (includeConsumed === 'false') {
       query.remainingQuantity = { $gt: 0 };
     }
-
-    
     if (source !== 'all') {
       query['syncMetadata.source'] = source;
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Purchase.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const purchases = await Purchase.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
     const totalQuantityPurchased = await Purchase.aggregate([
       { $match: { inventoryItem: inventoryItem._id, isDeleted: false } },
       { $group: { _id: null, total: { $sum: '$quantity' } } }
     ]);
-
     const totalRemainingQuantity = await Purchase.aggregate([
       { $match: { inventoryItem: inventoryItem._id, isDeleted: false } },
       { $group: { _id: null, total: { $sum: '$remainingQuantity' } } }
     ]);
-
-    
     const sourceBreakdown = await Purchase.aggregate([
       { $match: { inventoryItem: inventoryItem._id, isDeleted: false } },
       {
@@ -246,7 +206,6 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
         }
       }
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -283,16 +242,13 @@ const getPurchasesByInventoryItem = async (req, res, next) => {
     next(error);
   }
 };
-
 const getPurchase = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
-
     const purchase = await Purchase.findOne({ _id: purchaseId, isDeleted: false })
       .populate('inventoryItem', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName email')
       .populate('lastUpdatedBy', 'username fullName email');
-
     if (!purchase) {
       return res.status(404).json({
         success: false,
@@ -302,19 +258,14 @@ const getPurchase = async (req, res, next) => {
         }
       });
     }
-
-    
     const stockMovements = await StockMovement.find({
       refType: { $in: ['MANUAL', 'PURCHASE_ORDER'] },
       refId: purchase._id
     }).sort({ timestamp: -1 });
-
-    
     let purchaseOrderInfo = null;
     if (purchase.syncMetadata?.source === 'customerconnect' && purchase.syncMetadata?.purchaseOrderId) {
       const purchaseOrder = await PurchaseOrder.findById(purchase.syncMetadata.purchaseOrderId)
         .select('orderNumber status orderDate vendor lastSyncedAt');
-
       if (purchaseOrder) {
         purchaseOrderInfo = {
           id: purchaseOrder._id,
@@ -326,7 +277,6 @@ const getPurchase = async (req, res, next) => {
         };
       }
     }
-
     res.status(200).json({
       success: true,
       data: {
@@ -346,7 +296,6 @@ const getPurchase = async (req, res, next) => {
     next(error);
   }
 };
-
 const updatePurchase = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
@@ -360,9 +309,7 @@ const updatePurchase = async (req, res, next) => {
       notes,
       invoiceNumber
     } = req.body;
-
     let purchase = await Purchase.findOne({ _id: purchaseId, isDeleted: false });
-
     if (!purchase) {
       return res.status(404).json({
         success: false,
@@ -372,8 +319,6 @@ const updatePurchase = async (req, res, next) => {
         }
       });
     }
-
-    
     if (purchase.syncMetadata?.source === 'customerconnect' && purchase.syncMetadata?.isSynced) {
       return res.status(400).json({
         success: false,
@@ -383,9 +328,7 @@ const updatePurchase = async (req, res, next) => {
         }
       });
     }
-
     const inventoryItem = await Inventory.findById(purchase.inventoryItem);
-
     if (!inventoryItem) {
       return res.status(404).json({
         success: false,
@@ -395,10 +338,8 @@ const updatePurchase = async (req, res, next) => {
         }
       });
     }
-
     const oldQuantity = purchase.quantity;
     const oldRemainingQuantity = purchase.remainingQuantity;
-
     if (purchaseDate !== undefined) purchase.purchaseDate = purchaseDate;
     if (quantity !== undefined) {
       const consumedQuantity = oldQuantity - oldRemainingQuantity;
@@ -411,16 +352,12 @@ const updatePurchase = async (req, res, next) => {
     if (expiryDate !== undefined) purchase.expiryDate = expiryDate;
     if (notes !== undefined) purchase.notes = notes;
     if (invoiceNumber !== undefined) purchase.invoiceNumber = invoiceNumber;
-
     purchase.lastUpdatedBy = req.user.id;
-
     await purchase.save();
-
     if (quantity !== undefined && quantity !== oldQuantity) {
       const quantityDiff = quantity - oldQuantity;
       const previousInventoryQuantity = inventoryItem.quantity.current;
       const newInventoryQuantity = previousInventoryQuantity + quantityDiff;
-
       inventoryItem.quantity.current = newInventoryQuantity;
       inventoryItem.stockHistory.push({
         action: 'adjusted',
@@ -431,10 +368,7 @@ const updatePurchase = async (req, res, next) => {
         updatedBy: req.user.id
       });
       inventoryItem.lastUpdatedBy = req.user.id;
-
       await inventoryItem.save();
-
-      
       await StockMovement.create({
         sku: inventoryItem.skuCode,
         type: 'ADJUST',
@@ -447,7 +381,6 @@ const updatePurchase = async (req, res, next) => {
         createdBy: req.user.id
       });
     }
-
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'PURCHASE',
@@ -460,12 +393,10 @@ const updatePurchase = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     const populatedPurchase = await Purchase.findById(purchase._id)
       .populate('inventoryItem', 'itemName skuCode category')
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     res.status(200).json({
       success: true,
       data: { purchase: populatedPurchase },
@@ -476,13 +407,10 @@ const updatePurchase = async (req, res, next) => {
     next(error);
   }
 };
-
 const deletePurchase = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
-
     const purchase = await Purchase.findOne({ _id: purchaseId, isDeleted: false });
-
     if (!purchase) {
       return res.status(404).json({
         success: false,
@@ -492,8 +420,6 @@ const deletePurchase = async (req, res, next) => {
         }
       });
     }
-
-    
     if (purchase.syncMetadata?.source === 'customerconnect' && purchase.syncMetadata?.isSynced) {
       return res.status(400).json({
         success: false,
@@ -503,7 +429,6 @@ const deletePurchase = async (req, res, next) => {
         }
       });
     }
-
     if (purchase.remainingQuantity < purchase.quantity) {
       return res.status(400).json({
         success: false,
@@ -513,8 +438,6 @@ const deletePurchase = async (req, res, next) => {
         }
       });
     }
-
-    
     if (purchase.deletionStatus === 'pending') {
       return res.status(400).json({
         success: false,
@@ -524,16 +447,12 @@ const deletePurchase = async (req, res, next) => {
         }
       });
     }
-
     const inventoryItem = await Inventory.findById(purchase.inventoryItem);
-
-    
     purchase.deletionStatus = 'pending';
     purchase.deletionRequestedBy = req.user.id;
     purchase.deletionRequestedAt = Date.now();
     purchase.lastUpdatedBy = req.user.id;
     await purchase.save();
-
     await AuditLog.create({
       action: 'DELETE_REQUEST',
       resource: 'PURCHASE',
@@ -548,7 +467,6 @@ const deletePurchase = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Purchase deletion request submitted for approval'
@@ -558,11 +476,6 @@ const deletePurchase = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
 const getUnprocessedPurchaseOrders = async (req, res, next) => {
   try {
     const {
@@ -572,33 +485,24 @@ const getUnprocessedPurchaseOrders = async (req, res, next) => {
       sortOrder = 'desc',
       status = 'all'
     } = req.query;
-
     const query = {
       stockProcessed: false
     };
-
-    
     if (status !== 'all') {
       query.status = status;
     } else {
-      
       query.status = { $in: ['confirmed', 'received', 'completed'] };
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await PurchaseOrder.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const purchaseOrders = await PurchaseOrder.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
-    
     const statusBreakdown = await PurchaseOrder.aggregate([
       { $match: { stockProcessed: false } },
       {
@@ -609,13 +513,10 @@ const getUnprocessedPurchaseOrders = async (req, res, next) => {
         }
       }
     ]);
-
-    
     let totalItemsPending = 0;
     purchaseOrders.forEach(order => {
       totalItemsPending += order.items.reduce((sum, item) => sum + item.qty, 0);
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -645,10 +546,6 @@ const getUnprocessedPurchaseOrders = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const getPurchaseAnalytics = async (req, res, next) => {
   try {
     const {
@@ -656,37 +553,25 @@ const getPurchaseAnalytics = async (req, res, next) => {
       endDate,
       inventoryId
     } = req.query;
-
     const query = { isDeleted: false };
-
-    
     if (startDate || endDate) {
       query.purchaseDate = {};
       if (startDate) query.purchaseDate.$gte = new Date(startDate);
       if (endDate) query.purchaseDate.$lte = new Date(endDate);
     }
-
-
     if (inventoryId) {
-      
       const isValidObjectId = mongoose.Types.ObjectId.isValid(inventoryId);
-
       if (isValidObjectId && inventoryId.length === 24) {
-        
         query.inventoryItem = inventoryId;
       } else {
-        
         const inventoryItem = await Inventory.findOne({ skuCode: inventoryId.toUpperCase(), isDeleted: false });
         if (inventoryItem) {
           query.inventoryItem = inventoryItem._id;
         } else {
-          
           query.inventoryItem = new mongoose.Types.ObjectId();
         }
       }
     }
-
-    
     const sourceAnalytics = await Purchase.aggregate([
       { $match: query },
       {
@@ -700,8 +585,6 @@ const getPurchaseAnalytics = async (req, res, next) => {
         }
       }
     ]);
-
-    
     const monthlyTrend = await Purchase.aggregate([
       { $match: query },
       {
@@ -718,8 +601,6 @@ const getPurchaseAnalytics = async (req, res, next) => {
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
-
-    
     const topSuppliers = await Purchase.aggregate([
       { $match: query },
       {
@@ -733,7 +614,6 @@ const getPurchaseAnalytics = async (req, res, next) => {
       { $sort: { totalCost: -1 } },
       { $limit: 10 }
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -747,7 +627,6 @@ const getPurchaseAnalytics = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   createPurchase,
   getPurchasesByInventoryItem,

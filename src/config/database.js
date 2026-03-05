@@ -9,12 +9,9 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000, 
       socketTimeoutMS: 45000, 
       family: 4, 
-
-      
       maxIdleTimeMS: 30000, 
       waitQueueTimeoutMS: 10000, 
     });
-
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     console.log(`Connection pool configured: min=10, max=50`);
   } catch (error) {
@@ -22,5 +19,4 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
-
 module.exports = connectDB;

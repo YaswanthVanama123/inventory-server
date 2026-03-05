@@ -4,9 +4,7 @@ module.exports = {
   element: parseInt(process.env.ELEMENT_TIMEOUT) || 20000,
 
   network: parseInt(process.env.NETWORK_TIMEOUT) || 30000,
-
   screenshot: parseInt(process.env.SCREENSHOT_TIMEOUT) || 15000,
-
   retry: {
     attempts: parseInt(process.env.RETRY_ATTEMPTS) || 3,
     delay: parseInt(process.env.RETRY_DELAY) || 2000,

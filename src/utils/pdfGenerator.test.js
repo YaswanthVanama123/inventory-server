@@ -3,14 +3,11 @@
 const { generateInvoicePDF, formatCurrency, formatDate } = require('./pdfGenerator');
 const fs = require('fs').promises;
 const path = require('path');
-
-
 const testResults = {
   passed: 0,
   failed: 0,
   total: 0
 };
-
 function logTest(name, passed, error = null) {
   testResults.total++;
   if (passed) {
@@ -22,8 +19,6 @@ function logTest(name, passed, error = null) {
     if (error) console.error(`  Error: ${error.message}`);
   }
 }
-
-
 const minimalInvoice = {
   invoiceNumber: 'INV-MIN-001',
   invoiceDate: new Date(),
@@ -43,14 +38,12 @@ const minimalInvoice = {
   customer: { name: 'Test Customer' },
   company: { name: 'Test Company' }
 };
-
 const fullInvoice = {
   invoiceNumber: 'INV-FULL-001',
   invoiceDate: new Date('2026-02-01'),
   dueDate: new Date('2026-03-03'),
   status: 'paid',
   currency: 'EUR',
-
   company: {
     name: 'Full Featured Company Ltd.',
     email: 'info@company.com',
@@ -65,7 +58,6 @@ const fullInvoice = {
       country: 'United Kingdom'
     }
   },
-
   customer: {
     name: 'Premium Customer Corp.',
     email: 'billing@customer.com',
@@ -79,7 +71,6 @@ const fullInvoice = {
       country: 'United Kingdom'
     }
   },
-
   items: [
     {
       itemName: 'Premium Service Package',
@@ -106,27 +97,20 @@ const fullInvoice = {
       total: 2000.00
     }
   ],
-
   subtotal: 8500.00,
-
   discount: {
     type: 'percentage',
     value: 15,
     amount: 1275.00
   },
-
   tax: {
     rate: 20,
     amount: 1445.00
   },
-
   grandTotal: 8670.00,
-
   paymentTerms: 'Net 30 days. Payment accepted via bank transfer, credit card, or PayPal. Late payments subject to 2% monthly interest.',
-
   notes: 'Thank you for choosing our premium service package.\n\nThis invoice includes:\n- Premium Service Package\n- 300 User Licenses\n- Annual Support Contract\n\nFor support inquiries, please contact support@company.com'
 };
-
 const multiPageInvoice = {
   invoiceNumber: 'INV-MULTI-001',
   invoiceDate: new Date(),
@@ -146,14 +130,11 @@ const multiPageInvoice = {
   customer: { name: 'Multi-Page Test Customer' },
   company: { name: 'Test Company' }
 };
-
-
 multiPageInvoice.items.forEach(item => {
   item.total = item.quantity * item.unitPrice;
 });
 multiPageInvoice.subtotal = multiPageInvoice.items.reduce((sum, item) => sum + item.total, 0);
 multiPageInvoice.grandTotal = multiPageInvoice.subtotal;
-
 const currencyTestInvoice = {
   invoiceNumber: 'INV-CURR-001',
   invoiceDate: new Date(),
@@ -173,75 +154,55 @@ const currencyTestInvoice = {
   customer: { name: 'Currency Test Customer' },
   company: { name: 'Test Company' }
 };
-
-
 async function runTests() {
   console.log('\n=== PDF Generator Test Suite ===\n');
-
   const tempDir = path.join(__dirname, '../../temp/tests');
   await fs.mkdir(tempDir, { recursive: true });
-
-  
   console.log('Testing helper functions...');
   try {
     const usd = formatCurrency(1299.99, 'USD');
     logTest('Format USD currency', usd === '$1,299.99');
-
     const eur = formatCurrency(1299.99, 'EUR');
     logTest('Format EUR currency', eur === '€1,299.99');
-
     const inr = formatCurrency(10000.50, 'INR');
     logTest('Format INR currency', inr === '₹10,000.50');
   } catch (error) {
     logTest('Format currency', false, error);
   }
-
-  
   try {
     const formatted = formatDate(new Date('2026-02-01'));
     logTest('Format date', formatted === 'February 1, 2026');
   } catch (error) {
     logTest('Format date', false, error);
   }
-
-  
   console.log('\nTesting invoice generation...');
   try {
     const pdf = await generateInvoicePDF(minimalInvoice, { includeQR: false });
     logTest('Generate minimal invoice', pdf instanceof Buffer && pdf.length > 0);
-
     const outputPath = path.join(tempDir, `${minimalInvoice.invoiceNumber}.pdf`);
     await fs.writeFile(outputPath, pdf);
     logTest('Save minimal invoice to file', true);
   } catch (error) {
     logTest('Generate minimal invoice', false, error);
   }
-
-  
   try {
     const pdf = await generateInvoicePDF(fullInvoice, { includeQR: true });
     logTest('Generate full-featured invoice', pdf instanceof Buffer && pdf.length > 0);
-
     const outputPath = path.join(tempDir, `${fullInvoice.invoiceNumber}.pdf`);
     await fs.writeFile(outputPath, pdf);
     logTest('Save full invoice to file', true);
   } catch (error) {
     logTest('Generate full-featured invoice', false, error);
   }
-
-  
   try {
     const pdf = await generateInvoicePDF(multiPageInvoice, { includeQR: true });
     logTest('Generate multi-page invoice', pdf instanceof Buffer && pdf.length > 0);
-
     const outputPath = path.join(tempDir, `${multiPageInvoice.invoiceNumber}.pdf`);
     await fs.writeFile(outputPath, pdf);
     logTest('Save multi-page invoice to file', true);
   } catch (error) {
     logTest('Generate multi-page invoice', false, error);
   }
-
-  
   console.log('\nTesting currency support...');
   const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'AUD', 'CAD'];
   for (const currency of currencies) {
@@ -253,8 +214,6 @@ async function runTests() {
       logTest(`Generate ${currency} invoice`, false, error);
     }
   }
-
-  
   console.log('\nTesting optional features...');
   try {
     const pdf = await generateInvoicePDF(minimalInvoice, { includeQR: false });
@@ -262,8 +221,6 @@ async function runTests() {
   } catch (error) {
     logTest('Generate invoice without QR code', false, error);
   }
-
-  
   console.log('\nTesting financial calculations...');
   try {
     const discountInvoice = {
@@ -282,8 +239,6 @@ async function runTests() {
   } catch (error) {
     logTest('Generate invoice with percentage discount', false, error);
   }
-
-  
   try {
     const discountInvoice = {
       ...minimalInvoice,
@@ -301,8 +256,6 @@ async function runTests() {
   } catch (error) {
     logTest('Generate invoice with fixed discount', false, error);
   }
-
-  
   try {
     const taxInvoice = {
       ...minimalInvoice,
@@ -319,8 +272,6 @@ async function runTests() {
   } catch (error) {
     logTest('Generate invoice with tax', false, error);
   }
-
-  
   console.log('\nTesting error handling...');
   try {
     await generateInvoicePDF(null);
@@ -328,16 +279,12 @@ async function runTests() {
   } catch (error) {
     logTest('Handle null invoice', error.message === 'Invoice data is required');
   }
-
-  
   try {
     await generateInvoicePDF({ ...minimalInvoice, items: [] });
     logTest('Handle empty items array', false);
   } catch (error) {
     logTest('Handle empty items array', error.message === 'Invoice must have at least one item');
   }
-
-  
   console.log('\nTesting invoice statuses...');
   const statuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
   for (const status of statuses) {
@@ -349,22 +296,16 @@ async function runTests() {
       logTest(`Generate ${status} invoice`, false, error);
     }
   }
-
-  
   console.log('\n=== Test Results ===');
   console.log(`Total Tests: ${testResults.total}`);
   console.log(`Passed: ${testResults.passed} ✓`);
   console.log(`Failed: ${testResults.failed} ✗`);
   console.log(`Success Rate: ${((testResults.passed / testResults.total) * 100).toFixed(2)}%`);
-
   console.log(`\nTest PDFs saved to: ${tempDir}`);
-
   if (testResults.failed > 0) {
     process.exit(1);
   }
 }
-
-
 if (require.main === module) {
   runTests()
     .then(() => {
@@ -376,5 +317,4 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
 module.exports = { runTests };

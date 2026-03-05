@@ -6,12 +6,10 @@ exports.getAllUnits = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
     const { includeInactive } = req.query;
-
     let units = settings.units;
     if (!includeInactive || includeInactive === 'false') {
       units = units.filter((u) => u.isActive);
     }
-
     res.status(200).json({
       success: true,
       data: { units },
@@ -24,34 +22,25 @@ exports.getAllUnits = async (req, res) => {
     });
   }
 };
-
-
 exports.addUnit = async (req, res) => {
   try {
     const { value, label } = req.body;
-
     if (!value || !label) {
       return res.status(400).json({
         success: false,
         message: 'Unit value and label are required',
       });
     }
-
     const settings = await Settings.getSettings();
-
-    
     const exists = settings.units.some(
       (u) => u.value.toLowerCase() === value.toLowerCase()
     );
-
     if (exists) {
       return res.status(400).json({
         success: false,
         message: 'Unit already exists',
       });
     }
-
-    
     settings.units.push({
       value: value.toLowerCase().trim(),
       label: label.trim(),
@@ -59,17 +48,13 @@ exports.addUnit = async (req, res) => {
       createdBy: req.user._id,
       createdAt: new Date(),
     });
-
     await settings.save();
-
-    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'SETTINGS',
       performedBy: req.user._id,
       details: { unit: { value, label } },
     });
-
     res.status(201).json({
       success: true,
       message: 'Unit added successfully',
@@ -83,31 +68,22 @@ exports.addUnit = async (req, res) => {
     });
   }
 };
-
-
 exports.updateUnit = async (req, res) => {
   try {
     const { id } = req.params;
     const { value, label, isActive } = req.body;
-
     const settings = await Settings.getSettings();
     const unit = settings.units.id(id);
-
     if (!unit) {
       return res.status(404).json({
         success: false,
         message: 'Unit not found',
       });
     }
-
-    
     if (value !== undefined) unit.value = value.toLowerCase().trim();
     if (label !== undefined) unit.label = label.trim();
     if (isActive !== undefined) unit.isActive = isActive;
-
     await settings.save();
-
-    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'SETTINGS',
@@ -115,7 +91,6 @@ exports.updateUnit = async (req, res) => {
       performedBy: req.user._id,
       details: { unit: { value, label, isActive } },
     });
-
     res.status(200).json({
       success: true,
       message: 'Unit updated successfully',
@@ -129,27 +104,19 @@ exports.updateUnit = async (req, res) => {
     });
   }
 };
-
-
 exports.deleteUnit = async (req, res) => {
   try {
     const { id } = req.params;
-
     const settings = await Settings.getSettings();
     const unit = settings.units.id(id);
-
     if (!unit) {
       return res.status(404).json({
         success: false,
         message: 'Unit not found',
       });
     }
-
-    
     unit.isActive = false;
     await settings.save();
-
-    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'SETTINGS',
@@ -157,7 +124,6 @@ exports.deleteUnit = async (req, res) => {
       performedBy: req.user._id,
       details: { unit: { value: unit.value, label: unit.label } },
     });
-
     res.status(200).json({
       success: true,
       message: 'Unit deleted successfully',
@@ -170,13 +136,10 @@ exports.deleteUnit = async (req, res) => {
     });
   }
 };
-
-
 exports.generateSKU = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
     const sku = await settings.generateSKU();
-
     res.status(200).json({
       success: true,
       data: { sku },
@@ -189,14 +152,10 @@ exports.generateSKU = async (req, res) => {
     });
   }
 };
-
-
 exports.updateSKUConfig = async (req, res) => {
   try {
     const { prefix, format, numberLength } = req.body;
-
     const settings = await Settings.getSettings();
-
     if (prefix !== undefined) settings.skuConfig.prefix = prefix.toUpperCase().trim();
     if (format !== undefined) settings.skuConfig.format = format.trim();
     if (numberLength !== undefined) {
@@ -208,17 +167,13 @@ exports.updateSKUConfig = async (req, res) => {
       }
       settings.skuConfig.numberLength = numberLength;
     }
-
     await settings.save();
-
-    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'SETTINGS',
       performedBy: req.user._id,
       details: { skuConfig: { prefix, format, numberLength } },
     });
-
     res.status(200).json({
       success: true,
       message: 'SKU configuration updated successfully',
@@ -232,12 +187,9 @@ exports.updateSKUConfig = async (req, res) => {
     });
   }
 };
-
-
 exports.getStockCutoffDate = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
-
     res.status(200).json({
       success: true,
       data: {
@@ -252,13 +204,10 @@ exports.getStockCutoffDate = async (req, res) => {
     });
   }
 };
-
-
 // Combined endpoint for general settings (cutoff date + low stock threshold)
 exports.getGeneralSettings = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
-
     res.status(200).json({
       success: true,
       data: {
@@ -274,24 +223,18 @@ exports.getGeneralSettings = async (req, res) => {
     });
   }
 };
-
-
 exports.updateStockCutoffDate = async (req, res) => {
   try {
     const { cutoffDate } = req.body;
-
     if (!cutoffDate) {
       return res.status(400).json({
         success: false,
         message: 'Cutoff date is required',
       });
     }
-
     const settings = await Settings.getSettings();
     settings.stockCalculationCutoffDate = new Date(cutoffDate);
     await settings.save();
-
-    // Create audit log if user is available
     if (req.user && req.user._id) {
       try {
         await AuditLog.create({
@@ -304,7 +247,6 @@ exports.updateStockCutoffDate = async (req, res) => {
         console.error('Audit log creation failed (non-critical):', auditError.message);
       }
     }
-
     res.status(200).json({
       success: true,
       message: 'Stock calculation cutoff date updated successfully',
@@ -320,12 +262,9 @@ exports.updateStockCutoffDate = async (req, res) => {
     });
   }
 };
-
-
 exports.getLowStockThreshold = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
-
     res.status(200).json({
       success: true,
       data: {
@@ -340,24 +279,18 @@ exports.getLowStockThreshold = async (req, res) => {
     });
   }
 };
-
-
 exports.updateLowStockThreshold = async (req, res) => {
   try {
     const { threshold } = req.body;
-
     if (!threshold || threshold < 1) {
       return res.status(400).json({
         success: false,
         message: 'Threshold must be a positive number',
       });
     }
-
     const settings = await Settings.getSettings();
     settings.lowStockThreshold = parseInt(threshold);
     await settings.save();
-
-    // Create audit log if user is available
     if (req.user && req.user._id) {
       try {
         await AuditLog.create({
@@ -370,7 +303,6 @@ exports.updateLowStockThreshold = async (req, res) => {
         console.error('Audit log creation failed (non-critical):', auditError.message);
       }
     }
-
     res.status(200).json({
       success: true,
       message: 'Low stock threshold updated successfully',

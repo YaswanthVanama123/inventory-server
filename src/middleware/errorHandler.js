@@ -3,40 +3,28 @@ const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  
   console.error('Error:', err);
-
-  
   if (err.name === 'CastError') {
     const message = 'Resource not found';
     error = { statusCode: 404, message };
   }
-
-  
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
     const message = `${field} already exists`;
     error = { statusCode: 400, message };
   }
-
-  
   if (err.name === 'ValidationError') {
     const message = Object.values(err.errors).map(val => val.message).join(', ');
     error = { statusCode: 400, message };
   }
-
-  
   if (err.name === 'JsonWebTokenError') {
     const message = 'Invalid token';
     error = { statusCode: 401, message };
   }
-
   if (err.name === 'TokenExpiredError') {
     const message = 'Token expired';
     error = { statusCode: 401, message };
   }
-
-  
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
       error = {
@@ -64,7 +52,6 @@ const errorHandler = (err, req, res, next) => {
       };
     }
   }
-
   res.status(error.statusCode || 500).json({
     success: false,
     error: {
@@ -74,8 +61,6 @@ const errorHandler = (err, req, res, next) => {
     }
   });
 };
-
-
 const notFound = (req, res, next) => {
   res.status(404).json({
     success: false,
@@ -85,7 +70,6 @@ const notFound = (req, res, next) => {
     }
   });
 };
-
 module.exports = {
   errorHandler,
   notFound

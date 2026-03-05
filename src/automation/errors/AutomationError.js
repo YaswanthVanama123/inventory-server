@@ -1,17 +1,13 @@
 
 
-
 class AutomationError extends Error {
   constructor(message, options = {}) {
     super(message);
     this.name = 'AutomationError';
     this.timestamp = new Date();
     this.context = options.context || {};
-
-    
     Error.captureStackTrace(this, this.constructor);
   }
-
   toJSON() {
     return {
       name: this.name,
@@ -22,5 +18,4 @@ class AutomationError extends Error {
     };
   }
 }
-
 module.exports = AutomationError;

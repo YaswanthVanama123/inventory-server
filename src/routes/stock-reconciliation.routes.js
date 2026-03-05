@@ -4,8 +4,5 @@ const stockReconciliationController = require('../controllers/stockReconciliatio
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
-
-
 router.get('/', authenticate, requireAdmin(), stockReconciliationController.getReconciliation);
-
 module.exports = router;

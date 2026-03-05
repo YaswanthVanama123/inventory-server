@@ -2,26 +2,20 @@ const { body, param, query, validationResult } = require('express-validator');
 
 
 const parseFormDataJSON = (req, res, next) => {
-  
   const jsonFields = ['tags', 'supplier', 'images'];
-
   if (req.body) {
     jsonFields.forEach(field => {
       if (req.body[field] && typeof req.body[field] === 'string') {
         try {
           req.body[field] = JSON.parse(req.body[field]);
         } catch (err) {
-          
           console.log(`Failed to parse ${field} as JSON:`, err.message);
         }
       }
     });
   }
-
   next();
 };
-
-
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -39,8 +33,6 @@ const validate = (req, res, next) => {
   }
   next();
 };
-
-
 const userValidation = {
   create: [
     body('username')
@@ -90,8 +82,6 @@ const userValidation = {
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/).withMessage('Password must contain uppercase, lowercase, number, and special character')
   ]
 };
-
-
 const authValidation = {
   login: [
     body('username').trim().notEmpty().withMessage('Username is required'),
@@ -105,8 +95,6 @@ const authValidation = {
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/).withMessage('Password must contain uppercase, lowercase, number, and special character')
   ]
 };
-
-
 const inventoryValidation = {
   create: [
     body('itemName').trim().notEmpty().withMessage('Item name is required').isLength({ max: 200 }).withMessage('Item name is too long'),
@@ -161,11 +149,8 @@ const inventoryValidation = {
     body('reason').optional().trim()
   ]
 };
-
-
 const invoiceValidation = {
   create: [
-    
     body('invoiceNumber')
       .optional()
       .trim()
@@ -213,7 +198,6 @@ const invoiceValidation = {
     body('items.*.discount')
       .optional()
       .isFloat({ min: 0 }).withMessage('Item discount must be non-negative'),
-    
     body('amounts.subtotal')
       .optional()
       .isFloat({ min: 0 }).withMessage('Subtotal must be non-negative'),
@@ -342,7 +326,6 @@ const invoiceValidation = {
       .isLength({ max: 2000 }).withMessage('Message is too long')
   ]
 };
-
 module.exports = {
   validate,
   parseFormDataJSON,

@@ -1,9 +1,6 @@
 const RouteStarParser = require('../parsers/routestar.parser');
 
 
-
-
-
 class RouteStarFetcher {
   constructor(page, navigator, selectors, baseUrl) {
     this.page = page;
@@ -11,58 +8,34 @@ class RouteStarFetcher {
     this.selectors = selectors;
     this.baseUrl = baseUrl;
   }
-
-  
-
-
   async fetchPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Pending Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
-
     await this.navigator.navigateToInvoices();
-
-    
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
-
     return await this.fetchInvoicesList(limit, this.selectors.invoicesList, 'pending');
   }
-
-  
-
-
   async fetchClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Closed Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
-
     await this.navigator.navigateToClosedInvoices();
-
-    
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
-
     return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed');
   }
-
-  
-
-
   async fetchInvoicesList(limit, selectors, type) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     const invoices = [];
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
-
     console.log(`📊 Pagination settings:`);
     console.log(`   - Fetch all: ${fetchAll}`);
     console.log(`   - Limit: ${limit === Infinity ? 'Infinity' : limit}`);
     console.log(`   - Max pages: ${maxPages === Infinity ? 'Infinity' : maxPages}`);
-
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
-
-      
       try {
         await this.page.waitForSelector(selectors.invoiceRows, {
           timeout: 30000,  
@@ -71,16 +44,11 @@ class RouteStarFetcher {
         console.log('✓ Invoice rows found in DOM');
       } catch (error) {
         console.log('⚠️  Invoice rows selector timeout - trying to proceed anyway');
-        
       }
-
       await this.page.waitForTimeout(3000);
-
-      
       const masterTable = await this.page.$('div.ht_master');
       if (!masterTable) {
         console.log('⚠️  No master table found - likely no invoices on this page');
-        
         if (pageCount === 0) {
           console.log('✓ No invoices found (table doesn\'t exist) - this is normal if there are 0 pending invoices');
           break; 
@@ -90,11 +58,8 @@ class RouteStarFetcher {
         }
       }
       console.log('✓ Found master table');
-
       const invoiceRows = await masterTable.$$('table.htCore tbody tr');
       console.log(`   Found ${invoiceRows.length} rows in table`);
-
-      
       if (invoiceRows.length === 0) {
         console.log('⚠️  Table exists but has 0 rows - no invoices on this page');
         if (pageCount === 0) {
@@ -102,14 +67,12 @@ class RouteStarFetcher {
         }
         break; 
       }
-
       for (let i = 0; i < invoiceRows.length; i++) {
         const row = invoiceRows[i];
         if (!fetchAll && invoices.length >= limit) {
           console.log(`   Reached limit of ${limit} invoices, stopping`);
           break;
         }
-
         try {
           const invoiceData = await this.extractInvoiceData(row, selectors);
           if (invoiceData) {
@@ -122,10 +85,7 @@ class RouteStarFetcher {
           console.log(`  ✗ Row ${i + 1}: Error - ${error.message}`);
         }
       }
-
       console.log(`   Page ${pageCount + 1} complete: ${invoices.length} total invoices collected so far`);
-
-
       if (fetchAll || invoices.length < limit) {
         console.log('   Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
@@ -140,21 +100,14 @@ class RouteStarFetcher {
         console.log('   ✓ Reached desired limit, stopping pagination');
       }
     }
-
     console.log(`\n✅ Pagination complete:`);
     console.log(`   - Total pages processed: ${pageCount + 1}`);
     console.log(`   - Total invoices fetched: ${invoices.length}`);
-
     if (invoices.length === 0) {
       console.log(`   ℹ️  Note: 0 invoices found - this is normal if there are no ${type} invoices currently`);
     }
-
     return invoices;
   }
-
-  
-
-
   async extractInvoiceData(row, selectors) {
     try {
       let invoiceNumber = null;
@@ -170,66 +123,52 @@ class RouteStarFetcher {
             el => el.textContent.trim()
           );
         } catch (err2) {
-          
         }
       }
-
       if (!invoiceNumber) {
         return null;
       }
-
       const invoiceLink = await row.$eval(
         selectors.invoiceLink,
         el => el.getAttribute('href')
       ).catch(() => null);
-
       const invoiceDate = await row.$eval(
         selectors.invoiceDate,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const enteredBy = await row.$eval(
         selectors.enteredBy,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const assignedTo = await row.$eval(
         selectors.assignedTo,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const stop = await row.$eval(
         selectors.stop,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const customerName = await row.$eval(
         selectors.customerName,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const customerLink = await row.$eval(
         selectors.customerLink,
         el => el.getAttribute('href')
       ).catch(() => null);
-
       const invoiceType = await row.$eval(
         selectors.invoiceType,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const serviceNotes = await row.$eval(
         selectors.serviceNotes,
         el => el.textContent.trim()
       ).catch(() => null);
-
-      
       const status = await row.$eval(
         selectors.status,
         (td) => {
           const className = td.className || '';
           const textContent = td.textContent.trim();
-
           if (className.includes('htInvalid') || className.includes('status-invalid')) {
             return 'Invalid';
           } else if (className.includes('status-complete') || textContent.toLowerCase().includes('complete')) {
@@ -239,41 +178,33 @@ class RouteStarFetcher {
           } else if (textContent) {
             return textContent;
           }
-
           return null;
         }
       ).catch(() => null);
-
       const total = await row.$eval(
         selectors.invoiceTotal,
         el => el.textContent.replace(/[$,]/g, '').trim()
       ).catch(() => '0.00');
-
       const lastModified = await row.$eval(
         selectors.lastModified,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const payment = await row.$eval(
         selectors.payment,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const arrivalTime = await row.$eval(
         selectors.arrivalTime,
         el => el.textContent.trim()
       ).catch(() => null);
-
       const isComplete = await row.$eval(
         selectors.complete,
         el => el.checked
       ).catch(() => false);
-
       const isPosted = await row.$eval(
         selectors.posted,
         el => el.checked
       ).catch(() => false);
-
       return {
         invoiceNumber,
         invoiceDate,
@@ -299,5 +230,4 @@ class RouteStarFetcher {
     }
   }
 }
-
 module.exports = RouteStarFetcher;

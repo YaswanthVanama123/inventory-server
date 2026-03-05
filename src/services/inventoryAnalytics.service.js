@@ -1,14 +1,6 @@
 const db = require('../config/database');
 
 
-
-
-
-
-
-
-
-
 async function getSyncHealthStatus() {
   try {
     const [healthMetrics] = await db.query(`
@@ -26,7 +18,6 @@ async function getSyncHealthStatus() {
       FROM inventory_items
       WHERE deleted_at IS NULL
     `);
-
     const [recentSyncActivity] = await db.query(`
       SELECT
         DATE(last_sync_date) as sync_date,
@@ -40,18 +31,14 @@ async function getSyncHealthStatus() {
       ORDER BY sync_date DESC
       LIMIT 7
     `);
-
     const metrics = healthMetrics[0];
     const syncRate = metrics.total_items > 0
       ? ((metrics.synced_count / metrics.total_items) * 100).toFixed(2)
       : 0;
-
     const errorRate = metrics.total_items > 0
       ? (((metrics.failed_count + metrics.error_count) / metrics.total_items) * 100).toFixed(2)
       : 0;
-
     const healthStatus = errorRate < 5 ? 'healthy' : errorRate < 15 ? 'warning' : 'critical';
-
     return {
       status: healthStatus,
       metrics: {
@@ -74,30 +61,17 @@ async function getSyncHealthStatus() {
     throw error;
   }
 }
-
-
-
-
-
-
-
-
-
 async function getStockMovementAnalytics(options = {}) {
   try {
     const { start_date, end_date, item_id } = options;
-
     const startDate = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = end_date || new Date();
-
     let itemFilter = '';
     let params = [startDate, endDate];
-
     if (item_id) {
       itemFilter = 'AND sm.item_id = ?';
       params.push(item_id);
     }
-
     const [movementStats] = await db.query(`
       SELECT
         COUNT(*) as total_movements,
@@ -118,7 +92,6 @@ async function getStockMovementAnalytics(options = {}) {
         ${itemFilter}
         AND sm.deleted_at IS NULL
     `, params);
-
     const [movementsByDay] = await db.query(`
       SELECT
         DATE(movement_date) as movement_day,
@@ -132,7 +105,6 @@ async function getStockMovementAnalytics(options = {}) {
       GROUP BY DATE(movement_date), movement_type
       ORDER BY movement_day DESC, movement_type
     `, params);
-
     const [topMovingItems] = await db.query(`
       SELECT
         sm.item_id,
@@ -151,7 +123,6 @@ async function getStockMovementAnalytics(options = {}) {
       ORDER BY movement_count DESC
       LIMIT 10
     `, params);
-
     const [movementsBySource] = await db.query(`
       SELECT
         source,
@@ -165,7 +136,6 @@ async function getStockMovementAnalytics(options = {}) {
       GROUP BY source
       ORDER BY movement_count DESC
     `, params);
-
     return {
       summary: movementStats[0],
       daily_trends: movementsByDay,
@@ -182,20 +152,10 @@ async function getStockMovementAnalytics(options = {}) {
     throw error;
   }
 }
-
-
-
-
-
-
-
-
 async function getSyncTrends(options = {}) {
   try {
     const { days = 30, granularity = 'day' } = options;
-
     let dateFormat, dateGroup, intervalValue;
-
     switch (granularity) {
       case 'hour':
         dateFormat = '%Y-%m-%d %H:00:00';
@@ -214,7 +174,6 @@ async function getSyncTrends(options = {}) {
         intervalValue = days;
         break;
     }
-
     const [syncTrends] = await db.query(`
       SELECT
         DATE_FORMAT(last_sync_date, '${dateFormat}') as period,
@@ -232,7 +191,6 @@ async function getSyncTrends(options = {}) {
       GROUP BY ${dateGroup}
       ORDER BY period DESC
     `, [intervalValue]);
-
     const [stockMovementTrends] = await db.query(`
       SELECT
         DATE_FORMAT(last_synced_at, '${dateFormat}') as period,
@@ -245,7 +203,6 @@ async function getSyncTrends(options = {}) {
       GROUP BY ${dateGroup}
       ORDER BY period DESC
     `, [intervalValue]);
-
     const [performanceMetrics] = await db.query(`
       SELECT
         AVG(CASE WHEN sync_status = 'synced' THEN 1 ELSE 0 END) * 100 as avg_success_rate,
@@ -255,7 +212,6 @@ async function getSyncTrends(options = {}) {
       WHERE last_sync_date >= DATE_SUB(NOW(), INTERVAL ? DAY)
         AND deleted_at IS NULL
     `, [intervalValue]);
-
     return {
       inventory_sync_trends: syncTrends,
       stock_movement_sync_trends: stockMovementTrends,
@@ -275,16 +231,6 @@ async function getSyncTrends(options = {}) {
     throw error;
   }
 }
-
-
-
-
-
-
-
-
-
-
 async function getUnprocessedRecords(options = {}) {
   try {
     const {
@@ -293,18 +239,15 @@ async function getUnprocessedRecords(options = {}) {
       order_by = 'movement_date',
       order_direction = 'DESC'
     } = options;
-
     const validOrderFields = ['movement_date', 'created_at', 'quantity', 'item_id'];
     const orderField = validOrderFields.includes(order_by) ? order_by : 'movement_date';
     const orderDir = order_direction.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-
     const [totalCount] = await db.query(`
       SELECT COUNT(*) as total
       FROM stock_movements
       WHERE sync_status IN ('pending', 'failed')
         AND deleted_at IS NULL
     `);
-
     const [unprocessedMovements] = await db.query(`
       SELECT
         sm.id,
@@ -329,7 +272,6 @@ async function getUnprocessedRecords(options = {}) {
       ORDER BY sm.${orderField} ${orderDir}
       LIMIT ? OFFSET ?
     `, [limit, offset]);
-
     const [pendingByType] = await db.query(`
       SELECT
         movement_type,
@@ -340,7 +282,6 @@ async function getUnprocessedRecords(options = {}) {
         AND deleted_at IS NULL
       GROUP BY movement_type
     `);
-
     const [pendingBySource] = await db.query(`
       SELECT
         source,
@@ -351,7 +292,6 @@ async function getUnprocessedRecords(options = {}) {
         AND deleted_at IS NULL
       GROUP BY source
     `);
-
     const [oldestPending] = await db.query(`
       SELECT
         MIN(created_at) as oldest_pending_date,
@@ -360,7 +300,6 @@ async function getUnprocessedRecords(options = {}) {
       WHERE sync_status IN ('pending', 'failed')
         AND deleted_at IS NULL
     `);
-
     return {
       total_count: totalCount[0].total,
       records: unprocessedMovements,
@@ -382,17 +321,9 @@ async function getUnprocessedRecords(options = {}) {
     throw error;
   }
 }
-
-
-
-
-
-
-
 async function getInventorySourceBreakdown(options = {}) {
   try {
     const { include_details = false } = options;
-
     const [sourceBreakdown] = await db.query(`
       SELECT
         source,
@@ -409,7 +340,6 @@ async function getInventorySourceBreakdown(options = {}) {
       GROUP BY source
       ORDER BY total_items DESC
     `);
-
     const [stockMovementsBySource] = await db.query(`
       SELECT
         source,
@@ -423,7 +353,6 @@ async function getInventorySourceBreakdown(options = {}) {
       GROUP BY source
       ORDER BY total_movements DESC
     `);
-
     const [categoryBySource] = await db.query(`
       SELECT
         ii.source,
@@ -436,7 +365,6 @@ async function getInventorySourceBreakdown(options = {}) {
       GROUP BY ii.source, ii.category
       ORDER BY ii.source, item_count DESC
     `);
-
     let itemDetails = {};
     if (include_details) {
       const [customerConnectItems] = await db.query(`
@@ -446,7 +374,6 @@ async function getInventorySourceBreakdown(options = {}) {
         ORDER BY quantity DESC
         LIMIT 50
       `);
-
       const [routeStarItems] = await db.query(`
         SELECT id, item_name, sku, quantity, sync_status, last_sync_date
         FROM inventory_items
@@ -454,7 +381,6 @@ async function getInventorySourceBreakdown(options = {}) {
         ORDER BY quantity DESC
         LIMIT 50
       `);
-
       const [manualItems] = await db.query(`
         SELECT id, item_name, sku, quantity, sync_status, last_sync_date
         FROM inventory_items
@@ -462,14 +388,12 @@ async function getInventorySourceBreakdown(options = {}) {
         ORDER BY quantity DESC
         LIMIT 50
       `);
-
       itemDetails = {
         CustomerConnect: customerConnectItems,
         RouteStar: routeStarItems,
         Manual: manualItems
       };
     }
-
     const totalItems = sourceBreakdown.reduce((sum, item) => sum + item.total_items, 0);
     const sourcePercentages = sourceBreakdown.map(source => ({
       ...source,
@@ -480,7 +404,6 @@ async function getInventorySourceBreakdown(options = {}) {
         ? ((source.synced_items / source.total_items) * 100).toFixed(2)
         : 0
     }));
-
     return {
       source_breakdown: sourcePercentages,
       stock_movements_by_source: stockMovementsBySource,
@@ -497,18 +420,9 @@ async function getInventorySourceBreakdown(options = {}) {
     throw error;
   }
 }
-
-
-
-
-
-
-
-
 async function getSyncErrorAnalysis(options = {}) {
   try {
     const { days = 7, limit = 50 } = options;
-
     const [errorSummary] = await db.query(`
       SELECT
         COUNT(*) as total_errors,
@@ -520,7 +434,6 @@ async function getSyncErrorAnalysis(options = {}) {
         AND updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
         AND deleted_at IS NULL
     `, [days]);
-
     const [errorsByType] = await db.query(`
       SELECT
         CASE
@@ -542,7 +455,6 @@ async function getSyncErrorAnalysis(options = {}) {
       GROUP BY error_type
       ORDER BY error_count DESC
     `, [days]);
-
     const [errorsBySource] = await db.query(`
       SELECT
         source,
@@ -556,7 +468,6 @@ async function getSyncErrorAnalysis(options = {}) {
       GROUP BY source
       ORDER BY error_count DESC
     `, [days]);
-
     const [recentErrors] = await db.query(`
       SELECT
         ii.id,
@@ -575,7 +486,6 @@ async function getSyncErrorAnalysis(options = {}) {
       ORDER BY ii.updated_at DESC
       LIMIT ?
     `, [days, limit]);
-
     const [stockMovementErrors] = await db.query(`
       SELECT
         COUNT(*) as total_movement_errors,
@@ -586,7 +496,6 @@ async function getSyncErrorAnalysis(options = {}) {
         AND updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
         AND deleted_at IS NULL
     `, [days]);
-
     const [movementErrorsByType] = await db.query(`
       SELECT
         movement_type,
@@ -600,7 +509,6 @@ async function getSyncErrorAnalysis(options = {}) {
       GROUP BY movement_type, source
       ORDER BY error_count DESC
     `);
-
     const [errorTrends] = await db.query(`
       SELECT
         DATE(updated_at) as error_date,
@@ -613,7 +521,6 @@ async function getSyncErrorAnalysis(options = {}) {
       GROUP BY DATE(updated_at)
       ORDER BY error_date DESC
     `, [days]);
-
     return {
       inventory_errors: {
         summary: errorSummary[0],
@@ -638,7 +545,6 @@ async function getSyncErrorAnalysis(options = {}) {
     throw error;
   }
 }
-
 module.exports = {
   getSyncHealthStatus,
   getStockMovementAnalytics,

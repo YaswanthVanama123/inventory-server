@@ -1,8 +1,5 @@
 
 
-
-
-
 const BaseBrowser = require('./core/BaseBrowser');
 const BaseNavigator = require('./core/BaseNavigator');
 const BaseParser = require('./core/BaseParser');
@@ -14,7 +11,6 @@ const CustomerConnectParser = require('./parsers/customerconnect.parser');
 const logger = require('./utils/logger');
 const { retry } = require('./utils/retry');
 const { LoginError, NavigationError, ParsingError } = require('./errors');
-
 class CustomerConnectAutomation {
   constructor() {
     this.config = config;
@@ -27,25 +23,14 @@ class CustomerConnectAutomation {
     this.isLoggedIn = false;
     this.logger = logger.child({ automation: 'CustomerConnect' });
   }
-
-  
-
-
   async init() {
     try {
       this.logger.info('Initializing CustomerConnect automation');
-
-      
       await this.browser.launch('chromium');
       this.page = await this.browser.createPage();
-
-      
       this.baseNavigator = new BaseNavigator(this.page);
-
-      
       this.navigator = new CustomerConnectNavigator(this.page, config, selectors);
       this.fetcher = new CustomerConnectFetcher(this.page, this.navigator, selectors);
-
       this.logger.info('Initialization complete');
       return this;
     } catch (error) {
@@ -53,19 +38,12 @@ class CustomerConnectAutomation {
       throw error;
     }
   }
-
-  
-
-
   async login() {
     try {
       this.logger.info('Attempting login', { username: config.credentials.username });
-
-      
       await retry(
         async () => {
           await this.baseNavigator.navigateTo(config.baseUrl + config.routes.login);
-          
           await this.baseNavigator.wait(2000);
         },
         {
@@ -80,20 +58,13 @@ class CustomerConnectAutomation {
           }
         }
       );
-
-      
       await this.baseNavigator.login(
         config.credentials,
         selectors.login,
         config.routes.account 
       );
-
-      
       await this.verifyLoginSuccess();
-
-      
       await this.browser.saveCookies();
-
       this.isLoggedIn = true;
       this.logger.info('Login successful');
       return true;
@@ -107,52 +78,31 @@ class CustomerConnectAutomation {
       });
     }
   }
-
-  
-
-
   async verifyLoginSuccess() {
     try {
       await this.baseNavigator.waitForElement(selectors.login.loggedInIndicator, {
         timeout: 10000
       });
     } catch (error) {
-      
       const stillOnLoginPage = await this.baseNavigator.exists(selectors.login.usernameInput);
       if (stillOnLoginPage) {
         throw new LoginError('Login appears to have failed - still on login page');
       }
     }
   }
-
-  
-
-
   async navigateToOrders() {
     if (!this.isLoggedIn) {
       await this.login();
     }
-
     return await this.navigator.navigateToOrders();
   }
-
-  
-
-
   async getPaginationInfo() {
     return await this.navigator.getPaginationInfo();
   }
-
-  
-
-
-
   async fetchOrdersList(limit = Infinity) {
     if (!this.isLoggedIn) {
       await this.login();
     }
-
-    
     return await retry(
       async () => await this.fetcher.fetchOrders(limit),
       {
@@ -165,45 +115,28 @@ class CustomerConnectAutomation {
       }
     );
   }
-
-  
-
-
-
   async fetchOrderDetails(orderUrl) {
     if (!this.isLoggedIn) {
       await this.login();
     }
-
     try {
       this.logger.info('Fetching order details', { orderUrl });
-
-      
-      
       await this.baseNavigator.navigateTo(orderUrl);
       await this.baseNavigator.waitForNetwork();
       await this.baseNavigator.wait(1000);
-
-      
       const orderDetailsText = await this.baseNavigator.getText('table.list tbody tr td.left');
-
-      
       const orderNumber = CustomerConnectParser.extractOrderNumber(orderDetailsText);
       const poNumber = CustomerConnectParser.extractPONumberFromDetails(orderDetailsText);
       const orderDate = CustomerConnectParser.extractDate(orderDetailsText);
       const vendorName = CustomerConnectParser.extractVendorFromDetails(orderDetailsText);
-
-      
       let orderStatus = 'Unknown';
       try {
-        
         if (await this.baseNavigator.exists('table.list:last-child tbody tr td:nth-child(2)')) {
           orderStatus = await this.baseNavigator.getText('table.list:last-child tbody tr td:nth-child(2)', {
             timeout: 5000
           });
         }
       } catch (error) {
-        
         try {
           const statusText = await this.page.$eval(
             'table.list tbody tr:has-text("Status") td:last-child',
@@ -214,13 +147,8 @@ class CustomerConnectAutomation {
           orderStatus = 'Unknown';
         }
       }
-
-      
       const items = await this.extractLineItems();
-
-      
       const totals = await this.extractTotals();
-
       const orderData = {
         orderNumber,
         poNumber,
@@ -234,12 +162,10 @@ class CustomerConnectAutomation {
         items,
         ...totals
       };
-
       this.logger.info('Order details extracted', {
         orderNumber,
         itemCount: items.length
       });
-
       return orderData;
     } catch (error) {
       this.logger.error('Failed to fetch order details', {
@@ -253,19 +179,10 @@ class CustomerConnectAutomation {
       });
     }
   }
-
-  
-
-
   async extractLineItems() {
     const items = [];
-
-    
     const tableSelector = 'table.list:nth-of-type(3)';
-
-    
     const rows = await this.page.$$(`${tableSelector} tbody tr`);
-
     for (const row of rows) {
       try {
         const cells = await row.$$('td');
@@ -281,7 +198,6 @@ class CustomerConnectAutomation {
           const itemTotal = await cells[4].textContent()
             .then(t => BaseParser.parseCurrency(t))
             .catch(() => 0);
-
           if (itemName) {
             items.push({
               name: itemName,
@@ -296,13 +212,8 @@ class CustomerConnectAutomation {
         this.logger.warn('Error extracting item row', { error: error.message });
       }
     }
-
     return items;
   }
-
-  
-
-
   async extractTotals() {
     const extractTotal = async (labelText) => {
       try {
@@ -315,18 +226,12 @@ class CustomerConnectAutomation {
         return 0;
       }
     };
-
     const subtotal = await extractTotal('Sub-Total');
     const tax = await extractTotal('Tax');
     const shipping = await extractTotal('Shipping');
     const total = await extractTotal('Total');
-
     return { subtotal, tax, shipping, total };
   }
-
-  
-
-
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
@@ -336,10 +241,6 @@ class CustomerConnectAutomation {
       this.logger.warn('Failed to capture screenshot', { error: error.message });
     }
   }
-
-  
-
-
   async close() {
     try {
       this.logger.info('Closing browser');
@@ -351,5 +252,4 @@ class CustomerConnectAutomation {
     }
   }
 }
-
 module.exports = CustomerConnectAutomation;

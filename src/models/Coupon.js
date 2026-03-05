@@ -72,34 +72,20 @@ const couponSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
-
-
-
-
 couponSchema.methods.isValid = function() {
   const now = new Date();
-
-  
   if (this.expiryDate < now) {
     return { valid: false, message: 'Coupon has expired' };
   }
-
-  
   if (!this.isActive) {
     return { valid: false, message: 'Coupon is inactive' };
   }
-
-  
   if (this.usageLimit && this.usedCount >= this.usageLimit) {
     return { valid: false, message: 'Coupon usage limit reached' };
   }
-
   return { valid: true };
 };
-
-
 couponSchema.methods.calculateDiscount = function(subtotal) {
-  
   if (subtotal < this.minimumPurchase) {
     return {
       valid: false,
@@ -107,25 +93,18 @@ couponSchema.methods.calculateDiscount = function(subtotal) {
       discountAmount: 0,
     };
   }
-
   let discountAmount = 0;
-
   if (this.discountType === 'fixed') {
     discountAmount = Math.min(this.discountValue, subtotal);
   } else {
-    
     discountAmount = (subtotal * this.discountValue) / 100;
-
-    
     if (this.maxDiscount) {
       discountAmount = Math.min(discountAmount, this.maxDiscount);
     }
   }
-
   return {
     valid: true,
     discountAmount: Math.round(discountAmount * 100) / 100, 
   };
 };
-
 module.exports = mongoose.model('Coupon', couponSchema);

@@ -3,10 +3,6 @@ const Inventory = require('../models/Inventory');
 const AuditLog = require('../models/AuditLog');
 
 
-
-
-
-
 const getPendingPurchaseDeletions = async (req, res, next) => {
   try {
     const {
@@ -15,18 +11,14 @@ const getPendingPurchaseDeletions = async (req, res, next) => {
       sortBy = 'deletionRequestedAt',
       sortOrder = 'desc'
     } = req.query;
-
     const query = {
       deletionStatus: 'pending',
       isDeleted: false
     };
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Purchase.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const purchases = await Purchase.find(query)
       .populate('inventoryItem', 'itemName skuCode category quantity pricing')
       .populate('deletionRequestedBy', 'username fullName email')
@@ -35,7 +27,6 @@ const getPendingPurchaseDeletions = async (req, res, next) => {
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -53,24 +44,15 @@ const getPendingPurchaseDeletions = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
-
 const approvePurchaseDeletion = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
     const { reason } = req.body;
-
     const purchase = await Purchase.findOne({
       _id: purchaseId,
       deletionStatus: 'pending',
       isDeleted: false
     });
-
     if (!purchase) {
       return res.status(404).json({
         success: false,
@@ -80,9 +62,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
         }
       });
     }
-
     const inventoryItem = await Inventory.findById(purchase.inventoryItem);
-
     if (!inventoryItem) {
       return res.status(404).json({
         success: false,
@@ -92,11 +72,8 @@ const approvePurchaseDeletion = async (req, res, next) => {
         }
       });
     }
-
-    
     const previousInventoryQuantity = inventoryItem.quantity.current;
     const newInventoryQuantity = previousInventoryQuantity - purchase.quantity;
-
     inventoryItem.quantity.current = newInventoryQuantity;
     inventoryItem.stockHistory.push({
       action: 'removed',
@@ -107,10 +84,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
       updatedBy: req.user.id
     });
     inventoryItem.lastUpdatedBy = req.user.id;
-
     await inventoryItem.save();
-
-    
     await AuditLog.create({
       action: 'DELETE_APPROVE',
       resource: 'PURCHASE',
@@ -128,10 +102,7 @@ const approvePurchaseDeletion = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
-    
     await Purchase.findByIdAndDelete(purchaseId);
-
     res.status(200).json({
       success: true,
       message: 'Purchase deletion approved and inventory restored',
@@ -149,24 +120,15 @@ const approvePurchaseDeletion = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
-
 const rejectPurchaseDeletion = async (req, res, next) => {
   try {
     const { purchaseId } = req.params;
     const { reason } = req.body;
-
     const purchase = await Purchase.findOne({
       _id: purchaseId,
       deletionStatus: 'pending',
       isDeleted: false
     });
-
     if (!purchase) {
       return res.status(404).json({
         success: false,
@@ -176,19 +138,13 @@ const rejectPurchaseDeletion = async (req, res, next) => {
         }
       });
     }
-
     const inventoryItem = await Inventory.findById(purchase.inventoryItem);
-
-    
     purchase.deletionStatus = 'rejected';
     purchase.deletionRejectedBy = req.user.id;
     purchase.deletionRejectedAt = Date.now();
     purchase.deletionReason = reason || 'No reason provided';
     purchase.lastUpdatedBy = req.user.id;
-
     await purchase.save();
-
-    
     await AuditLog.create({
       action: 'DELETE_REJECT',
       resource: 'PURCHASE',
@@ -206,14 +162,12 @@ const rejectPurchaseDeletion = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     const populatedPurchase = await Purchase.findById(purchase._id)
       .populate('inventoryItem', 'itemName skuCode category')
       .populate('deletionRequestedBy', 'username fullName')
       .populate('deletionRejectedBy', 'username fullName')
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     res.status(200).json({
       success: true,
       message: 'Purchase deletion rejected',
@@ -224,7 +178,6 @@ const rejectPurchaseDeletion = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   getPendingPurchaseDeletions,
   approvePurchaseDeletion,

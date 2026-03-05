@@ -9,10 +9,6 @@ const StockProcessor = require('../services/stockProcessor');
 const SKUMapper = require('../services/skuMapper');
 
 
-
-
-
-
 const getPurchaseOrders = async (req, res, next) => {
   try {
     const {
@@ -27,33 +23,25 @@ const getPurchaseOrders = async (req, res, next) => {
       sortOrder = 'desc',
       includeSync = 'true'
     } = req.query;
-
     const query = {};
-
     if (source) query.source = source;
     if (status) query.status = status;
     if (vendor) query['vendor.name'] = { $regex: vendor, $options: 'i' };
-
     if (startDate || endDate) {
       query.orderDate = {};
       if (startDate) query.orderDate.$gte = new Date(startDate);
       if (endDate) query.orderDate.$lte = new Date(endDate);
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await PurchaseOrder.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const purchaseOrders = await PurchaseOrder.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
-    
     let customerConnectOrders = [];
     let ccTotal = 0;
     if (includeSync === 'true') {
@@ -65,7 +53,6 @@ const getPurchaseOrders = async (req, res, next) => {
         if (startDate) ccQuery.orderDate.$gte = new Date(startDate);
         if (endDate) ccQuery.orderDate.$lte = new Date(endDate);
       }
-
       ccTotal = await CustomerConnectOrder.countDocuments(ccQuery);
       customerConnectOrders = await CustomerConnectOrder.find(ccQuery)
         .populate('createdBy', 'username fullName')
@@ -74,8 +61,6 @@ const getPurchaseOrders = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit));
     }
-
-    
     const enrichedPurchaseOrders = purchaseOrders.map(order => ({
       ...order.toObject(),
       syncMetadata: {
@@ -85,7 +70,6 @@ const getPurchaseOrders = async (req, res, next) => {
         stockProcessedAt: order.stockProcessedAt || null
       }
     }));
-
     const enrichedCCOrders = customerConnectOrders.map(order => ({
       ...order.toObject(),
       syncMetadata: {
@@ -95,7 +79,6 @@ const getPurchaseOrders = async (req, res, next) => {
         stockProcessedAt: order.stockProcessedAt
       }
     }));
-
     res.status(200).json({
       success: true,
       data: {
@@ -122,18 +105,11 @@ const getPurchaseOrders = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getPurchaseOrder = async (req, res, next) => {
   try {
     const purchaseOrder = await PurchaseOrder.findById(req.params.id)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     if (!purchaseOrder) {
       return res.status(404).json({
         success: false,
@@ -143,8 +119,6 @@ const getPurchaseOrder = async (req, res, next) => {
         }
       });
     }
-
-    
     const enrichedOrder = {
       ...purchaseOrder.toObject(),
       syncMetadata: {
@@ -154,7 +128,6 @@ const getPurchaseOrder = async (req, res, next) => {
         stockProcessedAt: purchaseOrder.stockProcessedAt || null
       }
     };
-
     res.status(200).json({
       success: true,
       data: { purchaseOrder: enrichedOrder }
@@ -164,12 +137,6 @@ const getPurchaseOrder = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getExternalInvoices = async (req, res, next) => {
   try {
     const {
@@ -184,39 +151,30 @@ const getExternalInvoices = async (req, res, next) => {
       sortOrder = 'desc',
       includeSync = 'true'
     } = req.query;
-
     const query = {};
-
     if (source) query.source = source;
     if (status) query.status = status;
     if (customer) query['customer.name'] = { $regex: customer, $options: 'i' };
-
     if (startDate || endDate) {
       query.invoiceDate = {};
       if (startDate) query.invoiceDate.$gte = new Date(startDate);
       if (endDate) query.invoiceDate.$lte = new Date(endDate);
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await ExternalInvoice.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const invoices = await ExternalInvoice.find(query)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
-    
     let routeStarInvoices = [];
     let rsTotal = 0;
     if (includeSync === 'true') {
       const rsQuery = {};
       if (status) {
-        
         if (status === 'paid' || status === 'completed') {
           rsQuery.status = { $in: ['Completed', 'Closed'] };
         } else if (status === 'pending') {
@@ -231,7 +189,6 @@ const getExternalInvoices = async (req, res, next) => {
         if (startDate) rsQuery.invoiceDate.$gte = new Date(startDate);
         if (endDate) rsQuery.invoiceDate.$lte = new Date(endDate);
       }
-
       rsTotal = await RouteStarInvoice.countDocuments(rsQuery);
       routeStarInvoices = await RouteStarInvoice.find(rsQuery)
         .populate('createdBy', 'username fullName')
@@ -240,8 +197,6 @@ const getExternalInvoices = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit));
     }
-
-    
     const enrichedInvoices = invoices.map(invoice => ({
       ...invoice.toObject(),
       syncMetadata: {
@@ -251,7 +206,6 @@ const getExternalInvoices = async (req, res, next) => {
         stockProcessedAt: invoice.stockProcessedAt || null
       }
     }));
-
     const enrichedRSInvoices = routeStarInvoices.map(invoice => ({
       ...invoice.toObject(),
       syncMetadata: {
@@ -262,7 +216,6 @@ const getExternalInvoices = async (req, res, next) => {
         stockProcessedAt: invoice.stockProcessedAt
       }
     }));
-
     res.status(200).json({
       success: true,
       data: {
@@ -289,18 +242,11 @@ const getExternalInvoices = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getExternalInvoice = async (req, res, next) => {
   try {
     const invoice = await ExternalInvoice.findById(req.params.id)
       .populate('createdBy', 'username fullName')
       .populate('lastUpdatedBy', 'username fullName');
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -310,8 +256,6 @@ const getExternalInvoice = async (req, res, next) => {
         }
       });
     }
-
-    
     const enrichedInvoice = {
       ...invoice.toObject(),
       syncMetadata: {
@@ -321,7 +265,6 @@ const getExternalInvoice = async (req, res, next) => {
         stockProcessedAt: invoice.stockProcessedAt || null
       }
     };
-
     res.status(200).json({
       success: true,
       data: { invoice: enrichedInvoice }
@@ -331,12 +274,6 @@ const getExternalInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getStockSummary = async (req, res, next) => {
   try {
     const {
@@ -347,26 +284,20 @@ const getStockSummary = async (req, res, next) => {
       sortBy = 'sku',
       sortOrder = 'asc'
     } = req.query;
-
     const query = {};
-
     if (sku) query.sku = { $regex: sku, $options: 'i' };
     if (lowStock === 'true') {
       query.$expr = { $lte: ['$availableQty', '$lowStockThreshold'] };
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await StockSummary.countDocuments(query);
-
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
     const stockSummaries = await StockSummary.find(query)
       .populate('product')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-
     res.status(200).json({
       success: true,
       data: {
@@ -384,12 +315,6 @@ const getStockSummary = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getStockMovements = async (req, res, next) => {
   try {
     const { sku } = req.params;
@@ -401,53 +326,37 @@ const getStockMovements = async (req, res, next) => {
       page = 1,
       limit = 50
     } = req.query;
-
     const query = { sku: sku.toUpperCase() };
-
     if (type) query.type = type;
     if (source) query.source = source;
-
     if (startDate || endDate) {
       query.timestamp = {};
       if (startDate) query.timestamp.$gte = new Date(startDate);
       if (endDate) query.timestamp.$lte = new Date(endDate);
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await StockMovement.countDocuments(query);
-
     const movements = await StockMovement.find(query)
       .populate('createdBy', 'username fullName')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
-    
     const enrichedMovements = movements.map(movement => {
       const movementObj = movement.toObject();
-
-      
       movementObj.syncMetadata = {
         source: movementObj.source || 'manual',
         refType: movementObj.refType,
         refId: movementObj.refId,
         timestamp: movementObj.timestamp
       };
-
-      
       if (movementObj.refType === 'PURCHASE_ORDER' && movementObj.source) {
         movementObj.syncMetadata.syncSource = movementObj.source === 'customerconnect' ? 'CustomerConnect' : null;
       } else if (movementObj.refType === 'INVOICE' && movementObj.source) {
         movementObj.syncMetadata.syncSource = movementObj.source === 'routestar' ? 'RouteStar' : null;
       }
-
       return movementObj;
     });
-
-    
     const stockSummary = await StockSummary.findOne({ sku: sku.toUpperCase() }).populate('product');
-
-    
     const movementStats = await StockMovement.aggregate([
       { $match: { sku: sku.toUpperCase() } },
       {
@@ -477,7 +386,6 @@ const getStockMovements = async (req, res, next) => {
         }
       }
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -497,17 +405,10 @@ const getStockMovements = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const createStockAdjustment = async (req, res, next) => {
   try {
     const { sku } = req.params;
     const { qty, reason } = req.body;
-
     if (!qty || !reason) {
       return res.status(400).json({
         success: false,
@@ -517,16 +418,13 @@ const createStockAdjustment = async (req, res, next) => {
         }
       });
     }
-
     const movement = await StockProcessor.createAdjustment(
       sku.toUpperCase(),
       parseFloat(qty),
       reason,
       req.user.id
     );
-
     const stockSummary = await StockSummary.findOne({ sku: sku.toUpperCase() }).populate('product');
-
     res.status(201).json({
       success: true,
       message: 'Stock adjustment created successfully',
@@ -547,12 +445,6 @@ const createStockAdjustment = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSalesSummary = async (req, res, next) => {
   try {
     const {
@@ -560,20 +452,13 @@ const getSalesSummary = async (req, res, next) => {
       endDate = new Date(),
       includeSync = 'true'
     } = req.query;
-
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    
     const externalStats = await ExternalInvoice.getSalesStats(start, end);
-
-    
     let routeStarStats = null;
     if (includeSync === 'true') {
       routeStarStats = await RouteStarInvoice.getSalesStats(start, end);
     }
-
-    
     const topItems = await StockMovement.aggregate([
       {
         $match: {
@@ -612,14 +497,10 @@ const getSalesSummary = async (req, res, next) => {
       { $sort: { totalQty: -1 } },
       { $limit: 10 }
     ]);
-
-    
     for (const item of topItems) {
       const product = await Product.findOne({ sku: item._id });
       item.product = product;
     }
-
-    
     const combinedStats = {
       totalSales: (externalStats.totalSales || 0) + (routeStarStats?.totalSales || 0),
       totalInvoices: (externalStats.totalInvoices || 0) + (routeStarStats?.totalInvoices || 0),
@@ -631,7 +512,6 @@ const getSalesSummary = async (req, res, next) => {
         routeStar: routeStarStats
       }
     };
-
     res.status(200).json({
       success: true,
       data: {
@@ -648,16 +528,9 @@ const getSalesSummary = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getUnmappedProducts = async (req, res, next) => {
   try {
     const unmappedProducts = await SKUMapper.getUnmappedItems();
-
     res.status(200).json({
       success: true,
       data: { unmappedProducts }
@@ -667,16 +540,9 @@ const getUnmappedProducts = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const mapSKU = async (req, res, next) => {
   try {
     const { tempSKU, realSKU } = req.body;
-
     if (!tempSKU || !realSKU) {
       return res.status(400).json({
         success: false,
@@ -686,9 +552,7 @@ const mapSKU = async (req, res, next) => {
         }
       });
     }
-
     const product = await SKUMapper.manuallyMapSKU(tempSKU, realSKU, req.user.id);
-
     res.status(200).json({
       success: true,
       message: 'SKU mapped successfully',
@@ -699,19 +563,11 @@ const mapSKU = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncHealth = async (req, res, next) => {
   try {
     const now = new Date();
     const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
     const lastHour = new Date(now - 60 * 60 * 1000);
-
-    
     const ccStats = {
       totalOrders: await CustomerConnectOrder.countDocuments(),
       recentOrders: await CustomerConnectOrder.countDocuments({
@@ -731,8 +587,6 @@ const getSyncHealth = async (req, res, next) => {
         .sort({ lastSyncedAt: -1 })
         .select('lastSyncedAt')
     };
-
-    
     const rsStats = {
       totalInvoices: await RouteStarInvoice.countDocuments(),
       recentInvoices: await RouteStarInvoice.countDocuments({
@@ -753,8 +607,6 @@ const getSyncHealth = async (req, res, next) => {
         .sort({ lastSyncedAt: -1 })
         .select('lastSyncedAt syncSource')
     };
-
-    
     const movementStats = await StockMovement.aggregate([
       {
         $match: {
@@ -772,30 +624,19 @@ const getSyncHealth = async (req, res, next) => {
         }
       }
     ]);
-
-    
     const calculateHealthScore = () => {
       let score = 100;
-
-      
       const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
       if (ccStats.lastSync?.lastSyncedAt < twoHoursAgo) score -= 20;
       if (rsStats.lastSync?.lastSyncedAt < twoHoursAgo) score -= 20;
-
-      
       if (ccStats.unprocessedOrders > 10) score -= 15;
       if (rsStats.unprocessedInvoices > 10) score -= 15;
-
-      
       if (ccStats.processingErrors > 0) score -= 15;
       if (rsStats.processingErrors > 0) score -= 15;
-
       return Math.max(0, score);
     };
-
     const healthScore = calculateHealthScore();
     const healthStatus = healthScore >= 80 ? 'healthy' : healthScore >= 50 ? 'degraded' : 'unhealthy';
-
     res.status(200).json({
       success: true,
       data: {
@@ -824,23 +665,14 @@ const getSyncHealth = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getSyncStats = async (req, res, next) => {
   try {
     const {
       startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
       endDate = new Date()
     } = req.query;
-
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    
     const ccOrderStats = await CustomerConnectOrder.aggregate([
       {
         $match: {
@@ -858,11 +690,8 @@ const getSyncStats = async (req, res, next) => {
         }
       }
     ]);
-
     const ccPurchaseStats = await CustomerConnectOrder.getPurchaseStats(start, end);
     const ccTopVendors = await CustomerConnectOrder.getTopVendors(start, end, 5);
-
-    
     const rsInvoiceStats = await RouteStarInvoice.aggregate([
       {
         $match: {
@@ -881,11 +710,8 @@ const getSyncStats = async (req, res, next) => {
         }
       }
     ]);
-
     const rsSalesStats = await RouteStarInvoice.getSalesStats(start, end);
     const rsTopCustomers = await RouteStarInvoice.getTopCustomers(start, end, 5);
-
-    
     const stockMovementsBySyncSource = await StockMovement.aggregate([
       {
         $match: {
@@ -904,7 +730,6 @@ const getSyncStats = async (req, res, next) => {
         }
       }
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -929,30 +754,19 @@ const getSyncStats = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const getUnprocessedSyncItems = async (req, res, next) => {
   try {
     const { limit = 50, source } = req.query;
-
     let unprocessedOrders = [];
     let unprocessedInvoices = [];
-
     if (!source || source === 'customerconnect') {
       unprocessedOrders = await CustomerConnectOrder.getUnprocessedOrders()
         .limit(parseInt(limit));
     }
-
     if (!source || source === 'routestar') {
       unprocessedInvoices = await RouteStarInvoice.getUnprocessedInvoices()
         .limit(parseInt(limit));
     }
-
-    
     const enrichedOrders = unprocessedOrders.map(order => ({
       ...order.toObject(),
       syncMetadata: {
@@ -962,7 +776,6 @@ const getUnprocessedSyncItems = async (req, res, next) => {
         shouldProcess: order.shouldProcessStock
       }
     }));
-
     const enrichedInvoices = unprocessedInvoices.map(invoice => ({
       ...invoice.toObject(),
       syncMetadata: {
@@ -972,7 +785,6 @@ const getUnprocessedSyncItems = async (req, res, next) => {
         shouldProcess: invoice.shouldProcessStock
       }
     }));
-
     res.status(200).json({
       success: true,
       data: {
@@ -990,16 +802,9 @@ const getUnprocessedSyncItems = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
-
 const retrySyncProcessing = async (req, res, next) => {
   try {
     const { source, id } = req.body;
-
     if (!source || !id) {
       return res.status(400).json({
         success: false,
@@ -1009,10 +814,8 @@ const retrySyncProcessing = async (req, res, next) => {
         }
       });
     }
-
     let result = null;
     let itemType = '';
-
     if (source === 'customerconnect') {
       const order = await CustomerConnectOrder.findById(id);
       if (!order) {
@@ -1024,12 +827,9 @@ const retrySyncProcessing = async (req, res, next) => {
           }
         });
       }
-
-      
       order.stockProcessed = false;
       order.stockProcessingError = null;
       await order.save();
-
       result = order;
       itemType = 'CustomerConnect Order';
     } else if (source === 'routestar') {
@@ -1043,12 +843,9 @@ const retrySyncProcessing = async (req, res, next) => {
           }
         });
       }
-
-      
       invoice.stockProcessed = false;
       invoice.stockProcessingError = null;
       await invoice.save();
-
       result = invoice;
       itemType = 'RouteStar Invoice';
     } else {
@@ -1060,7 +857,6 @@ const retrySyncProcessing = async (req, res, next) => {
         }
       });
     }
-
     res.status(200).json({
       success: true,
       message: `${itemType} marked for reprocessing`,
@@ -1078,7 +874,6 @@ const retrySyncProcessing = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   getPurchaseOrders,
   getPurchaseOrder,

@@ -1,9 +1,5 @@
 
 
-
-
-
-
 const User = require('../models/User');
 const Inventory = require('../models/Inventory');
 const Invoice = require('../models/Invoice');
@@ -25,14 +21,8 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const ModelCategory = require('../models/ModelCategory');
 const FetchHistory = require('../models/FetchHistory');
 const TruckCheckout = require('../models/TruckCheckout');
-
-
-
-
-
 async function initModels() {
   console.log('Initializing models and creating indexes...');
-
   const models = [
     { name: 'User', model: User },
     { name: 'Inventory', model: Inventory },
@@ -56,7 +46,6 @@ async function initModels() {
     { name: 'FetchHistory', model: FetchHistory },
     { name: 'TruckCheckout', model: TruckCheckout }
   ];
-
   try {
     const indexPromises = models.map(async ({ name, model }) => {
       try {
@@ -69,20 +58,15 @@ async function initModels() {
         return { name, success: false, error: error.message };
       }
     });
-
     const results = await Promise.all(indexPromises);
-
     const successCount = results.filter(r => r.success).length;
     const totalIndexes = results.reduce((sum, r) => sum + (r.indexCount || 0), 0);
-
     console.log(`\n✅ Models initialized: ${successCount}/${models.length} successful`);
     console.log(`   Total indexes created: ${totalIndexes}`);
-
     return results;
   } catch (error) {
     console.error('❌ Failed to initialize models:', error);
     throw error;
   }
 }
-
 module.exports = initModels;

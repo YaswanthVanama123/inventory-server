@@ -2,14 +2,9 @@ const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 
 
-
-
-
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
-
-    
     const query = { isDeleted: false };
     if (role) query.role = role;
     if (search) {
@@ -19,10 +14,7 @@ const getUsers = async (req, res, next) => {
         { fullName: { $regex: search, $options: 'i' } }
       ];
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    
     const [users, total] = await Promise.all([
       User.find(query)
         .select('-password')
@@ -33,7 +25,6 @@ const getUsers = async (req, res, next) => {
         .lean(),
       User.countDocuments(query)
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -51,18 +42,12 @@ const getUsers = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
-
 const getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false })
       .select('-password')
       .populate('createdBy', 'username fullName')
       .lean();
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -72,7 +57,6 @@ const getUser = async (req, res, next) => {
         }
       });
     }
-
     res.status(200).json({
       success: true,
       data: { user }
@@ -82,15 +66,9 @@ const getUser = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const createUser = async (req, res, next) => {
   try {
     const { username, email, password, fullName, role, truckNumber } = req.body;
-
-    
     const existingUser = await User.findOne({
       $or: [{ username }, { email }],
       isDeleted: false
@@ -104,7 +82,6 @@ const createUser = async (req, res, next) => {
         }
       });
     }
-
     const userData = {
       username,
       email,
@@ -113,15 +90,10 @@ const createUser = async (req, res, next) => {
       role: role || 'employee',
       createdBy: req.user.id
     };
-
-    
     if (truckNumber) {
       userData.truckNumber = truckNumber;
     }
-
     const user = await User.create(userData);
-
-    
     await AuditLog.create({
       action: 'CREATE',
       resource: 'USER',
@@ -131,7 +103,6 @@ const createUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(201).json({
       success: true,
       data: {
@@ -151,16 +122,10 @@ const createUser = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const updateUser = async (req, res, next) => {
   try {
     const { email, fullName, role, isActive, truckNumber } = req.body;
-
     const user = await User.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -170,18 +135,13 @@ const updateUser = async (req, res, next) => {
         }
       });
     }
-
-
     if (email) user.email = email;
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
     if (typeof isActive === 'boolean') user.isActive = isActive;
     if (truckNumber !== undefined) user.truckNumber = truckNumber || null;
     user.lastUpdatedBy = req.user.id;
-
     await user.save();
-
-    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'USER',
@@ -191,7 +151,6 @@ const updateUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -212,14 +171,9 @@ const updateUser = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -229,8 +183,6 @@ const deleteUser = async (req, res, next) => {
         }
       });
     }
-
-    
     if (user._id.toString() === req.user.id) {
       return res.status(400).json({
         success: false,
@@ -240,14 +192,10 @@ const deleteUser = async (req, res, next) => {
         }
       });
     }
-
-    
     user.isDeleted = true;
     user.deletedAt = Date.now();
     user.deletedBy = req.user.id;
     await user.save();
-
-    
     await AuditLog.create({
       action: 'DELETE',
       resource: 'USER',
@@ -257,7 +205,6 @@ const deleteUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'User deleted successfully'
@@ -267,16 +214,10 @@ const deleteUser = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-
 const resetPassword = async (req, res, next) => {
   try {
     const { newPassword } = req.body;
-
     const user = await User.findOne({ _id: req.params.id, isDeleted: false });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -286,11 +227,8 @@ const resetPassword = async (req, res, next) => {
         }
       });
     }
-
     user.password = newPassword;
     await user.save();
-
-    
     await AuditLog.create({
       action: 'PASSWORD_RESET',
       resource: 'USER',
@@ -299,7 +237,6 @@ const resetPassword = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       message: 'Password reset successfully'
@@ -309,14 +246,10 @@ const resetPassword = async (req, res, next) => {
     next(error);
   }
 };
-
-
 const updateOwnTruckNumber = async (req, res, next) => {
   try {
     const { truckNumber } = req.body;
-
     const user = await User.findOne({ _id: req.user.id, isDeleted: false });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -326,12 +259,8 @@ const updateOwnTruckNumber = async (req, res, next) => {
         }
       });
     }
-
-    
     user.truckNumber = truckNumber || null;
     await user.save();
-
-    
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'USER',
@@ -341,7 +270,6 @@ const updateOwnTruckNumber = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
-
     res.status(200).json({
       success: true,
       data: {
@@ -362,7 +290,6 @@ const updateOwnTruckNumber = async (req, res, next) => {
     next(error);
   }
 };
-
 module.exports = {
   getUsers,
   getUser,

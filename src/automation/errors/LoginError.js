@@ -1,8 +1,6 @@
 const AutomationError = require('./AutomationError');
 
 
-
-
 class LoginError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);
@@ -11,7 +9,6 @@ class LoginError extends AutomationError {
     this.url = options.url;
     this.errorMessage = options.errorMessage;
   }
-
   toJSON() {
     return {
       ...super.toJSON(),
@@ -21,5 +18,4 @@ class LoginError extends AutomationError {
     };
   }
 }
-
 module.exports = LoginError;

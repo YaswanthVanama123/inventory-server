@@ -1,6 +1,5 @@
 
 
-
 module.exports = {
   login: {
     username: '#username',
@@ -12,13 +11,11 @@ module.exports = {
     cookieAcceptButton: 'button:has-text("Accept"), button:has-text("I Agree")',
     loggedInIndicator: 'a:has-text("Logout"), .user-menu, nav.main-nav'
   },
-
   navigation: {
     invoicesLink: 'a[href*="invoices.php"]',
     closedInvoicesLink: 'a[href*="invoices.php?view=closed"]',
     logoutLink: 'a[href*="logout"]'
   },
-
   invoicesList: {
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
@@ -40,7 +37,6 @@ module.exports = {
     payment: 'td:nth-of-type(14)',
     arrivalTime: 'td:nth-of-type(15)'
   },
-
   closedInvoicesList: {
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
@@ -62,11 +58,8 @@ module.exports = {
     payment: 'td:nth-of-type(14)',
     arrivalTime: 'td:nth-of-type(15)'
   },
-
   invoiceDetail: {
-    
     itemsTable: 'div.ht_master',
-    
     itemName: 'td:nth-of-type(1)',          
     itemDescription: 'td:nth-of-type(2)',   
     itemQuantity: 'td:nth-of-type(3)',      
@@ -76,23 +69,19 @@ module.exports = {
     itemWarehouse: 'td:nth-of-type(7)',     
     itemTaxCode: 'td:nth-of-type(8)',       
     itemLocation: 'td:nth-of-type(9)',      
-    
     subtotal: '#inv_subtotal',
     tax: '#inv_taxtotal',
     total: '#inv_total',
-    
     signedBy: '#txt_signedby',
     invoiceMemo: '#txt_memo',
     serviceNotes: '#txt_service_notes',
     salesTaxRate: '#txt_inv_taxrate'
   },
-
   pagination: {
     nextButton: '.pagination li.next:not(.disabled)',
     prevButton: '.pagination li.prev:not(.disabled)',
     pageInfo: '#page-selection'
   },
-
   itemsList: {
     itemsTable: 'div.ht_master table.htCore',
     itemRows: 'table.htCore tbody tr',

@@ -2,10 +2,8 @@ const uploadExamplesService = require('../services/uploadExamples.service');
 
 
 class UploadExamplesController {
-  
   async uploadItemImage(req, res, next) {
     try {
-      
       if (!req.file) {
         return res.status(400).json({
           success: false,
@@ -15,25 +13,21 @@ class UploadExamplesController {
           }
         });
       }
-
       const data = await uploadExamplesService.uploadItemImage(
         req.params.id,
         req.file,
         req
       );
-
       res.status(200).json({
         success: true,
         message: 'Image uploaded successfully',
         data
       });
     } catch (error) {
-      
       if (req.file) {
         const { deleteUploadedFile } = require('../middleware/upload');
         deleteUploadedFile(req.file.path);
       }
-
       if (error.message === 'Inventory item not found') {
         return res.status(404).json({
           success: false,
@@ -43,15 +37,11 @@ class UploadExamplesController {
           }
         });
       }
-
       next(error);
     }
   }
-
-  
   async uploadItemGallery(req, res, next) {
     try {
-      
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({
           success: false,
@@ -61,25 +51,21 @@ class UploadExamplesController {
           }
         });
       }
-
       const data = await uploadExamplesService.uploadItemGallery(
         req.params.id,
         req.files,
         req
       );
-
       res.status(200).json({
         success: true,
         message: `${req.files.length} images uploaded successfully`,
         data
       });
     } catch (error) {
-      
       if (req.files) {
         const { deleteUploadedFiles } = require('../middleware/upload');
         deleteUploadedFiles(req.files);
       }
-
       if (error.message === 'Inventory item not found') {
         return res.status(404).json({
           success: false,
@@ -89,16 +75,12 @@ class UploadExamplesController {
           }
         });
       }
-
       next(error);
     }
   }
-
-  
   async deleteItemImage(req, res, next) {
     try {
       const data = await uploadExamplesService.deleteItemImage(req.params.id);
-
       res.status(200).json({
         success: true,
         message: 'Image deleted successfully',
@@ -114,7 +96,6 @@ class UploadExamplesController {
           }
         });
       }
-
       if (error.message === 'No image to delete') {
         return res.status(400).json({
           success: false,
@@ -124,12 +105,9 @@ class UploadExamplesController {
           }
         });
       }
-
       next(error);
     }
   }
-
-  
   async updateItemImage(req, res, next) {
     try {
       if (!req.file) {
@@ -141,13 +119,11 @@ class UploadExamplesController {
           }
         });
       }
-
       const data = await uploadExamplesService.updateItemImage(
         req.params.id,
         req.file,
         req
       );
-
       res.status(200).json({
         success: true,
         message: 'Image updated successfully',
@@ -158,7 +134,6 @@ class UploadExamplesController {
         const { deleteUploadedFile } = require('../middleware/upload');
         deleteUploadedFile(req.file.path);
       }
-
       if (error.message === 'Inventory item not found') {
         return res.status(404).json({
           success: false,
@@ -168,16 +143,12 @@ class UploadExamplesController {
           }
         });
       }
-
       next(error);
     }
   }
-
-  
   async deleteGalleryImage(req, res, next) {
     try {
       const { imageUrl } = req.body;
-
       if (!imageUrl) {
         return res.status(400).json({
           success: false,
@@ -187,12 +158,10 @@ class UploadExamplesController {
           }
         });
       }
-
       const data = await uploadExamplesService.deleteGalleryImage(
         req.params.id,
         imageUrl
       );
-
       res.status(200).json({
         success: true,
         message: 'Image removed from gallery',
@@ -208,7 +177,6 @@ class UploadExamplesController {
           }
         });
       }
-
       if (error.message === 'Image not found in gallery') {
         return res.status(404).json({
           success: false,
@@ -218,10 +186,8 @@ class UploadExamplesController {
           }
         });
       }
-
       next(error);
     }
   }
 }
-
 module.exports = new UploadExamplesController();

@@ -26,12 +26,8 @@ const { uploadMultipleImagesOptional, uploadMultipleImages } = require('../middl
 
 
 router.use(authenticate);
-
-
 router.get('/pos', requireEmployee(), getInventoryItemsForPOS);
 router.get('/truck-checkout', requireEmployee(), getInventoryItemsForTruckCheckout);
-
-
 router.get('/', requireEmployee(), getInventoryItems);
 router.get('/low-stock', requireEmployee(), getLowStockItems);
 router.get('/sync-source', requireEmployee(), getItemsBySyncSource);
@@ -42,15 +38,10 @@ router.get('/:id', requireEmployee(), getInventoryItem);
 router.get('/:id/history', requireEmployee(), getStockHistory);
 router.get('/:id/sync-info', requireEmployee(), getSyncInfo);
 router.patch('/:id/stock', requireEmployee(), inventoryValidation.updateStock, validate, updateStock);
-
-
 router.post('/', requireAdmin(), uploadMultipleImagesOptional('images', 10), parseFormDataJSON, inventoryValidation.create, validate, createInventoryItem);
 router.put('/:id', requireAdmin(), uploadMultipleImagesOptional('images', 10), parseFormDataJSON, inventoryValidation.update, validate, updateInventoryItem);
 router.delete('/:id', requireAdmin(), deleteInventoryItem);
-
-
 router.post('/:id/images', requireAdmin(), uploadMultipleImages('images', 10), uploadImages);
 router.delete('/:id/images/:imageId', requireAdmin(), deleteImage);
 router.patch('/:id/images/primary', requireAdmin(), setPrimaryImage);
-
 module.exports = router;

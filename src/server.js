@@ -12,28 +12,16 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 
 const app = express();
-
-
-
 (async () => {
   await connectDB();
-
-  
   try {
     await initModels();
   } catch (error) {
     console.error('Warning: Failed to initialize models:', error.message);
-    
   }
 })();
-
-
 app.use(cors());
-
-
 app.use(helmet());
-
-
 app.use(compression({
   level: 6, 
   threshold: 1024, 
@@ -44,12 +32,9 @@ app.use(compression({
     return compression.filter(req, res);
   }
 }));
-
-
 app.use((req, res, next) => {
   const startTime = Date.now();
   req._startTime = startTime;
-
   const originalJson = res.json;
   res.json = function(data) {
     const endTime = Date.now();
@@ -57,25 +42,16 @@ app.use((req, res, next) => {
     console.log(`[TIMING] ${req.method} ${req.path} | Total: ${totalTime}ms | Response size: ${JSON.stringify(data).length} bytes`);
     return originalJson.call(this, data);
   };
-
   next();
 });
-
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined'));
 }
-
-
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: process.env.NODE_ENV === 'development' ? 1000 : 5, 
@@ -90,8 +66,6 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development', 
 });
-
-
 const generalLimiter = rateLimit({
   windowMs: process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
   max: process.env.NODE_ENV === 'development' ? 10000 : (process.env.RATE_LIMIT_MAX_REQUESTS || 100),
@@ -104,13 +78,9 @@ const generalLimiter = rateLimit({
   },
   skip: (req) => process.env.NODE_ENV === 'development', 
 });
-
-
 if (process.env.NODE_ENV !== 'development') {
   app.use(generalLimiter);
 }
-
-
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
@@ -139,8 +109,6 @@ const employeeDataRoutes = require('./routes/employeeData.routes');
 const truckCheckoutRoutes = require('./routes/truckCheckout.routes');
 const discrepancyRoutes = require('./routes/discrepancy');
 const orderDiscrepancyRoutes = require('./routes/orderDiscrepancy.routes');
-
-
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -148,8 +116,6 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-
-
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/inventory', inventoryRoutes);
@@ -178,36 +144,24 @@ app.use('/api/employee-data', employeeDataRoutes);
 app.use('/api/truck-checkouts', truckCheckoutRoutes);
 app.use('/api/discrepancies', discrepancyRoutes);
 app.use('/api/order-discrepancies', orderDiscrepancyRoutes);
-
-
 app.use(notFound);
-
-
 app.use(errorHandler);
-
-
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
   console.log(`Access locally at: http://127.0.0.1:${PORT}`);
   console.log(`Access from network at: http://192.168.1.30:${PORT}`);
-
-  
   if (process.env.AUTO_START_SCHEDULER === 'true') {
     const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
     const scheduler = getInventoryScheduler();
-
     try {
-      
       const ordersLimit = !process.env.ORDERS_SYNC_LIMIT || process.env.ORDERS_SYNC_LIMIT === '0'
         ? Infinity
         : parseInt(process.env.ORDERS_SYNC_LIMIT);
-
       const invoicesLimit = !process.env.INVOICES_SYNC_LIMIT || process.env.INVOICES_SYNC_LIMIT === '0'
         ? Infinity
         : parseInt(process.env.INVOICES_SYNC_LIMIT);
-
       scheduler.start({
         cronExpression: process.env.SYNC_CRON_EXPRESSION || '0 3 * * *', 
         ordersLimit,
@@ -221,16 +175,12 @@ const server = app.listen(PORT, HOST, () => {
     }
   }
 });
-
-
 process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection: ${err.message}`);
   const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
   getInventoryScheduler().stop();
   server.close(() => process.exit(1));
 });
-
-
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
   console.error('Full error:', err);
@@ -239,8 +189,6 @@ process.on('uncaughtException', (err) => {
   getInventoryScheduler().stop();
   server.close(() => process.exit(1));
 });
-
-
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
   const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
@@ -250,7 +198,6 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
-
 process.on('SIGINT', () => {
   console.log('SIGINT signal received: closing HTTP server');
   const{ getInventoryScheduler } = require('./services/inventoryScheduler.service');
@@ -260,6 +207,4 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
-
 module.exports = app;
-

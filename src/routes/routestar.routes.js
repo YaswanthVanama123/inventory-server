@@ -4,83 +4,30 @@ const routeStarController = require('../controllers/routeStarController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
-
-
 router.post('/sync/items', authenticate, requireAdmin(), routeStarController.syncItems);
-
-
 router.post('/sync/pending', authenticate, requireAdmin(), routeStarController.syncPending);
-
-
 router.get('/invoice-range', authenticate, requireAdmin(), routeStarController.getInvoiceRange);
-
-
 router.post('/sync/closed', authenticate, requireAdmin(), routeStarController.syncClosed);
-
-
 router.post('/sync/details/:invoiceNumber', authenticate, requireAdmin(), routeStarController.syncInvoiceDetails);
-
-
 router.post('/sync/all-details', authenticate, requireAdmin(), routeStarController.syncAllDetails);
-
-
 router.post('/sync/pending-details', authenticate, requireAdmin(), routeStarController.syncPendingDetails);
-
-
 router.post('/sync/closed-details', authenticate, requireAdmin(), routeStarController.syncClosedDetails);
-
-
 router.post('/sync/pending-with-details', authenticate, requireAdmin(), routeStarController.syncPendingWithDetails);
-
-
 router.post('/sync/closed-with-details', authenticate, requireAdmin(), routeStarController.syncClosedWithDetails);
-
-
 router.get('/check-pending', authenticate, requireAdmin(), routeStarController.checkPending);
-
-
 router.post('/sync/stock', authenticate, requireAdmin(), routeStarController.syncStock);
-
-
 router.post('/sync/full', authenticate, requireAdmin(), routeStarController.fullSync);
-
-
 router.get('/invoices', authenticate, requireAdmin(), routeStarController.getInvoices);
-
-
 router.get('/invoices/:invoiceNumber', authenticate, requireAdmin(), routeStarController.getInvoiceByNumber);
-
-
 router.get('/stats', authenticate, requireAdmin(), routeStarController.getStats);
-
-
 router.delete('/invoices/pending/all', authenticate, requireAdmin(), routeStarController.deleteAllPending);
-
-
 router.delete('/invoices/closed/all', authenticate, requireAdmin(), routeStarController.deleteAllClosed);
-
-
 router.get('/items/grouped', authenticate, routeStarController.getGroupedItems);
-
-
 router.get('/items/:itemName/invoices', authenticate, routeStarController.getInvoicesByItem);
-
-
 router.post('/invoices/bulk-delete', authenticate, requireAdmin(), routeStarController.bulkDeleteInvoices);
-
-
 router.post('/invoices/bulk-delete-by-numbers', authenticate, requireAdmin(), routeStarController.bulkDeleteByNumbers);
-
-
 router.get('/items', authenticate, requireAdmin(), routeStarController.getItems);
-
-
 router.get('/items/low-stock', authenticate, requireAdmin(), routeStarController.getLowStockItems);
-
-
 router.delete('/items/all', authenticate, requireAdmin(), routeStarController.deleteAllItems);
-
-
 router.get('/items/invoice-usage', authenticate, routeStarController.getItemInvoiceUsage);
-
 module.exports = router;

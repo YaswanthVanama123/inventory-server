@@ -5,8 +5,6 @@ const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 
 
-
-
 exports.getOrderDiscrepancies = async (req, res, next) => {
   try {
     const {
@@ -18,21 +16,16 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
       page = 1,
       limit = 50
     } = req.query;
-
     const query = {};
-
     if (status) query.status = status;
     if (discrepancyType) query.discrepancyType = discrepancyType;
     if (orderNumber) query.orderNumber = new RegExp(orderNumber, 'i');
-
     if (startDate || endDate) {
       query.reportedAt = {};
       if (startDate) query.reportedAt.$gte = new Date(startDate);
       if (endDate) query.reportedAt.$lte = new Date(endDate);
     }
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
-
     const [discrepancies, total] = await Promise.all([
       OrderDiscrepancy.find(query)
         .populate('reportedBy', 'username fullName email')
@@ -44,7 +37,6 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
         .lean(),
       OrderDiscrepancy.countDocuments(query)
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -62,14 +54,10 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.getOrderDiscrepanciesByOrderId = async (req, res, next) => {
   try {
     const { orderId } = req.params;
-
     const discrepancies = await OrderDiscrepancy.getByOrderId(orderId);
-
     res.status(200).json({
       success: true,
       data: discrepancies
@@ -79,16 +67,10 @@ exports.getOrderDiscrepanciesByOrderId = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.verifyOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
     const { items, allGood, notes } = req.body;
-
-    
-
-    
     const order = await CustomerConnectOrder.findById(orderId);
     if (!order) {
       return res.status(404).json({
@@ -96,28 +78,19 @@ exports.verifyOrder = async (req, res, next) => {
         message: 'Order not found'
       });
     }
-
-    
-    
     if (order.verified) {
       return res.status(400).json({
         success: false,
         message: 'Order has already been verified'
       });
     }
-
     const createdDiscrepancies = [];
-
     if (allGood) {
-      
       console.log(`✓ Order ${order.orderNumber} verified - All Good`);
-
-      
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
       await order.save();
-
       return res.status(200).json({
         success: true,
         message: 'Order verified successfully - all items correct',
@@ -127,14 +100,10 @@ exports.verifyOrder = async (req, res, next) => {
         }
       });
     }
-
-    
     for (const item of items) {
       const expectedQuantity = parseFloat(item.expectedQuantity);
       const receivedQuantity = parseFloat(item.receivedQuantity);
-
       if (receivedQuantity !== expectedQuantity) {
-        
         const discrepancy = await OrderDiscrepancy.createDiscrepancy({
           orderId: order._id,
           orderNumber: order.orderNumber,
@@ -146,21 +115,15 @@ exports.verifyOrder = async (req, res, next) => {
           notes: item.notes || notes,
           status: 'pending' 
         });
-
         createdDiscrepancies.push(discrepancy);
-
         console.log(`  ✗ Discrepancy found for ${item.sku}: Expected ${expectedQuantity}, Received ${receivedQuantity}`);
       }
     }
-
-    
     order.verified = true;
     order.verifiedAt = new Date();
     order.verifiedBy = req.user._id;
     await order.save();
-
     console.log(`✓ Order ${order.orderNumber} verified with ${createdDiscrepancies.length} discrepancies`);
-
     res.status(200).json({
       success: true,
       message: `Order verified with ${createdDiscrepancies.length} discrepancy(ies)`,
@@ -174,13 +137,10 @@ exports.verifyOrder = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.approveOrderDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
-
     const discrepancy = await OrderDiscrepancy.findById(id);
     if (!discrepancy) {
       return res.status(404).json({
@@ -188,22 +148,16 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
         message: 'Discrepancy not found'
       });
     }
-
     if (discrepancy.status !== 'pending') {
       return res.status(400).json({
         success: false,
         message: `Discrepancy is already ${discrepancy.status}`
       });
     }
-
-    
     await discrepancy.approve(req.user._id, notes);
-
-    
     if (!discrepancy.stockProcessed) {
       const movementType = discrepancy.discrepancyType === 'Shortage' ? 'OUT' : 'IN';
       const movementQty = Math.abs(discrepancy.discrepancyQuantity);
-
       await StockMovement.create({
         sku: discrepancy.sku,
         type: movementType,
@@ -215,8 +169,6 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
         notes: `Order discrepancy: ${discrepancy.discrepancyType} of ${movementQty} units`,
         createdBy: req.user._id
       });
-
-      
       const stockSummary = await StockSummary.findOne({ sku: discrepancy.sku });
       if (stockSummary) {
         if (movementType === 'IN') {
@@ -226,13 +178,10 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
         }
         await stockSummary.save();
       }
-
       discrepancy.stockProcessed = true;
       await discrepancy.save();
-
       console.log(`✓ Order discrepancy ${id} approved and stock adjusted`);
     }
-
     res.status(200).json({
       success: true,
       message: 'Discrepancy approved and stock adjusted',
@@ -243,13 +192,10 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.rejectOrderDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
-
     const discrepancy = await OrderDiscrepancy.findById(id);
     if (!discrepancy) {
       return res.status(404).json({
@@ -257,18 +203,14 @@ exports.rejectOrderDiscrepancy = async (req, res, next) => {
         message: 'Discrepancy not found'
       });
     }
-
     if (discrepancy.status !== 'pending') {
       return res.status(400).json({
         success: false,
         message: `Discrepancy is already ${discrepancy.status}`
       });
     }
-
     await discrepancy.reject(req.user._id, notes);
-
     console.log(`✓ Order discrepancy ${id} rejected`);
-
     res.status(200).json({
       success: true,
       message: 'Discrepancy rejected',
@@ -279,24 +221,19 @@ exports.rejectOrderDiscrepancy = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.getOrderDiscrepancyById = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     const discrepancy = await OrderDiscrepancy.findById(id)
       .populate('reportedBy', 'username fullName email')
       .populate('resolvedBy', 'username fullName email')
       .populate('orderId', 'orderNumber orderDate status vendor');
-
     if (!discrepancy) {
       return res.status(404).json({
         success: false,
         message: 'Discrepancy not found'
       });
     }
-
     res.status(200).json({
       success: true,
       data: discrepancy
@@ -306,8 +243,6 @@ exports.getOrderDiscrepancyById = async (req, res, next) => {
     next(error);
   }
 };
-
-
 exports.getOrderDiscrepancyStats = async (req, res, next) => {
   try {
     const [
@@ -325,7 +260,6 @@ exports.getOrderDiscrepancyStats = async (req, res, next) => {
       OrderDiscrepancy.countDocuments({ discrepancyType: 'Shortage' }),
       OrderDiscrepancy.countDocuments({ discrepancyType: 'Overage' })
     ]);
-
     res.status(200).json({
       success: true,
       data: {

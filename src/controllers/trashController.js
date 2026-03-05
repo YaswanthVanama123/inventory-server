@@ -10,10 +10,7 @@ exports.getAllDeletedItems = async (req, res) => {
   try {
     const { type, search, page = 1, limit = 20 } = req.query;
     const skip = (page - 1) * limit;
-
     let items = [];
-
-    
     if (!type || type === 'all' || type === 'inventory') {
       const inventoryItems = await Inventory.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -21,7 +18,6 @@ exports.getAllDeletedItems = async (req, res) => {
         .limit(parseInt(limit))
         .skip(skip)
         .lean();
-
       items = [
         ...items,
         ...inventoryItems.map(item => ({
@@ -34,8 +30,6 @@ exports.getAllDeletedItems = async (req, res) => {
         })),
       ];
     }
-
-    
     if (!type || type === 'all' || type === 'invoices') {
       const invoiceItems = await Invoice.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -43,7 +37,6 @@ exports.getAllDeletedItems = async (req, res) => {
         .limit(parseInt(limit))
         .skip(skip)
         .lean();
-
       items = [
         ...items,
         ...invoiceItems.map(item => ({
@@ -56,8 +49,6 @@ exports.getAllDeletedItems = async (req, res) => {
         })),
       ];
     }
-
-    
     if (!type || type === 'all' || type === 'users') {
       const userItems = await User.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -65,7 +56,6 @@ exports.getAllDeletedItems = async (req, res) => {
         .limit(parseInt(limit))
         .skip(skip)
         .lean();
-
       items = [
         ...items,
         ...userItems.map(item => ({
@@ -78,8 +68,6 @@ exports.getAllDeletedItems = async (req, res) => {
         })),
       ];
     }
-
-    
     if (!type || type === 'all' || type === 'coupons') {
       const couponItems = await Coupon.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -87,7 +75,6 @@ exports.getAllDeletedItems = async (req, res) => {
         .limit(parseInt(limit))
         .skip(skip)
         .lean();
-
       items = [
         ...items,
         ...couponItems.map(item => ({
@@ -100,8 +87,6 @@ exports.getAllDeletedItems = async (req, res) => {
         })),
       ];
     }
-
-    
     if (!type || type === 'all' || type === 'payment-types') {
       const paymentTypeItems = await PaymentType.find({ isDeleted: true })
         .populate('deletedBy', 'fullName username')
@@ -109,7 +94,6 @@ exports.getAllDeletedItems = async (req, res) => {
         .limit(parseInt(limit))
         .skip(skip)
         .lean();
-
       items = [
         ...items,
         ...paymentTypeItems.map(item => ({
@@ -122,17 +106,12 @@ exports.getAllDeletedItems = async (req, res) => {
         })),
       ];
     }
-
-    
     if (search) {
       items = items.filter(item =>
         item.name.toLowerCase().includes(search.toLowerCase())
       );
     }
-
-    
     items.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
-
     res.status(200).json({
       success: true,
       count: items.length,
@@ -149,12 +128,9 @@ exports.getAllDeletedItems = async (req, res) => {
     });
   }
 };
-
-
 exports.restoreItem = async (req, res) => {
   try {
     const { type, id } = req.params;
-
     let Model;
     switch (type) {
       case 'inventory':
@@ -181,9 +157,7 @@ exports.restoreItem = async (req, res) => {
           },
         });
     }
-
     const item = await Model.findOne({ _id: id, isDeleted: true });
-
     if (!item) {
       return res.status(404).json({
         success: false,
@@ -193,13 +167,10 @@ exports.restoreItem = async (req, res) => {
         },
       });
     }
-
     item.isDeleted = false;
     item.deletedAt = null;
     item.deletedBy = null;
     await item.save();
-
-    
     const resourceMap = {
       'inventory': 'INVENTORY',
       'invoices': 'INVOICE',
@@ -207,11 +178,7 @@ exports.restoreItem = async (req, res) => {
       'coupons': 'COUPON',
       'payment-types': 'PAYMENT_TYPE',
     };
-
-    
     const itemName = item.itemName || item.invoiceNumber || item.username || item.fullName || item.code || item.displayName || 'Unknown';
-
-    
     await AuditLog.create({
       action: 'RESTORE',
       resource: resourceMap[type] || 'TRASH',
@@ -224,7 +191,6 @@ exports.restoreItem = async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent'),
     });
-
     res.status(200).json({
       success: true,
       message: 'Item restored successfully',
@@ -241,12 +207,9 @@ exports.restoreItem = async (req, res) => {
     });
   }
 };
-
-
 exports.permanentlyDeleteItem = async (req, res) => {
   try {
     const { type, id } = req.params;
-
     let Model;
     switch (type) {
       case 'inventory':
@@ -273,9 +236,7 @@ exports.permanentlyDeleteItem = async (req, res) => {
           },
         });
     }
-
     const item = await Model.findOneAndDelete({ _id: id, isDeleted: true });
-
     if (!item) {
       return res.status(404).json({
         success: false,
@@ -285,7 +246,6 @@ exports.permanentlyDeleteItem = async (req, res) => {
         },
       });
     }
-
     res.status(200).json({
       success: true,
       message: 'Item permanently deleted',
@@ -301,8 +261,6 @@ exports.permanentlyDeleteItem = async (req, res) => {
     });
   }
 };
-
-
 exports.emptyTrash = async (req, res) => {
   try {
     const results = await Promise.all([
@@ -312,9 +270,7 @@ exports.emptyTrash = async (req, res) => {
       Coupon.deleteMany({ isDeleted: true }),
       PaymentType.deleteMany({ isDeleted: true }),
     ]);
-
     const totalDeleted = results.reduce((sum, result) => sum + result.deletedCount, 0);
-
     res.status(200).json({
       success: true,
       message: `Permanently deleted ${totalDeleted} items`,

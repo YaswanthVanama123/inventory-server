@@ -120,12 +120,9 @@ const purchaseOrderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
 purchaseOrderSchema.index({ source: 1, sourceOrderId: 1 }, { unique: true });
 purchaseOrderSchema.index({ orderDate: -1, status: 1 });
 purchaseOrderSchema.index({ 'vendor.name': 1 });
-
-
 purchaseOrderSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0) {
     this.subtotal = this.items.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -133,19 +130,14 @@ purchaseOrderSchema.pre('save', function(next) {
   }
   next();
 });
-
-
 purchaseOrderSchema.statics.findBySourceOrderId = function(source, sourceOrderId) {
   return this.findOne({ source, sourceOrderId });
 };
-
 purchaseOrderSchema.statics.getUnprocessedOrders = function() {
   return this.find({
     stockProcessed: false,
     status: { $in: ['confirmed', 'received', 'completed'] }
   }).sort({ orderDate: 1 });
 };
-
 const PurchaseOrder = mongoose.model('PurchaseOrder', purchaseOrderSchema);
-
 module.exports = PurchaseOrder;

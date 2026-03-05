@@ -2,11 +2,9 @@ const modelCategoryService = require('../services/modelCategory.service');
 
 
 class ModelCategoryController {
-  
   async getUniqueModels(req, res, next) {
     try {
       const data = await modelCategoryService.getUniqueModels();
-
       res.json({
         success: true,
         data
@@ -20,12 +18,9 @@ class ModelCategoryController {
       });
     }
   }
-
-  
   async getRouteStarItems(req, res, next) {
     try {
       const data = await modelCategoryService.getRouteStarItems();
-
       res.json({
         success: true,
         data
@@ -39,15 +34,12 @@ class ModelCategoryController {
       });
     }
   }
-
-  
   async saveMapping(req, res, next) {
     try {
       const mapping = await modelCategoryService.saveMapping(
         req.body,
         req.user._id
       );
-
       res.json({
         success: true,
         message: 'Mapping saved successfully',
@@ -55,14 +47,12 @@ class ModelCategoryController {
       });
     } catch (error) {
       console.error('Error saving mapping:', error);
-
       if (error.message === 'Model number is required') {
         return res.status(400).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to save mapping',
@@ -70,12 +60,9 @@ class ModelCategoryController {
       });
     }
   }
-
-  
   async deleteMapping(req, res, next) {
     try {
       const result = await modelCategoryService.deleteMapping(req.params.modelNumber);
-
       res.json({
         success: true,
         message: 'Mapping deleted successfully',
@@ -83,14 +70,12 @@ class ModelCategoryController {
       });
     } catch (error) {
       console.error('Error deleting mapping:', error);
-
       if (error.message === 'Mapping not found') {
         return res.status(404).json({
           success: false,
           message: error.message
         });
       }
-
       res.status(500).json({
         success: false,
         message: 'Failed to delete mapping',
@@ -98,12 +83,9 @@ class ModelCategoryController {
       });
     }
   }
-
-  
   async getAllMappings(req, res, next) {
     try {
       const data = await modelCategoryService.getAllMappings();
-
       res.json({
         success: true,
         data
@@ -118,5 +100,4 @@ class ModelCategoryController {
     }
   }
 }
-
 module.exports = new ModelCategoryController();

@@ -1,8 +1,6 @@
 const AutomationError = require('./AutomationError');
 
 
-
-
 class TimeoutError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);
@@ -11,7 +9,6 @@ class TimeoutError extends AutomationError {
     this.operation = options.operation;
     this.url = options.url;
   }
-
   toJSON() {
     return {
       ...super.toJSON(),
@@ -21,5 +18,4 @@ class TimeoutError extends AutomationError {
     };
   }
 }
-
 module.exports = TimeoutError;

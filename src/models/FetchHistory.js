@@ -13,7 +13,6 @@ const fetchHistorySchema = new mongoose.Schema({
     required: true,
     enum: ['pending', 'closed', 'all', 'items', 'pending_with_details', 'closed_with_details'],
   },
-
   status: {
     type: String,
     required: true,
@@ -21,22 +20,18 @@ const fetchHistorySchema = new mongoose.Schema({
     default: 'in_progress',
     index: true
   },
-
   startedAt: {
     type: Date,
     required: true,
     default: Date.now,
     index: true
   },
-
   completedAt: {
     type: Date
   },
-
   duration: {
     type: Number, 
   },
-
   results: {
     totalFetched: { type: Number, default: 0 },
     created: { type: Number, default: 0 },
@@ -46,25 +41,20 @@ const fetchHistorySchema = new mongoose.Schema({
     skipped: { type: Number, default: 0 },
     detailsSynced: { type: Number, default: 0 }
   },
-
   errorMessage: {
     type: String
   },
-
   errorDetails: {
     type: mongoose.Schema.Types.Mixed
   },
-
   metadata: {
     type: mongoose.Schema.Types.Mixed
   },
-
   triggeredBy: {
     type: String,
     enum: ['manual', 'automatic', 'scheduled'],
     default: 'manual'
   },
-
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -72,17 +62,9 @@ const fetchHistorySchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
-
-
 fetchHistorySchema.index({ startedAt: -1 });
 fetchHistorySchema.index({ source: 1, startedAt: -1 });
 fetchHistorySchema.index({ status: 1, startedAt: -1 });
-
-
-
-
-
-
 fetchHistorySchema.virtual('calculatedDuration').get(function() {
   if (this.duration) return this.duration;
   if (this.completedAt && this.startedAt) {
@@ -93,8 +75,6 @@ fetchHistorySchema.virtual('calculatedDuration').get(function() {
   }
   return null;
 });
-
-
 fetchHistorySchema.methods.markCompleted = function(results) {
   this.status = 'completed';
   this.completedAt = new Date();
@@ -104,8 +84,6 @@ fetchHistorySchema.methods.markCompleted = function(results) {
   }
   return this.save();
 };
-
-
 fetchHistorySchema.methods.markFailed = function(errorMessage, errorDetails) {
   this.status = 'failed';
   this.completedAt = new Date();
@@ -116,8 +94,6 @@ fetchHistorySchema.methods.markFailed = function(errorMessage, errorDetails) {
   }
   return this.save();
 };
-
-
 fetchHistorySchema.statics.startFetch = async function(source, fetchType, metadata = {}) {
   return await this.create({
     source,
@@ -129,8 +105,6 @@ fetchHistorySchema.statics.startFetch = async function(source, fetchType, metada
     user: metadata.userId || null
   });
 };
-
-
 fetchHistorySchema.statics.getRecentHistory = async function(source = null, limit = 50) {
   const query = source ? { source } : {};
   return await this.find(query)
@@ -138,8 +112,6 @@ fetchHistorySchema.statics.getRecentHistory = async function(source = null, limi
     .limit(limit)
     .lean();
 };
-
-
 fetchHistorySchema.statics.getActiveFetches = async function(source = null) {
   const query = { status: 'in_progress' };
   if (source) {
@@ -147,20 +119,15 @@ fetchHistorySchema.statics.getActiveFetches = async function(source = null) {
   }
   return await this.find(query).lean();
 };
-
-
 fetchHistorySchema.statics.getStatistics = async function(source = null, days = 10) {
   const dateFilter = new Date();
   dateFilter.setDate(dateFilter.getDate() - days);
-
   const matchStage = {
     startedAt: { $gte: dateFilter }
   };
-
   if (source) {
     matchStage.source = source;
   }
-
   return await this.aggregate([
     { $match: matchStage },
     {
@@ -196,7 +163,5 @@ fetchHistorySchema.statics.getStatistics = async function(source = null, days = 
     }
   ]);
 };
-
 const FetchHistory = mongoose.model('FetchHistory', fetchHistorySchema);
-
 module.exports = FetchHistory;

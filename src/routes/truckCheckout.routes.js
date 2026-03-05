@@ -4,49 +4,21 @@ const truckCheckoutController = require('../controllers/truckCheckoutController'
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
-
-
 router.get('/items/search', authenticate, truckCheckoutController.searchItems);
-
-
 router.get('/stock/:itemName', authenticate, truckCheckoutController.getItemStock);
-
-
 router.get('/active', authenticate, truckCheckoutController.getActiveCheckouts);
-
-
 router.get('/employee/:employeeName', authenticate, truckCheckoutController.getCheckoutsByEmployee);
-
-
 router.get('/stats/employee/:employeeName', authenticate, truckCheckoutController.getEmployeeStats);
-
-
 router.get('/sales-tracking', authenticate, truckCheckoutController.getCheckoutSalesTracking);
-
-
 router.get('/employees/stats', authenticate, truckCheckoutController.getAllEmployeesWithStats);
-
-
 router.post('/create-new', authenticate, truckCheckoutController.createCheckout);
-
-
 router.get('/', authenticate, truckCheckoutController.getCheckouts);
-
-
 router.get('/:id', authenticate, truckCheckoutController.getCheckoutById);
-
-
 router.delete('/:id', authenticate, requireAdmin(), truckCheckoutController.deleteCheckout);
-
-
-
-
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarSyncService = require('../services/routeStarSync.service');
 const TruckCheckout = require('../models/TruckCheckout');
 const StockMovement = require('../models/StockMovement');
-
-
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
@@ -57,14 +29,12 @@ router.post('/', authenticate, async (req, res) => {
       notes,
       checkoutDate
     } = req.body;
-
     if (!employeeName || !itemsTaken || itemsTaken.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Employee name and items are required'
       });
     }
-
     const checkout = await TruckCheckout.create({
       employeeName,
       employeeId,
@@ -75,21 +45,15 @@ router.post('/', authenticate, async (req, res) => {
       createdBy: req.user?.username || 'system',
       status: 'checked_out'
     });
-
-    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const StockSummary = require('../models/StockSummary');
-
     console.log(`\n✓ Truck checkout created for ${employeeName}, ${itemsTaken.length} items`);
     console.log(`  Creating OUT stock movements for checked out items...`);
-
     for (const item of itemsTaken) {
       if (item.quantity <= 0) continue;
-
       try {
         const canonicalName = await RouteStarItemAlias.getCanonicalName(item.name);
         const sku = (item.sku || canonicalName || item.name).toUpperCase();
-
         await StockMovement.create({
           sku: sku,
           type: 'OUT',
@@ -100,7 +64,6 @@ router.post('/', authenticate, async (req, res) => {
           timestamp: checkout.checkoutDate,
           notes: `Checked out to truck: ${employeeName}${item.notes ? ` (${item.notes})` : ''}`
         });
-
         let stockSummary = await StockSummary.findOne({ sku });
         if (!stockSummary) {
           stockSummary = await StockSummary.create({
@@ -114,13 +77,11 @@ router.post('/', authenticate, async (req, res) => {
         }
         stockSummary.removeStock(item.quantity);
         await stockSummary.save();
-
         console.log(`  ✓ OUT movement created for ${sku}: -${item.quantity}`);
       } catch (error) {
         console.error(`  ✗ Failed to create stock movement for ${item.name}: ${error.message}`);
       }
     }
-
     res.status(201).json({
       success: true,
       message: 'Checkout created successfully',
@@ -135,43 +96,34 @@ router.post('/', authenticate, async (req, res) => {
     });
   }
 });
-
-
 router.post('/:id/complete', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const { invoiceNumbers, invoiceType = 'closed' } = req.body;
-
     if (!invoiceNumbers || invoiceNumbers.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'At least one invoice number is required'
       });
     }
-
     const checkout = await TruckCheckout.findById(id);
-
     if (!checkout) {
       return res.status(404).json({
         success: false,
         message: 'Checkout not found'
       });
     }
-
     if (checkout.status !== 'checked_out') {
       return res.status(400).json({
         success: false,
         message: `Checkout is already ${checkout.status}`
       });
     }
-
-    
     const duplicateCheckouts = await TruckCheckout.find({
       _id: { $ne: checkout._id },
       invoiceNumbers: { $in: invoiceNumbers },
       status: { $in: ['completed', 'checked_out'] }
     }).select('_id employeeName invoiceNumbers');
-
     if (duplicateCheckouts.length > 0) {
       const duplicateInvoices = [];
       for (const dup of duplicateCheckouts) {
@@ -184,22 +136,18 @@ router.post('/:id/complete', authenticate, async (req, res) => {
           });
         }
       }
-
       return res.status(400).json({
         success: false,
         message: 'One or more invoices are already linked to another checkout (possible theft/fraud)',
         duplicateCheckouts: duplicateInvoices
       });
     }
-
     await checkout.markCompleted(
       invoiceNumbers,
       invoiceType,
       req.user?.username || 'system'
     );
-
     console.log(`✓ Checkout ${id} marked as completed with ${invoiceNumbers.length} invoices`);
-
     res.json({
       success: true,
       message: 'Checkout completed successfully',
@@ -214,52 +162,39 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     });
   }
 });
-
-
 router.post('/:id/check-work', authenticate, async (req, res) => {
   let syncService = null;
-
   try {
     const { id } = req.params;
     const { invoiceNumbers, invoiceType = 'closed' } = req.body;
-
     if (!invoiceNumbers || invoiceNumbers.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'At least one invoice number is required'
       });
     }
-
     const checkout = await TruckCheckout.findById(id);
-
     if (!checkout) {
       return res.status(404).json({
         success: false,
         message: 'Checkout not found'
       });
     }
-
     if (checkout.status !== 'checked_out') {
       return res.status(400).json({
         success: false,
         message: 'Can only check work for checked out items'
       });
     }
-
-    
     console.log(`\n📊 Starting check work for checkout ${id}`);
     console.log(`   Fetching ${invoiceNumbers.length} ${invoiceType} invoices...`);
-
     const invoicesFromDB = await RouteStarInvoice.find({
       invoiceNumber: { $in: invoiceNumbers }
     }).lean();
-
     const fetchedInvoices = [];
     const missingInvoices = [];
-
     for (const invoiceNumber of invoiceNumbers) {
       const dbInvoice = invoicesFromDB.find(inv => inv.invoiceNumber === invoiceNumber);
-
       if (dbInvoice && dbInvoice.lineItems && dbInvoice.lineItems.length > 0) {
         fetchedInvoices.push({
           invoiceNumber: dbInvoice.invoiceNumber,
@@ -276,19 +211,14 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
         missingInvoices.push(invoiceNumber);
       }
     }
-
-    
     if (missingInvoices.length > 0) {
       console.log(`   ${missingInvoices.length} invoices need to be fetched from RouteStar...`);
-
       syncService = new RouteStarSyncService();
       await syncService.init();
-
       for (const invoiceNumber of missingInvoices) {
         try {
           console.log(`   → Fetching ${invoiceNumber} from RouteStar...`);
           const invoice = await syncService.syncInvoiceDetails(invoiceNumber);
-
           if (invoice && invoice.lineItems && invoice.lineItems.length > 0) {
             fetchedInvoices.push({
               invoiceNumber: invoice.invoiceNumber,
@@ -308,17 +238,13 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
         }
       }
     }
-
-    
     const RouteStarItemAlias = require('../models/RouteStarItemAlias');
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
-
     const itemsSoldMap = {};
     for (const invoice of fetchedInvoices) {
       for (const item of invoice.items) {
         const canonicalName = aliasMap[item.name.toLowerCase()] || item.name;
         const key = canonicalName.toUpperCase();
-
         if (!itemsSoldMap[key]) {
           itemsSoldMap[key] = {
             name: canonicalName,
@@ -329,14 +255,11 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
         itemsSoldMap[key].quantitySold += item.quantity;
       }
     }
-
     const itemsSold = Object.values(itemsSoldMap);
-
     const itemsTakenMap = {};
     for (const item of checkout.itemsTaken || []) {
       const canonicalName = aliasMap[item.name?.toLowerCase()] || item.name;
       const key = canonicalName.toUpperCase();
-
       if (!itemsTakenMap[key]) {
         itemsTakenMap[key] = {
           name: canonicalName,
@@ -346,23 +269,18 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       }
       itemsTakenMap[key].quantityTaken += item.quantity;
     }
-
     const itemsTaken = Object.values(itemsTakenMap);
-
     const discrepancies = [];
     for (const key of Object.keys(itemsTakenMap)) {
       const taken = itemsTakenMap[key];
       const sold = itemsSoldMap[key] || { name: taken.name, sku: taken.sku, quantitySold: 0 };
-
       const difference = taken.quantityTaken - sold.quantitySold;
       let status = 'matched';
-
       if (difference > 0) {
         status = 'excess';
       } else if (difference < 0) {
         status = 'shortage';
       }
-
       discrepancies.push({
         name: taken.name,
         sku: taken.sku,
@@ -372,7 +290,6 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
         status
       });
     }
-
     checkout.invoiceNumbers = invoiceNumbers;
     checkout.invoiceType = invoiceType;
     checkout.fetchedInvoices = fetchedInvoices;
@@ -382,9 +299,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
       discrepancies
     };
     await checkout.save();
-
     console.log(`✓ Check work completed for checkout ${id}`);
-
     res.json({
       success: true,
       message: 'Check work completed successfully. Review the comparison and click Complete when ready.',
@@ -419,33 +334,25 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
     }
   }
 });
-
-
 router.post('/:id/cancel', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-
     const checkout = await TruckCheckout.findById(id);
-
     if (!checkout) {
       return res.status(404).json({
         success: false,
         message: 'Checkout not found'
       });
     }
-
     if (checkout.status !== 'checked_out') {
       return res.status(400).json({
         success: false,
         message: `Cannot cancel checkout with status: ${checkout.status}`
       });
     }
-
     await checkout.markCancelled(reason || 'Cancelled by user');
-
     console.log(`✓ Checkout ${id} cancelled`);
-
     res.json({
       success: true,
       message: 'Checkout cancelled successfully',
@@ -460,33 +367,26 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     });
   }
 });
-
-
 router.patch('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-
-    
     delete updates._id;
     delete updates.createdAt;
     delete updates.updatedAt;
     delete updates.status;
     delete updates.stockProcessed;
-
     const checkout = await TruckCheckout.findByIdAndUpdate(
       id,
       updates,
       { new: true, runValidators: true }
     );
-
     if (!checkout) {
       return res.status(404).json({
         success: false,
         message: 'Checkout not found'
       });
     }
-
     res.json({
       success: true,
       message: 'Checkout updated successfully',
@@ -501,5 +401,4 @@ router.patch('/:id', authenticate, async (req, res) => {
     });
   }
 });
-
 module.exports = router;

@@ -2,11 +2,9 @@ const inventorySchedulerService = require('../services/inventoryScheduler.servic
 
 
 class InventorySchedulerController {
-  
   async getStatus(req, res, next) {
     try {
       const status = inventorySchedulerService.getStatus();
-
       res.json({
         success: true,
         data: status
@@ -20,12 +18,9 @@ class InventorySchedulerController {
       });
     }
   }
-
-  
   async startScheduler(req, res, next) {
     try {
       const status = inventorySchedulerService.startScheduler(req.body);
-
       res.json({
         success: true,
         message: 'Scheduler started successfully',
@@ -40,12 +35,9 @@ class InventorySchedulerController {
       });
     }
   }
-
-  
   async stopScheduler(req, res, next) {
     try {
       const status = inventorySchedulerService.stopScheduler();
-
       res.json({
         success: true,
         message: 'Scheduler stopped successfully',
@@ -60,12 +52,9 @@ class InventorySchedulerController {
       });
     }
   }
-
-  
   async runNow(req, res, next) {
     try {
       const result = inventorySchedulerService.runNow(req.body);
-
       res.json({
         success: true,
         message: result.message,
@@ -81,5 +70,4 @@ class InventorySchedulerController {
     }
   }
 }
-
 module.exports = new InventorySchedulerController();

@@ -1,8 +1,6 @@
 const AutomationError = require('./AutomationError');
 
 
-
-
 class ElementNotFoundError extends AutomationError {
   constructor(message, options = {}) {
     super(message, options);
@@ -11,7 +9,6 @@ class ElementNotFoundError extends AutomationError {
     this.timeout = options.timeout;
     this.url = options.url;
   }
-
   toJSON() {
     return {
       ...super.toJSON(),
@@ -21,5 +18,4 @@ class ElementNotFoundError extends AutomationError {
     };
   }
 }
-
 module.exports = ElementNotFoundError;

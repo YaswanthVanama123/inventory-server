@@ -10,28 +10,17 @@ async function addDashboardIndexes() {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/inventory-db');
     
     console.log('Adding indexes for dashboard optimization...');
-
-    
     await Inventory.collection.createIndex({ isActive: 1, isDeleted: 1 });
     await Inventory.collection.createIndex({ category: 1, isActive: 1 });
     await Inventory.collection.createIndex({ 'quantity.current': 1 });
-    
-    
     await RouteStarInvoice.collection.createIndex({ status: 1, invoiceDate: -1 });
     await RouteStarInvoice.collection.createIndex({ invoiceDate: -1 });
-    
-    
     await CustomerConnectOrder.collection.createIndex({ status: 1, orderDate: -1 });
     await CustomerConnectOrder.collection.createIndex({ orderDate: -1 });
-    
-    
     await AuditLog.collection.createIndex({ resource: 1, timestamp: -1 });
     await AuditLog.collection.createIndex({ timestamp: -1 });
-    
-    
     await SyncLog.collection.createIndex({ startedAt: -1 });
     await SyncLog.collection.createIndex({ status: 1, startedAt: -1 });
-
     console.log('✓ All indexes created successfully');
     process.exit(0);
   } catch (error) {
@@ -39,5 +28,4 @@ async function addDashboardIndexes() {
     process.exit(1);
   }
 }
-
 addDashboardIndexes();

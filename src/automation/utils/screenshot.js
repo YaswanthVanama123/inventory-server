@@ -8,24 +8,16 @@ const screenshotsDir = path.join(__dirname, '../../../screenshots');
 if (!fs.existsSync(screenshotsDir)) {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 }
-
-
-
-
-
-
 async function captureScreenshot(page, name) {
   try {
     const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
     const filename = `${name}-${timestamp}.png`;
     const filepath = path.join(screenshotsDir, filename);
-
     await page.screenshot({
       path: filepath,
       fullPage: true,
       timeout: timeoutConfig.screenshot  
     });
-
     logger.debug('Screenshot captured', { filename });
     return filepath;
   } catch (error) {
@@ -33,13 +25,6 @@ async function captureScreenshot(page, name) {
     return null;
   }
 }
-
-
-
-
-
-
-
 async function captureElementScreenshot(page, selector, name) {
   try {
     const element = await page.$(selector);
@@ -47,16 +32,13 @@ async function captureElementScreenshot(page, selector, name) {
       logger.warn('Element not found for screenshot', { selector });
       return null;
     }
-
     const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
     const filename = `${name}-${timestamp}.png`;
     const filepath = path.join(screenshotsDir, filename);
-
     await element.screenshot({
       path: filepath,
       timeout: timeoutConfig.screenshot  
     });
-
     logger.debug('Element screenshot captured', { filename, selector });
     return filepath;
   } catch (error) {
@@ -64,7 +46,6 @@ async function captureElementScreenshot(page, selector, name) {
     return null;
   }
 }
-
 module.exports = {
   captureScreenshot,
   captureElementScreenshot

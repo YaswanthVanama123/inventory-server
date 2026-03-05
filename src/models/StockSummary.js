@@ -52,37 +52,27 @@ const stockSummarySchema = new mongoose.Schema({
   timestamps: true
 });
 
-
-
 stockSummarySchema.index({ availableQty: 1 });
-
-
 stockSummarySchema.virtual('isLowStock').get(function() {
   return this.availableQty <= this.lowStockThreshold;
 });
-
-
 stockSummarySchema.methods.addStock = function(qty) {
   this.availableQty += qty;
   this.totalInQty += qty;
   this.lastMovement = new Date();
   return this;
 };
-
 stockSummarySchema.methods.removeStock = function(qty) {
   this.availableQty -= qty;
   this.totalOutQty += qty;
   this.lastMovement = new Date();
   return this;
 };
-
-
 stockSummarySchema.statics.getLowStockItems = function() {
   return this.find({
     $expr: { $lte: ['$availableQty', '$lowStockThreshold'] }
   }).populate('product').sort({ availableQty: 1 });
 };
-
 stockSummarySchema.statics.getStockValueByCategory = async function() {
   const pipeline = [
     {
@@ -106,14 +96,9 @@ stockSummarySchema.statics.getStockValueByCategory = async function() {
     },
     { $sort: { totalValue: -1 } }
   ];
-
   return this.aggregate(pipeline);
 };
-
-
 stockSummarySchema.set('toJSON', { virtuals: true });
 stockSummarySchema.set('toObject', { virtuals: true });
-
 const StockSummary = mongoose.model('StockSummary', stockSummarySchema);
-
 module.exports = StockSummary;
