@@ -392,10 +392,8 @@ class RouteStarController {
 
       const result = await routeStarService.getInvoicesByItem(itemName);
 
-      res.json({
-        success: true,
-        data: result
-      });
+      // Service already returns { success, data }, don't double-wrap
+      res.json(result);
     } catch (error) {
       console.error('Get invoices by item error:', error);
       next(error);
