@@ -24,13 +24,13 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 
 router.get('/recent-activity', authenticate, getRecentActivity);
+router.get('/dashboard', authenticate, getDashboard);
 
 
 router.use(authenticate);
 router.use(requireAdmin());
 
 
-router.get('/dashboard', getDashboard);
 router.get('/dashboard-sync-widget', getDashboardSyncWidget);
 router.get('/stock-summary', getStockSummary);
 router.get('/profit-margin', getProfitMarginReport);

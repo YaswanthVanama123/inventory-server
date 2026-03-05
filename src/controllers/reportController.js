@@ -269,7 +269,7 @@ const getDashboard = async (req, res, next) => {
             { $limit: 10 }
           ],
 
-          
+
           recentActivity: [
             { $limit: 1 },
             {
@@ -278,7 +278,7 @@ const getDashboard = async (req, res, next) => {
                 pipeline: [
                   { $match: { resource: 'INVENTORY' } },
                   { $sort: { timestamp: -1 } },
-                  { $limit: 5 },
+                  { $limit: 10 },
                   {
                     $lookup: {
                       from: 'users',
@@ -305,6 +305,27 @@ const getDashboard = async (req, res, next) => {
             },
             { $unwind: '$activities' },
             { $replaceRoot: { newRoot: '$activities' } }
+          ],
+
+          // All inventory items
+          inventoryItems: [
+            { $match: { isActive: true, isDeleted: false } },
+            { $sort: { updatedAt: -1 } },
+            { $limit: 1000 },
+            {
+              $project: {
+                _id: 1,
+                itemName: 1,
+                skuCode: 1,
+                category: 1,
+                quantity: 1,
+                pricing: 1,
+                supplier: 1,
+                isActive: 1,
+                createdAt: 1,
+                updatedAt: 1
+              }
+            }
           ],
 
           
@@ -524,6 +545,7 @@ const getDashboard = async (req, res, next) => {
 
     const categoryStats = dashboardData.categoryStats || [];
     const recentActivity = dashboardData.recentActivity || [];
+    const inventoryItems = dashboardData.inventoryItems || [];
     const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
     const purchaseTotals = dashboardData.purchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
 
@@ -672,6 +694,7 @@ const getDashboard = async (req, res, next) => {
         },
         categoryStats,
         recentActivity,
+        inventoryItems,
         topSellingItems,
         topSellingItemsDetailed,
         invoiceStatusStats,

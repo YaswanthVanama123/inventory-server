@@ -232,6 +232,171 @@ class EmployeeDataService {
       .sort({ truckNumber: 1 })
       .lean();
   }
+
+  /**
+   * Optimized combined dashboard - fetches all data in a single aggregation query
+   * Reduces database round trips from 3 to 1
+   */
+  async getEmployeeCombinedDashboard(truckNumber, startDate, endDate, limit = 10) {
+    const matchQuery = {
+      'lineItems.class': truckNumber.toUpperCase(),
+      invoiceDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    };
+
+    const result = await RouteStarInvoice.aggregate([
+      // First match: Filter invoices by truck and date range
+      { $match: matchQuery },
+
+      // Use $facet to run multiple aggregations in parallel on the same data
+      {
+        $facet: {
+          // Statistics calculation
+          statistics: [
+            { $unwind: '$lineItems' },
+            {
+              $match: {
+                'lineItems.class': truckNumber.toUpperCase()
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalInvoices: { $addToSet: '$_id' },
+                totalRevenue: { $sum: '$lineItems.amount' },
+                totalItems: { $sum: '$lineItems.quantity' },
+                avgInvoiceValue: { $avg: '$total' },
+                completedInvoices: {
+                  $sum: {
+                    $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0]
+                  }
+                },
+                pendingInvoices: {
+                  $sum: {
+                    $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0]
+                  }
+                }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                totalInvoices: { $size: '$totalInvoices' },
+                totalRevenue: { $round: ['$totalRevenue', 2] },
+                totalItems: 1,
+                avgInvoiceValue: { $round: ['$avgInvoiceValue', 2] },
+                completedInvoices: 1,
+                pendingInvoices: 1
+              }
+            }
+          ],
+
+          // Recent activity - get last N invoices
+          recentActivity: [
+            { $sort: { invoiceDate: -1 } },
+            { $limit: limit },
+            {
+              $project: {
+                invoiceNumber: 1,
+                invoiceDate: 1,
+                status: 1,
+                'customer.name': 1,
+                total: 1,
+                lineItems: {
+                  $filter: {
+                    input: '$lineItems',
+                    as: 'item',
+                    cond: {
+                      $eq: [
+                        { $toUpper: '$$item.class' },
+                        truckNumber.toUpperCase()
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+
+          // Daily revenue breakdown
+          dailyRevenue: [
+            { $unwind: '$lineItems' },
+            {
+              $match: {
+                'lineItems.class': truckNumber.toUpperCase()
+              }
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: '%Y-%m-%d', date: '$invoiceDate' }
+                },
+                revenue: { $sum: '$lineItems.amount' },
+                invoiceCount: { $addToSet: '$_id' }
+              }
+            },
+            {
+              $project: {
+                date: '$_id',
+                revenue: { $round: ['$revenue', 2] },
+                invoiceCount: { $size: '$invoiceCount' }
+              }
+            },
+            { $sort: { date: 1 } }
+          ],
+
+          // Top selling items
+          topItems: [
+            { $unwind: '$lineItems' },
+            {
+              $match: {
+                'lineItems.class': truckNumber.toUpperCase()
+              }
+            },
+            {
+              $group: {
+                _id: '$lineItems.name',
+                count: { $sum: 1 },
+                totalQuantity: { $sum: '$lineItems.quantity' },
+                totalRevenue: { $sum: '$lineItems.amount' }
+              }
+            },
+            {
+              $project: {
+                itemName: '$_id',
+                count: 1,
+                totalQuantity: 1,
+                totalRevenue: { $round: ['$totalRevenue', 2] }
+              }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+          ]
+        }
+      }
+    ]);
+
+    // Extract and format the results
+    const data = result[0];
+
+    return {
+      statistics: data.statistics[0] || {
+        totalInvoices: 0,
+        totalRevenue: 0,
+        totalItems: 0,
+        avgInvoiceValue: 0,
+        completedInvoices: 0,
+        pendingInvoices: 0
+      },
+      recentActivity: data.recentActivity || [],
+      performance: {
+        dailyRevenue: data.dailyRevenue || [],
+        topItems: data.topItems || []
+      }
+    };
+  }
 }
 
 module.exports = new EmployeeDataService();

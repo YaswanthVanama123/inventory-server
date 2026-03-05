@@ -217,11 +217,65 @@ const getAllTruckAssignments = async (req, res) => {
   }
 };
 
+
+const getMyCombinedDashboard = async (req, res) => {
+  try {
+    // Get user's truck number
+    const user = await User.findById(req.user.id).select('truckNumber');
+
+    if (!user || !user.truckNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'No truck number assigned to your account'
+      });
+    }
+
+    const { startDate, endDate, limit = 10 } = req.query;
+
+    // Calculate date range
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate
+      ? new Date(startDate)
+      : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Use optimized single-query method instead of three separate calls
+    const dashboardData = await employeeDataService.getEmployeeCombinedDashboard(
+      user.truckNumber,
+      start,
+      end,
+      parseInt(limit)
+    );
+
+    res.json({
+      success: true,
+      data: {
+        statistics: {
+          ...dashboardData.statistics,
+          dateRange: { start, end }
+        },
+        recentActivity: dashboardData.recentActivity,
+        performance: {
+          ...dashboardData.performance,
+          dateRange: { start, end }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get my combined dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard data',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getMyWorkData,
   getMyStatistics,
   getMyRecentActivity,
   getMyPerformance,
   getEmployeeDataByTruckNumber,
-  getAllTruckAssignments
+  getAllTruckAssignments,
+  getMyCombinedDashboard
 };
