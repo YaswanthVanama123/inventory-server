@@ -317,19 +317,21 @@ const getPageData = async (req, res) => {
 
     
     const [history, total, activeFetches, statsData] = await Promise.all([
-      
+
       FetchHistory.find(query)
         .sort({ startedAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
+        .populate('user', 'username fullName email')
         .lean(),
 
-      
+
       FetchHistory.countDocuments(query),
 
-      
+
       FetchHistory.find(activeQuery)
         .sort({ startedAt: -1 })
+        .populate('user', 'username fullName email')
         .lean(),
 
       

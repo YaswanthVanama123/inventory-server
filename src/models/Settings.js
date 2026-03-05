@@ -92,6 +92,13 @@ const settingsSchema = new mongoose.Schema(
       index: true
     },
 
+    lowStockThreshold: {
+      type: Number,
+      default: 10,
+      min: 1,
+      index: true
+    },
+
 
     singleton: {
       type: Boolean,

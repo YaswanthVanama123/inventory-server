@@ -17,13 +17,14 @@ class CustomerConnectService {
     let fetchRecord = null;
 
     try {
-      let { limit = 0, direction = 'new', triggeredBy = 'manual' } = options;
+      let { limit = 0, direction = 'new', triggeredBy = 'manual', userId = null } = options;
 
-      
+
       fetchRecord = await FetchHistory.startFetch('customer_connect', 'all', {
         limit: limit,
         direction: direction,
-        triggeredBy: triggeredBy
+        triggeredBy: triggeredBy,
+        userId: userId
       });
 
       if (limit === 0 || limit === null || limit === 'auto') {

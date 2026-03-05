@@ -65,7 +65,7 @@ exports.addUnit = async (req, res) => {
     
     await AuditLog.create({
       action: 'CREATE',
-      resource: 'Unit',
+      resource: 'SETTINGS',
       performedBy: req.user._id,
       details: { unit: { value, label } },
     });
@@ -110,10 +110,10 @@ exports.updateUnit = async (req, res) => {
     
     await AuditLog.create({
       action: 'UPDATE',
-      resource: 'Unit',
+      resource: 'SETTINGS',
       resourceId: id,
       performedBy: req.user._id,
-      details: { updates: { value, label, isActive } },
+      details: { unit: { value, label, isActive } },
     });
 
     res.status(200).json({
@@ -152,7 +152,7 @@ exports.deleteUnit = async (req, res) => {
     
     await AuditLog.create({
       action: 'DELETE',
-      resource: 'Unit',
+      resource: 'SETTINGS',
       resourceId: id,
       performedBy: req.user._id,
       details: { unit: { value: unit.value, label: unit.label } },
@@ -214,9 +214,9 @@ exports.updateSKUConfig = async (req, res) => {
     
     await AuditLog.create({
       action: 'UPDATE',
-      resource: 'SKU Configuration',
+      resource: 'SETTINGS',
       performedBy: req.user._id,
-      details: { updates: { prefix, format, numberLength } },
+      details: { skuConfig: { prefix, format, numberLength } },
     });
 
     res.status(200).json({
@@ -254,6 +254,28 @@ exports.getStockCutoffDate = async (req, res) => {
 };
 
 
+// Combined endpoint for general settings (cutoff date + low stock threshold)
+exports.getGeneralSettings = async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        stockCalculationCutoffDate: settings.stockCalculationCutoffDate,
+        lowStockThreshold: settings.lowStockThreshold
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching general settings:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch general settings',
+    });
+  }
+};
+
+
 exports.updateStockCutoffDate = async (req, res) => {
   try {
     const { cutoffDate } = req.body;
@@ -269,13 +291,19 @@ exports.updateStockCutoffDate = async (req, res) => {
     settings.stockCalculationCutoffDate = new Date(cutoffDate);
     await settings.save();
 
-    
-    await AuditLog.create({
-      action: 'UPDATE',
-      resource: 'Stock Calculation Cutoff Date',
-      performedBy: req.user._id,
-      details: { cutoffDate: settings.stockCalculationCutoffDate },
-    });
+    // Create audit log if user is available
+    if (req.user && req.user._id) {
+      try {
+        await AuditLog.create({
+          action: 'UPDATE',
+          resource: 'SETTINGS',
+          performedBy: req.user._id,
+          details: { stockCalculationCutoffDate: settings.stockCalculationCutoffDate },
+        });
+      } catch (auditError) {
+        console.error('Audit log creation failed (non-critical):', auditError.message);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -289,6 +317,72 @@ exports.updateStockCutoffDate = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to update cutoff date',
+    });
+  }
+};
+
+
+exports.getLowStockThreshold = async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        lowStockThreshold: settings.lowStockThreshold
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching low stock threshold:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch low stock threshold',
+    });
+  }
+};
+
+
+exports.updateLowStockThreshold = async (req, res) => {
+  try {
+    const { threshold } = req.body;
+
+    if (!threshold || threshold < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Threshold must be a positive number',
+      });
+    }
+
+    const settings = await Settings.getSettings();
+    settings.lowStockThreshold = parseInt(threshold);
+    await settings.save();
+
+    // Create audit log if user is available
+    if (req.user && req.user._id) {
+      try {
+        await AuditLog.create({
+          action: 'UPDATE',
+          resource: 'SETTINGS',
+          performedBy: req.user._id,
+          details: { lowStockThreshold: settings.lowStockThreshold },
+        });
+      } catch (auditError) {
+        console.error('Audit log creation failed (non-critical):', auditError.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Low stock threshold updated successfully',
+      data: {
+        lowStockThreshold: settings.lowStockThreshold
+      },
+    });
+  } catch (error) {
+    console.error('Error updating low stock threshold:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update low stock threshold',
     });
   }
 };

@@ -30,8 +30,9 @@ class RouteStarController {
   async syncPending(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
+      const userId = req.user?._id;
 
-      const result = await routeStarService.syncPending(limit, direction, triggeredBy);
+      const result = await routeStarService.syncPending(limit, direction, triggeredBy, userId);
 
       res.json({
         success: true,
@@ -69,8 +70,9 @@ class RouteStarController {
   async syncClosed(req, res, next) {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
+      const userId = req.user?._id;
 
-      const result = await routeStarService.syncClosed(limit, direction, triggeredBy);
+      const result = await routeStarService.syncClosed(limit, direction, triggeredBy, userId);
 
       res.json({
         success: true,

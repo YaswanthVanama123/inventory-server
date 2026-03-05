@@ -9,7 +9,8 @@ class CustomerConnectController {
       const options = {
         limit: req.body.limit,
         direction: req.body.direction || 'new',
-        triggeredBy: req.body.triggeredBy || 'manual'
+        triggeredBy: req.body.triggeredBy || 'manual',
+        userId: req.user?._id
       };
 
       const result = await customerConnectService.syncOrders(options);

@@ -75,16 +75,17 @@ class RouteStarService {
   }
 
   
-  async syncPending(limit, direction = 'new', triggeredBy = 'manual') {
+  async syncPending(limit, direction = 'new', triggeredBy = 'manual', userId = null) {
     let syncService = null;
     let fetchRecord = null;
 
     try {
-      
+
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'pending', {
         limit: limit,
         direction: direction,
-        triggeredBy: triggeredBy
+        triggeredBy: triggeredBy,
+        userId: userId
       });
 
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
@@ -182,16 +183,17 @@ class RouteStarService {
   }
 
   
-  async syncClosed(limit, direction = 'new', triggeredBy = 'manual') {
+  async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null) {
     let syncService = null;
     let fetchRecord = null;
 
     try {
-      
+
       fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
         limit: limit,
         direction: direction,
-        triggeredBy: triggeredBy
+        triggeredBy: triggeredBy,
+        userId: userId
       });
 
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {

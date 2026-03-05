@@ -6,6 +6,7 @@ const SyncLog = require('../models/SyncLog');
 const StockMovement = require('../models/StockMovement');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const Settings = require('../models/Settings');
 const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 const { getScheduler } = require('../services/scheduler');
@@ -230,11 +231,15 @@ const getDashboard = async (req, res, next) => {
   try {
     const startTime = Date.now();
 
-    
+    // Get low stock threshold from settings
+    const settings = await Settings.getSettings();
+    const lowStockThreshold = settings.lowStockThreshold || 10;
+
+
     const [dashboardData] = await Inventory.aggregate([
       {
         $facet: {
-          
+
           inventoryStats: [
             { $match: { isActive: true, isDeleted: false } },
             {
@@ -244,7 +249,7 @@ const getDashboard = async (req, res, next) => {
                 totalValue: { $sum: { $multiply: ['$pricing.sellingPrice', '$quantity.current'] } },
                 lowStockCount: {
                   $sum: {
-                    $cond: [{ $lte: ['$quantity.current', '$quantity.minimum'] }, 1, 0]
+                    $cond: [{ $lt: ['$quantity.current', lowStockThreshold] }, 1, 0]
                   }
                 },
                 reorderCount: {
@@ -330,7 +335,7 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalRevenue: 0, totalOrders: 0 }] } } }
           ],
 
-          
+
           invoiceStatusStats: [
             { $limit: 1 },
             {
@@ -343,7 +348,7 @@ const getDashboard = async (req, res, next) => {
                       invoiceDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
                     }
                   },
-                  { $group: { _id: '$status', count: { $sum: 1 } } }
+                  { $group: { _id: '$invoiceType', count: { $sum: 1 } } }
                 ],
                 as: 'statusStats'
               }
@@ -384,7 +389,39 @@ const getDashboard = async (req, res, next) => {
             { $replaceRoot: { newRoot: '$monthlyData' } }
           ],
 
-          
+          // Purchases by month (for profit trend calculation)
+          purchasesByMonth: [
+            { $limit: 1 },
+            {
+              $lookup: {
+                from: 'customerconnectorders',
+                pipeline: [
+                  {
+                    $match: {
+                      status: { $in: ['Complete', 'Processing', 'Shipped'] },
+                      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+                    }
+                  },
+                  { $unwind: '$items' },
+                  {
+                    $group: {
+                      _id: {
+                        month: { $month: '$orderDate' },
+                        year: { $year: '$orderDate' }
+                      },
+                      cost: { $sum: '$items.lineTotal' }
+                    }
+                  },
+                  { $sort: { '_id.year': 1, '_id.month': 1 } }
+                ],
+                as: 'monthlyData'
+              }
+            },
+            { $unwind: '$monthlyData' },
+            { $replaceRoot: { newRoot: '$monthlyData' } }
+          ],
+
+
           topSellingItems: [
             { $limit: 1 },
             {
@@ -443,6 +480,35 @@ const getDashboard = async (req, res, next) => {
             },
             { $unwind: { path: '$lastSync', preserveNullAndEmptyArrays: true } },
             { $replaceRoot: { newRoot: { $ifNull: ['$lastSync', {}] } } }
+          ],
+
+          // Purchase totals from CustomerConnectOrders (for profit calculation)
+          purchaseTotals: [
+            { $limit: 1 },
+            {
+              $lookup: {
+                from: 'customerconnectorders',
+                pipeline: [
+                  {
+                    $match: {
+                      status: { $in: ['Complete', 'Processing', 'Shipped'] },
+                      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+                    }
+                  },
+                  { $unwind: '$items' },
+                  {
+                    $group: {
+                      _id: null,
+                      totalPurchaseAmount: { $sum: '$items.lineTotal' },
+                      totalPurchaseOrders: { $sum: 1 }
+                    }
+                  }
+                ],
+                as: 'totals'
+              }
+            },
+            { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
+            { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalPurchaseAmount: 0, totalPurchaseOrders: 0 }] } } }
           ]
         }
       }
@@ -459,11 +525,20 @@ const getDashboard = async (req, res, next) => {
     const categoryStats = dashboardData.categoryStats || [];
     const recentActivity = dashboardData.recentActivity || [];
     const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
+    const purchaseTotals = dashboardData.purchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
 
-    
+    // Calculate profit/loss based on revenue vs purchase costs
+    const totalRevenue = salesTotals.totalRevenue || 0;
+    const totalPurchaseAmount = purchaseTotals.totalPurchaseAmount || 0;
+    const totalProfit = totalRevenue - totalPurchaseAmount;
+    const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
+
+
     const invoiceStatusStats = {};
     (dashboardData.invoiceStatusStats || []).forEach(s => {
-      invoiceStatusStats[s._id] = s.count;
+      // Capitalize the invoiceType for display (pending -> Pending, closed -> Closed)
+      const displayStatus = s._id ? s._id.charAt(0).toUpperCase() + s._id.slice(1) : 'Unknown';
+      invoiceStatusStats[displayStatus] = s.count;
     });
 
     
@@ -494,20 +569,45 @@ const getDashboard = async (req, res, next) => {
       orderCount: item.orderCount
     }));
 
-    
-    const salesTrend = (dashboardData.salesByMonth || []).map(m => ({
-      month: monthNames[m._id.month - 1],
-      revenue: m.revenue,
-      profit: 0,
-      orders: m.orders
-    }));
+    // Build purchase costs map by month
+    const purchasesByMonthMap = {};
+    const purchasesByMonthArray = [];
+    (dashboardData.purchasesByMonth || []).forEach(p => {
+      const key = `${p._id.year}-${p._id.month}`;
+      purchasesByMonthMap[key] = p.cost || 0;
+      purchasesByMonthArray.push({
+        month: monthNames[p._id.month - 1],
+        cost: p.cost || 0
+      });
+    });
 
-    
+    // Build sales trend with profit calculation
+    const salesTrend = (dashboardData.salesByMonth || []).map(m => {
+      const key = `${m._id.year}-${m._id.month}`;
+      const cost = purchasesByMonthMap[key] || 0;
+      const profit = m.revenue - cost;
+
+      return {
+        month: monthNames[m._id.month - 1],
+        revenue: m.revenue,
+        profit: profit,
+        orders: m.orders
+      };
+    });
+
+    // Calculate month-over-month changes
     const lastMonthData = salesTrend[salesTrend.length - 1] || { revenue: 0, orders: 0 };
     const prevMonthData = salesTrend[salesTrend.length - 2] || { revenue: 0, orders: 0 };
 
+    const lastMonthPurchase = purchasesByMonthArray[purchasesByMonthArray.length - 1] || { cost: 0 };
+    const prevMonthPurchase = purchasesByMonthArray[purchasesByMonthArray.length - 2] || { cost: 0 };
+
     const revenueChange = prevMonthData.revenue > 0
       ? (((lastMonthData.revenue - prevMonthData.revenue) / prevMonthData.revenue) * 100).toFixed(1)
+      : 0;
+
+    const purchaseCostChange = prevMonthPurchase.cost > 0
+      ? (((lastMonthPurchase.cost - prevMonthPurchase.cost) / prevMonthPurchase.cost) * 100).toFixed(1)
       : 0;
 
     const ordersChange = prevMonthData.orders > 0
@@ -558,15 +658,16 @@ const getDashboard = async (req, res, next) => {
           totalRevenue: salesTotals.totalRevenue,
           totalOrders: salesTotals.totalOrders,
           avgOrderValue: salesTotals.totalOrders > 0 ? salesTotals.totalRevenue / salesTotals.totalOrders : 0,
-          totalProfit: 0,
-          profitMargin: 0,
+          totalProfit: parseFloat(totalProfit.toFixed(2)),
+          profitMargin: parseFloat(profitMargin),
           revenueChange: parseFloat(revenueChange) || 0,
           ordersChange: parseFloat(ordersChange) || 0,
           lowStockChange: 0,
           profitMarginChange: 0,
-          totalPurchaseAmount: 0,
-          totalPurchaseOrders: 0,
-          avgPurchaseValue: 0,
+          totalPurchaseAmount: purchaseTotals.totalPurchaseAmount,
+          totalPurchaseOrders: purchaseTotals.totalPurchaseOrders,
+          avgPurchaseValue: purchaseTotals.totalPurchaseOrders > 0 ? purchaseTotals.totalPurchaseAmount / purchaseTotals.totalPurchaseOrders : 0,
+          purchaseCostChange: parseFloat(purchaseCostChange) || 0,
           dataSource: 'automation'
         },
         categoryStats,

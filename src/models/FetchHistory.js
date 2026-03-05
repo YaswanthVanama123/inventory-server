@@ -63,6 +63,11 @@ const fetchHistorySchema = new mongoose.Schema({
     type: String,
     enum: ['manual', 'automatic', 'scheduled'],
     default: 'manual'
+  },
+
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, {
   timestamps: true
@@ -120,7 +125,8 @@ fetchHistorySchema.statics.startFetch = async function(source, fetchType, metada
     status: 'in_progress',
     startedAt: new Date(),
     metadata,
-    triggeredBy: metadata.triggeredBy || 'manual'
+    triggeredBy: metadata.triggeredBy || 'manual',
+    user: metadata.userId || null
   });
 };
 
