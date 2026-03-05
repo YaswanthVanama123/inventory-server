@@ -187,11 +187,11 @@ app.use(errorHandler);
 
 
 const PORT = process.env.PORT || 5000;
-const HOST = '127.0.0.1';
+const HOST = '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
   console.log(`Access locally at: http://127.0.0.1:${PORT}`);
-  console.log(`Note: Binding to 127.0.0.1 for security. To allow network access, change HOST to '0.0.0.0' in server.js`);
+  console.log(`Access from network at: http://192.168.1.30:${PORT}`);
 
   
   if (process.env.AUTO_START_SCHEDULER === 'true') {
