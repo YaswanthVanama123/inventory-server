@@ -39,7 +39,7 @@ app.use((req, res, next) => {
   res.json = function(data) {
     const endTime = Date.now();
     const totalTime = endTime - startTime;
-    console.log(`[TIMING] ${req.method} ${req.path} | Total: ${totalTime}ms | Response size: ${JSON.stringify(data).length} bytes`);
+    // console.log(`[TIMING] ${req.method} ${req.path} | Total: ${totalTime}ms | Response size: ${JSON.stringify(data).length} bytes`);
     return originalJson.call(this, data);
   };
   next();
@@ -109,6 +109,9 @@ const employeeDataRoutes = require('./routes/employeeData.routes');
 const truckCheckoutRoutes = require('./routes/truckCheckout.routes');
 const discrepancyRoutes = require('./routes/discrepancy');
 const orderDiscrepancyRoutes = require('./routes/orderDiscrepancy.routes');
+const manualPurchaseOrderItemRoutes = require('./routes/manualPurchaseOrderItem.routes');
+const vendorRoutes = require('./routes/vendor.routes');
+const manualOrderRoutes = require('./routes/manualOrder.routes');
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -144,6 +147,9 @@ app.use('/api/employee-data', employeeDataRoutes);
 app.use('/api/truck-checkouts', truckCheckoutRoutes);
 app.use('/api/discrepancies', discrepancyRoutes);
 app.use('/api/order-discrepancies', orderDiscrepancyRoutes);
+app.use('/api/manual-po-items', manualPurchaseOrderItemRoutes);
+app.use('/api/vendors', vendorRoutes);
+app.use('/api/manual-orders', manualOrderRoutes);
 app.use(notFound);
 app.use(errorHandler);
 const PORT = process.env.PORT || 5000;

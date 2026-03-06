@@ -44,13 +44,13 @@ const authenticate = async (req, res, next) => {
       if (!user) {
         user = await User.findById(decoded.id)
           .select('name email role isActive passwordChangedAt')
-          .lean(); 
+          .lean();
         if (user) {
           setCachedUser(decoded.id, user);
         }
       }
       const dbTime = Date.now() - dbStartTime;
-      console.log(`[TIMING] Auth - JWT verify: ${jwtTime}ms, DB lookup: ${dbTime}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
+      // console.log(`[TIMING] Auth - JWT verify: ${jwtTime}ms, DB lookup: ${dbTime}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
       if (!user) {
         return res.status(401).json({
           success: false,

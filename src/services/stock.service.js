@@ -116,14 +116,75 @@ class StockService {
   async getCategorySales(categoryName) {
     console.time(`[getCategorySales] Total for ${categoryName}`);
     console.time('[getCategorySales] Step 1: Load aliases');
-    const aliasMap = await RouteStarItemAlias.buildLookupMap();
+
+    // Fetch alias mappings to get original case-sensitive names
+    const aliasMappings = await RouteStarItemAlias.find({ isActive: true })
+      .select('canonicalName aliases')
+      .lean();
+
+    // Build variations including all case-sensitive alias names
+    const variations = [categoryName, categoryName.toLowerCase(), categoryName.toUpperCase()];
+
+    // Find the mapping that contains this category as canonical OR as an alias
+    for (const mapping of aliasMappings) {
+      const canonicalLower = mapping.canonicalName.toLowerCase();
+      const categoryLower = categoryName.toLowerCase();
+
+      // Check if this category IS the canonical name
+      if (canonicalLower === categoryLower) {
+        // Add canonical name variations
+        variations.push(mapping.canonicalName);
+
+        // Add all aliases with their original case
+        if (mapping.aliases && Array.isArray(mapping.aliases)) {
+          mapping.aliases.forEach(alias => {
+            if (alias && alias.name) {
+              variations.push(alias.name);
+              variations.push(alias.name.toLowerCase());
+              variations.push(alias.name.toUpperCase());
+            }
+          });
+        }
+        break;
+      }
+
+      // Check if this category is an alias of this canonical name
+      if (mapping.aliases && Array.isArray(mapping.aliases)) {
+        const isAlias = mapping.aliases.some(alias =>
+          alias && alias.name && alias.name.toLowerCase() === categoryLower
+        );
+
+        if (isAlias) {
+          // Add canonical name variations
+          variations.push(mapping.canonicalName);
+          variations.push(mapping.canonicalName.toLowerCase());
+          variations.push(mapping.canonicalName.toUpperCase());
+
+          // Add all aliases
+          mapping.aliases.forEach(alias => {
+            if (alias && alias.name) {
+              variations.push(alias.name);
+              variations.push(alias.name.toLowerCase());
+              variations.push(alias.name.toUpperCase());
+            }
+          });
+          break;
+        }
+      }
+    }
+
+    // Remove duplicates
+    const uniqueVariations = [...new Set(variations)];
+
     console.timeEnd('[getCategorySales] Step 1: Load aliases');
-    const variations = this._getItemVariations(categoryName, aliasMap);
-    console.log(`Finding data for category: ${categoryName}, variations:`, variations);
+    console.log(`Finding data for category: ${categoryName}, variations:`, uniqueVariations);
     console.time('[getCategorySales] Step 2: Get mappings');
+
+    // Find SKUs mapped to this category OR any of its aliases
     const mappings = await ModelCategory.find({
-      categoryItemName: categoryName
+      categoryItemName: { $in: uniqueVariations }
     }).lean();
+
     console.timeEnd('[getCategorySales] Step 2: Get mappings');
     const skus = mappings.map(m => m.modelNumber);
     if (skus.length === 0) {
@@ -173,13 +234,13 @@ class StockService {
         {
           $match: {
             status: { $in: ['Completed', 'Closed', 'Pending'] },
-            'lineItems.name': { $in: variations }
+            'lineItems.name': { $in: uniqueVariations }
           }
         },
         { $unwind: '$lineItems' },
         {
           $match: {
-            'lineItems.name': { $in: variations }
+            'lineItems.name': { $in: uniqueVariations }
           }
         },
         {
@@ -206,8 +267,8 @@ class StockService {
           $match: {
             status: 'checked_out',
             $or: [
-              { 'itemsTaken.name': { $in: variations } },
-              { itemName: { $in: variations } }
+              { 'itemsTaken.name': { $in: uniqueVariations } },
+              { itemName: { $in: uniqueVariations } }
             ]
           }
         },
@@ -216,7 +277,7 @@ class StockService {
             oldStructure: [
               { $match: { 'itemsTaken.0': { $exists: true } } },
               { $unwind: '$itemsTaken' },
-              { $match: { 'itemsTaken.name': { $in: variations } } },
+              { $match: { 'itemsTaken.name': { $in: uniqueVariations } } },
               {
                 $group: {
                   _id: null,
@@ -234,7 +295,7 @@ class StockService {
               }
             ],
             newStructure: [
-              { $match: { itemName: { $in: variations } } },
+              { $match: { itemName: { $in: uniqueVariations } } },
               {
                 $group: {
                   _id: null,
@@ -257,8 +318,8 @@ class StockService {
       StockDiscrepancy.find({
         $or: [
           { categoryName: categoryName },
-          { categoryName: { $in: variations } },
-          { itemName: { $in: variations } },
+          { categoryName: { $in: uniqueVariations } },
+          { itemName: { $in: uniqueVariations } },
           { itemSku: { $in: skus } }
         ]
       })
@@ -295,6 +356,10 @@ class StockService {
       totalCheckedOut: oldCheckoutData.totalCheckedOut + newCheckoutData.totalCheckedOut,
       checkoutHistory: [...oldCheckoutData.checkoutHistory, ...newCheckoutData.checkoutHistory]
     };
+
+    // Calculate total purchases to distribute sales proportionally
+    const totalPurchased = purchaseData.reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
+
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -314,11 +379,17 @@ class StockService {
           discrepancyHistory: []
         };
       }
-      skuData[skuUpper].totalSold = categorySalesData.totalSold / skuCount;
-      skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue / skuCount;
+
+      // Distribute sales proportionally based on purchase quantity
+      const purchaseRatio = totalPurchased > 0 ? (skuData[skuUpper].totalPurchased || 0) / totalPurchased : (1 / skuCount);
+      skuData[skuUpper].totalSold = Math.round(categorySalesData.totalSold * purchaseRatio);
+      skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue * purchaseRatio;
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
-      skuData[skuUpper].totalCheckedOut = categoryCheckoutData.totalCheckedOut / skuCount;
+
+      // Distribute checkouts proportionally based on purchase quantity
+      skuData[skuUpper].totalCheckedOut = Math.round(categoryCheckoutData.totalCheckedOut * purchaseRatio);
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
+
       skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
         d.itemSku === sku || d.categoryName === categoryName
       );
@@ -413,7 +484,7 @@ class StockService {
     const settings = await Settings.getSettings();
     const cutoffDate = settings.stockCalculationCutoffDate;
     console.log(`[getSellStock] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
-    const [orders, invoices, checkouts, discrepancies, aliasMap] = await Promise.all([
+    const [orders, invoices, checkouts, discrepancies, aliasMap, aliasMappings] = await Promise.all([
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] }
       }).lean(),
@@ -429,38 +500,76 @@ class StockService {
         .populate('reportedBy', 'username fullName')
         .populate('resolvedBy', 'username fullName')
         .lean(),
-      RouteStarItemAlias.buildLookupMap()
+      RouteStarItemAlias.buildLookupMap(),
+      RouteStarItemAlias.find({ isActive: true }).select('canonicalName aliases').lean()
     ]);
+
+    // Build a set of all canonical names for allowed categories
+    const canonicalNames = new Set();
+    aliasMappings.forEach(mapping => {
+      // Check if any alias of this canonical name is in allowedCategories
+      const hasAllowedAlias = mapping.aliases.some(alias =>
+        allowedCategories.has(alias.name)
+      );
+      if (hasAllowedAlias) {
+        canonicalNames.add(mapping.canonicalName);
+      }
+    });
+
+    // Create an expanded allowed set that includes both aliases and canonical names
+    const expandedAllowedCategories = new Set([...allowedCategories, ...canonicalNames]);
+
     const categoryMap = {};
     const categoryInvoices = {};
+    console.log(`[getSellStock] Processing orders. AllowedCategories size: ${allowedCategories.size}, ExpandedAllowedCategories size: ${expandedAllowedCategories.size}`);
+    console.log(`[getSellStock] CanonicalNames:`, Array.from(canonicalNames));
+
     orders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach(item => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
-          const category = skuToCategoryMap[sku];
-          if (category && allowedCategories.has(category)) {
-            if (!categoryMap[category]) {
-              categoryMap[category] = {
-                categoryName: category,
-                totalPurchased: 0,
-                totalPurchaseValue: 0,
-                totalSold: 0,
-                totalSoldBeforeCutoff: 0,
-                totalSalesValue: 0,
-                totalCheckedOut: 0,
-                totalCheckedOutAfterCutoff: 0,
-                totalDiscrepancies: 0,
-                totalDiscrepancyDifference: 0,
-                checkoutDetails: [],
-                itemCount: 0,
-                invoiceCount: 0,
-                stockRemaining: 0
-              };
-            }
-            categoryMap[category].totalPurchased += item.qty || 0;
-            categoryMap[category].totalPurchaseValue += item.lineTotal || 0;
-            categoryMap[category].itemCount += 1;
+          const originalCategory = skuToCategoryMap[sku];
+
+          // Skip if no mapping
+          if (!originalCategory) {
+            return;
           }
+
+          // Convert to canonical name if mapped
+          const categoryLower = originalCategory.toLowerCase();
+          const category = aliasMap[categoryLower] || originalCategory;
+
+          // Check if either the original OR canonical name is in our allowed sets
+          const isAllowed = allowedCategories.has(originalCategory) || expandedAllowedCategories.has(category);
+
+          if (!isAllowed) {
+            console.log(`[getSellStock] Skipping SKU ${sku}: originalCategory="${originalCategory}", category="${category}", isAllowed=false`);
+            return;
+          }
+
+          console.log(`[getSellStock] Aggregating SKU ${sku} qty=${item.qty} under category="${category}" (original="${originalCategory}")`);
+
+          if (!categoryMap[category]) {
+            categoryMap[category] = {
+              categoryName: category,
+              totalPurchased: 0,
+              totalPurchaseValue: 0,
+              totalSold: 0,
+              totalSoldBeforeCutoff: 0,
+              totalSalesValue: 0,
+              totalCheckedOut: 0,
+              totalCheckedOutAfterCutoff: 0,
+              totalDiscrepancies: 0,
+              totalDiscrepancyDifference: 0,
+              checkoutDetails: [],
+              itemCount: 0,
+              invoiceCount: 0,
+              stockRemaining: 0
+            };
+          }
+          categoryMap[category].totalPurchased += item.qty || 0;
+          categoryMap[category].totalPurchaseValue += item.lineTotal || 0;
+          categoryMap[category].itemCount += 1;
         });
       }
     });
@@ -470,85 +579,16 @@ class StockService {
         const isBeforeCutoff = !cutoffDate || !invoiceDate || invoiceDate < cutoffDate;
         invoice.lineItems.forEach(item => {
           const rawItemName = item.name ? item.name.trim() : '';
+
+          // Check if original item name is in allowedCategories
+          if (!allowedCategories.has(rawItemName)) {
+            return;
+          }
+
+          // Convert to canonical name
           const itemNameLower = rawItemName.toLowerCase();
           const canonicalName = aliasMap[itemNameLower] || rawItemName;
-          if (allowedCategories.has(canonicalName)) {
-            if (!categoryMap[canonicalName]) {
-              categoryMap[canonicalName] = {
-                categoryName: canonicalName,
-                totalPurchased: 0,
-                totalPurchaseValue: 0,
-                totalSold: 0,
-                totalSoldBeforeCutoff: 0,
-                totalSalesValue: 0,
-                totalCheckedOut: 0,
-                totalCheckedOutAfterCutoff: 0,
-                totalDiscrepancies: 0,
-                totalDiscrepancyDifference: 0,
-                checkoutDetails: [],
-                itemCount: 0,
-                invoiceCount: 0,
-                stockRemaining: 0
-              };
-            }
-            categoryMap[canonicalName].totalSold += item.quantity || 0;
-            categoryMap[canonicalName].totalSalesValue += item.amount || 0;
-            if (isBeforeCutoff) {
-              categoryMap[canonicalName].totalSoldBeforeCutoff += item.quantity || 0;
-            }
-            if (!categoryInvoices[canonicalName]) {
-              categoryInvoices[canonicalName] = new Set();
-            }
-            categoryInvoices[canonicalName].add(invoice.invoiceNumber);
-          }
-        });
-      }
-    });
-    checkouts.forEach(checkout => {
-      const checkoutDate = checkout.checkoutDate ? new Date(checkout.checkoutDate) : null;
-      const isAfterCutoff = cutoffDate && checkoutDate && checkoutDate >= cutoffDate;
-      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
-        checkout.itemsTaken.forEach(item => {
-          const itemName = item.name ? item.name.trim() : '';
-          const itemNameLower = itemName.toLowerCase();
-          const canonicalName = aliasMap[itemNameLower] || itemName;
-          if (allowedCategories.has(canonicalName)) {
-            if (!categoryMap[canonicalName]) {
-              categoryMap[canonicalName] = {
-                categoryName: canonicalName,
-                totalPurchased: 0,
-                totalPurchaseValue: 0,
-                totalSold: 0,
-                totalSoldBeforeCutoff: 0,
-                totalSalesValue: 0,
-                totalCheckedOut: 0,
-                totalCheckedOutAfterCutoff: 0,
-                totalDiscrepancies: 0,
-                totalDiscrepancyDifference: 0,
-                checkoutDetails: [],
-                itemCount: 0,
-                invoiceCount: 0,
-                stockRemaining: 0
-              };
-            }
-            categoryMap[canonicalName].totalCheckedOut += item.quantity || 0;
-            if (isAfterCutoff) {
-              categoryMap[canonicalName].totalCheckedOutAfterCutoff += item.quantity || 0;
-            }
-            categoryMap[canonicalName].checkoutDetails.push({
-              employeeName: checkout.employeeName,
-              truckNumber: checkout.truckNumber,
-              quantity: item.quantity,
-              checkoutDate: checkout.checkoutDate
-            });
-          }
-        });
-      }
-      if (checkout.itemName && checkout.quantityTaking) {
-        const itemName = checkout.itemName.trim();
-        const itemNameLower = itemName.toLowerCase();
-        const canonicalName = aliasMap[itemNameLower] || itemName;
-        if (allowedCategories.has(canonicalName)) {
+
           if (!categoryMap[canonicalName]) {
             categoryMap[canonicalName] = {
               categoryName: canonicalName,
@@ -567,17 +607,104 @@ class StockService {
               stockRemaining: 0
             };
           }
-          categoryMap[canonicalName].totalCheckedOut += checkout.quantityTaking || 0;
+          categoryMap[canonicalName].totalSold += item.quantity || 0;
+          categoryMap[canonicalName].totalSalesValue += item.amount || 0;
+          if (isBeforeCutoff) {
+            categoryMap[canonicalName].totalSoldBeforeCutoff += item.quantity || 0;
+          }
+          if (!categoryInvoices[canonicalName]) {
+            categoryInvoices[canonicalName] = new Set();
+          }
+          categoryInvoices[canonicalName].add(invoice.invoiceNumber);
+        });
+      }
+    });
+    checkouts.forEach(checkout => {
+      const checkoutDate = checkout.checkoutDate ? new Date(checkout.checkoutDate) : null;
+      const isAfterCutoff = cutoffDate && checkoutDate && checkoutDate >= cutoffDate;
+      if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
+        checkout.itemsTaken.forEach(item => {
+          const itemName = item.name ? item.name.trim() : '';
+
+          // Check if original item name is in allowedCategories
+          if (!allowedCategories.has(itemName)) {
+            return;
+          }
+
+          // Convert to canonical name
+          const itemNameLower = itemName.toLowerCase();
+          const canonicalName = aliasMap[itemNameLower] || itemName;
+
+          if (!categoryMap[canonicalName]) {
+            categoryMap[canonicalName] = {
+              categoryName: canonicalName,
+              totalPurchased: 0,
+              totalPurchaseValue: 0,
+              totalSold: 0,
+              totalSoldBeforeCutoff: 0,
+              totalSalesValue: 0,
+              totalCheckedOut: 0,
+              totalCheckedOutAfterCutoff: 0,
+              totalDiscrepancies: 0,
+              totalDiscrepancyDifference: 0,
+              checkoutDetails: [],
+              itemCount: 0,
+              invoiceCount: 0,
+              stockRemaining: 0
+            };
+          }
+          categoryMap[canonicalName].totalCheckedOut += item.quantity || 0;
           if (isAfterCutoff) {
-            categoryMap[canonicalName].totalCheckedOutAfterCutoff += checkout.quantityTaking || 0;
+            categoryMap[canonicalName].totalCheckedOutAfterCutoff += item.quantity || 0;
           }
           categoryMap[canonicalName].checkoutDetails.push({
             employeeName: checkout.employeeName,
             truckNumber: checkout.truckNumber,
-            quantity: checkout.quantityTaking,
+            quantity: item.quantity,
             checkoutDate: checkout.checkoutDate
           });
+        });
+      }
+      if (checkout.itemName && checkout.quantityTaking) {
+        const itemName = checkout.itemName.trim();
+
+        // Check if original item name is in allowedCategories
+        if (!allowedCategories.has(itemName)) {
+          return;
         }
+
+        // Convert to canonical name
+        const itemNameLower = itemName.toLowerCase();
+        const canonicalName = aliasMap[itemNameLower] || itemName;
+
+        if (!categoryMap[canonicalName]) {
+          categoryMap[canonicalName] = {
+            categoryName: canonicalName,
+            totalPurchased: 0,
+            totalPurchaseValue: 0,
+            totalSold: 0,
+            totalSoldBeforeCutoff: 0,
+            totalSalesValue: 0,
+            totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0,
+            totalDiscrepancies: 0,
+            totalDiscrepancyDifference: 0,
+            checkoutDetails: [],
+            itemCount: 0,
+            invoiceCount: 0,
+            stockRemaining: 0
+          };
+        }
+        categoryMap[canonicalName].totalCheckedOut += checkout.quantityTaking || 0;
+        if (isAfterCutoff) {
+          categoryMap[canonicalName].totalCheckedOutAfterCutoff += checkout.quantityTaking || 0;
+        }
+        categoryMap[canonicalName].checkoutDetails.push({
+          employeeName: checkout.employeeName,
+          truckNumber: checkout.truckNumber,
+          quantity: checkout.quantityTaking,
+          checkoutDate: checkout.checkoutDate
+        });
       }
     });
     Object.keys(categoryInvoices).forEach(categoryName => {
@@ -587,11 +714,20 @@ class StockService {
     });
     const processedDiscrepancies = new Set();
     discrepancies.forEach(discrepancy => {
-      const matchedCategory = discrepancy.categoryName;
-      if (!matchedCategory) return;
+      const rawCategory = discrepancy.categoryName;
+      if (!rawCategory) return;
+
+      // Check if raw category is in allowedCategories
+      if (!allowedCategories.has(rawCategory)) return;
+
+      // Convert to canonical name
+      const categoryLower = rawCategory.toLowerCase();
+      const matchedCategory = aliasMap[categoryLower] || rawCategory;
+
       const discrepancyKey = `${discrepancy._id}-${matchedCategory}`;
       if (processedDiscrepancies.has(discrepancyKey)) return;
-      if (allowedCategories.has(matchedCategory) && categoryMap[matchedCategory]) {
+
+      if (categoryMap[matchedCategory]) {
         categoryMap[matchedCategory].totalDiscrepancies += 1;
         categoryMap[matchedCategory].totalDiscrepancyDifference += (discrepancy.difference || 0);
         processedDiscrepancies.add(discrepancyKey);
@@ -612,10 +748,11 @@ class StockService {
       delete category.discrepancyAdjustment;
       console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${category.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
-    forSellItems.forEach(item => {
-      if (!categoryMap[item.itemName]) {
-        categoryMap[item.itemName] = {
-          categoryName: item.itemName,
+    // Add canonical names that don't have any data yet
+    canonicalNames.forEach(canonicalName => {
+      if (!categoryMap[canonicalName]) {
+        categoryMap[canonicalName] = {
+          categoryName: canonicalName,
           totalPurchased: 0,
           totalPurchaseValue: 0,
           totalSold: 0,
@@ -632,7 +769,91 @@ class StockService {
         };
       }
     });
-    const stockData = Object.values(categoryMap).sort((a, b) =>
+
+    // Also add any unmapped items from forSellItems
+    forSellItems.forEach(item => {
+      const itemName = item.itemName;
+      const itemNameLower = itemName.toLowerCase();
+      const canonicalName = aliasMap[itemNameLower] || itemName;
+
+      if (!categoryMap[canonicalName]) {
+        categoryMap[canonicalName] = {
+          categoryName: canonicalName,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          checkoutDetails: [],
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        };
+      }
+    });
+
+    // CONSOLIDATION: Merge all items by their canonical names
+    const consolidatedMap = new Map();
+    Object.values(categoryMap).forEach(item => {
+      const itemNameLower = item.categoryName.toLowerCase();
+      const canonical = aliasMap[itemNameLower] || item.categoryName;
+
+      if (!consolidatedMap.has(canonical)) {
+        consolidatedMap.set(canonical, {
+          categoryName: canonical,
+          aliases: [],
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          checkoutDetails: [],
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+
+      const target = consolidatedMap.get(canonical);
+
+      // Track aliases that were merged into this canonical name
+      if (item.categoryName !== canonical && !target.aliases.includes(item.categoryName)) {
+        target.aliases.push(item.categoryName);
+      }
+
+      target.totalPurchased += item.totalPurchased || 0;
+      target.totalPurchaseValue += item.totalPurchaseValue || 0;
+      target.totalSold += item.totalSold || 0;
+      target.totalSoldBeforeCutoff += item.totalSoldBeforeCutoff || 0;
+      target.totalSalesValue += item.totalSalesValue || 0;
+      target.totalCheckedOut += item.totalCheckedOut || 0;
+      target.totalCheckedOutAfterCutoff += item.totalCheckedOutAfterCutoff || 0;
+      target.totalDiscrepancies += item.totalDiscrepancies || 0;
+      target.totalDiscrepancyDifference += item.totalDiscrepancyDifference || 0;
+      target.itemCount += item.itemCount || 0;
+      target.invoiceCount += item.invoiceCount || 0;
+      if (item.checkoutDetails && item.checkoutDetails.length > 0) {
+        target.checkoutDetails.push(...item.checkoutDetails);
+      }
+    });
+
+    // Recalculate stockRemaining for each consolidated item
+    consolidatedMap.forEach(item => {
+      item.stockRemaining = item.totalPurchased
+                          - item.totalSoldBeforeCutoff
+                          - item.totalCheckedOutAfterCutoff;
+      console.log(`[getSellStock] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Remaining=${item.stockRemaining}`);
+    });
+
+    const stockData = Array.from(consolidatedMap.values()).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
     const totals = stockData.reduce((acc, item) => ({
@@ -685,6 +906,33 @@ class StockService {
     const useAllowedSet = new Set(forUseItems.map(item => item.itemName));
     const sellAllowedSet = new Set(forSellItems.map(item => item.itemName));
     console.time('[StockSummary] Step 1.5: Build SKU maps');
+
+    // Build canonical names FIRST before building SKU lists
+    const aliasToCanonicalMap = new Map();
+    const sellVariationsSet = new Set();
+    const canonicalNamesForSell = new Set();
+
+    aliasData.forEach(mapping => {
+      const hasAllowedAlias = mapping.aliases.some(alias =>
+        sellAllowedSet.has(alias.name)
+      );
+      if (hasAllowedAlias) {
+        canonicalNamesForSell.add(mapping.canonicalName);
+        sellVariationsSet.add(mapping.canonicalName);
+        sellVariationsSet.add(mapping.canonicalName.toLowerCase());
+
+        mapping.aliases.forEach(alias => {
+          const aliasLower = alias.name.toLowerCase();
+          aliasToCanonicalMap.set(aliasLower, mapping.canonicalName);
+          sellVariationsSet.add(alias.name);
+          sellVariationsSet.add(aliasLower);
+        });
+      }
+    });
+
+    // Create expanded allowed set that includes canonical names
+    const expandedSellAllowedSet = new Set([...sellAllowedSet, ...canonicalNamesForSell]);
+
     const skuToCategoryMap = new Map();
     const useSKUs = [];
     const sellSKUs = [];
@@ -694,25 +942,18 @@ class StockService {
         if (useAllowedSet.has(m.categoryItemName)) {
           useSKUs.push(m.modelNumber);
         }
-        if (sellAllowedSet.has(m.categoryItemName)) {
+        // Use expanded set that includes canonical names
+        if (expandedSellAllowedSet.has(m.categoryItemName)) {
           sellSKUs.push(m.modelNumber);
         }
       }
     });
-    const aliasToCanonicalMap = new Map();
-    const sellVariationsSet = new Set();
+
+    // Add any unmapped items from sellAllowedSet
     sellAllowedSet.forEach(c => {
-      sellVariationsSet.add(c);
-      sellVariationsSet.add(c.toLowerCase());
-    });
-    aliasData.forEach(mapping => {
-      if (sellAllowedSet.has(mapping.canonicalName)) {
-        mapping.aliases.forEach(alias => {
-          const aliasLower = alias.name.toLowerCase();
-          aliasToCanonicalMap.set(aliasLower, mapping.canonicalName);
-          sellVariationsSet.add(alias.name);
-          sellVariationsSet.add(aliasLower);
-        });
+      if (!aliasToCanonicalMap.has(c.toLowerCase())) {
+        sellVariationsSet.add(c);
+        sellVariationsSet.add(c.toLowerCase());
       }
     });
     const sellVariationsArray = Array.from(sellVariationsSet);
@@ -1179,153 +1420,172 @@ class StockService {
         });
       }
     });
+
     const sellStockMap = new Map();
     sellPurchases.forEach(p => {
-      const category = skuToCategoryMap.get(p._id);
-      if (category && sellAllowedSet.has(category)) {
-        if (!sellStockMap.has(category)) {
-          sellStockMap.set(category, {
-            categoryName: category,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(category);
-        stock.totalPurchased += p.totalPurchased || 0;
-        stock.totalPurchaseValue += p.totalPurchaseValue || 0;
-        stock.itemCount += p.itemCount || 0;
+      const originalCategory = skuToCategoryMap.get(p._id);
+
+      // Skip if no mapping
+      if (!originalCategory) {
+        return;
       }
+
+      // Convert to canonical name if mapped
+      const categoryLower = originalCategory.toLowerCase();
+      const category = aliasToCanonicalMap.get(categoryLower) || originalCategory;
+
+      // Check if either the original OR canonical name is in our allowed sets
+      const isAllowed = sellAllowedSet.has(originalCategory) || expandedSellAllowedSet.has(category);
+
+      if (!isAllowed) {
+        return;
+      }
+
+      if (!sellStockMap.has(category)) {
+        sellStockMap.set(category, {
+          categoryName: category,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+      const stock = sellStockMap.get(category);
+      stock.totalPurchased += p.totalPurchased || 0;
+      stock.totalPurchaseValue += p.totalPurchaseValue || 0;
+      stock.itemCount += p.itemCount || 0;
     });
     salesByCategory.forEach((saleData, category) => {
-      if (sellAllowedSet.has(category)) {
-        if (!sellStockMap.has(category)) {
-          sellStockMap.set(category, {
-            categoryName: category,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(category);
-        stock.totalSold += saleData.totalSold || 0;
-        stock.totalSalesValue += saleData.totalSalesValue || 0;
-        stock.invoiceCount += saleData.invoiceCount || 0;
+      // category is already canonical from earlier processing
+      if (!sellStockMap.has(category)) {
+        sellStockMap.set(category, {
+          categoryName: category,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
       }
+      const stock = sellStockMap.get(category);
+      stock.totalSold += saleData.totalSold || 0;
+      stock.totalSalesValue += saleData.totalSalesValue || 0;
+      stock.invoiceCount += saleData.invoiceCount || 0;
     });
     salesBeforeCutoffByCategory.forEach((saleData, category) => {
-      if (sellAllowedSet.has(category)) {
-        if (!sellStockMap.has(category)) {
-          sellStockMap.set(category, {
-            categoryName: category,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(category);
-        stock.totalSoldBeforeCutoff += saleData.totalSoldBeforeCutoff || 0;
+      // category is already canonical from earlier processing
+      if (!sellStockMap.has(category)) {
+        sellStockMap.set(category, {
+          categoryName: category,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
       }
+      const stock = sellStockMap.get(category);
+      stock.totalSoldBeforeCutoff += saleData.totalSoldBeforeCutoff || 0;
     });
     allCheckoutsData.forEach(c => {
-      const canonical = getCanonical(c.itemName);
-      if (sellAllowedSet.has(canonical)) {
-        if (!sellStockMap.has(canonical)) {
-          sellStockMap.set(canonical, {
-            categoryName: canonical,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(canonical);
-        stock.totalCheckedOut += c.totalCheckedOut || 0;
+      // Check if original item name is allowed
+      if (!sellAllowedSet.has(c.itemName)) {
+        return;
       }
+
+      const canonical = getCanonical(c.itemName);
+      if (!sellStockMap.has(canonical)) {
+        sellStockMap.set(canonical, {
+          categoryName: canonical,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+      const stock = sellStockMap.get(canonical);
+      stock.totalCheckedOut += c.totalCheckedOut || 0;
     });
     checkoutsAfterCutoffData.forEach(c => {
-      const canonical = getCanonical(c.itemName);
-      if (sellAllowedSet.has(canonical)) {
-        if (!sellStockMap.has(canonical)) {
-          sellStockMap.set(canonical, {
-            categoryName: canonical,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(canonical);
-        stock.totalCheckedOutAfterCutoff += c.totalCheckedOutAfterCutoff || 0;
+      // Check if original item name is allowed
+      if (!sellAllowedSet.has(c.itemName)) {
+        return;
       }
+
+      const canonical = getCanonical(c.itemName);
+      if (!sellStockMap.has(canonical)) {
+        sellStockMap.set(canonical, {
+          categoryName: canonical,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+      const stock = sellStockMap.get(canonical);
+      stock.totalCheckedOutAfterCutoff += c.totalCheckedOutAfterCutoff || 0;
     });
     discrepancies.forEach(d => {
+      // d.categoryName is already canonical from earlier processing
       const canonical = d.categoryName;
-      if (sellAllowedSet.has(canonical)) {
-        if (!sellStockMap.has(canonical)) {
-          sellStockMap.set(canonical, {
-            categoryName: canonical,
-            totalPurchased: 0,
-            totalPurchaseValue: 0,
-            totalSold: 0,
-            totalSoldBeforeCutoff: 0,
-            totalSalesValue: 0,
-            totalCheckedOut: 0,
-            totalCheckedOutAfterCutoff: 0,
-            totalDiscrepancies: 0,
-            totalDiscrepancyDifference: 0,
-            itemCount: 0,
-            invoiceCount: 0,
-            stockRemaining: 0
-          });
-        }
-        const stock = sellStockMap.get(canonical);
-        stock.totalDiscrepancies += d.totalDiscrepancies || 0;
-        stock.totalDiscrepancyDifference += d.totalDiscrepancyDifference || 0;
+      if (!sellStockMap.has(canonical)) {
+        sellStockMap.set(canonical, {
+          categoryName: canonical,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
       }
+      const stock = sellStockMap.get(canonical);
+      stock.totalDiscrepancies += d.totalDiscrepancies || 0;
+      stock.totalDiscrepancyDifference += d.totalDiscrepancyDifference || 0;
     });
     sellStockMap.forEach((item, category) => {
       const discrepancy = discrepancies.find(d => d.categoryName === category);
@@ -1336,10 +1596,12 @@ class StockService {
                           + adjustment;
       console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
-    forSellItems.forEach(item => {
-      if (!sellStockMap.has(item.itemName)) {
-        sellStockMap.set(item.itemName, {
-          categoryName: item.itemName,
+
+    // Add canonical names that don't have any data yet
+    canonicalNamesForSell.forEach(canonicalName => {
+      if (!sellStockMap.has(canonicalName)) {
+        sellStockMap.set(canonicalName, {
+          categoryName: canonicalName,
           totalPurchased: 0,
           totalPurchaseValue: 0,
           totalSold: 0,
@@ -1355,12 +1617,91 @@ class StockService {
         });
       }
     });
+
+    // Also add any unmapped items from forSellItems
+    forSellItems.forEach(item => {
+      const itemName = item.itemName;
+      const itemNameLower = itemName.toLowerCase();
+      const canonicalName = aliasToCanonicalMap.get(itemNameLower) || itemName;
+
+      if (!sellStockMap.has(canonicalName)) {
+        sellStockMap.set(canonicalName, {
+          categoryName: canonicalName,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+    });
+
+    // CONSOLIDATION: Merge all sell stock items by their canonical names
+    const consolidatedSellMap = new Map();
+    Array.from(sellStockMap.values()).forEach(item => {
+      const itemNameLower = item.categoryName.toLowerCase();
+      const canonical = aliasToCanonicalMap.get(itemNameLower) || item.categoryName;
+
+      if (!consolidatedSellMap.has(canonical)) {
+        consolidatedSellMap.set(canonical, {
+          categoryName: canonical,
+          aliases: [],
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
+          itemCount: 0,
+          invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+
+      const target = consolidatedSellMap.get(canonical);
+
+      // Track aliases that were merged into this canonical name
+      if (item.categoryName !== canonical && !target.aliases.includes(item.categoryName)) {
+        target.aliases.push(item.categoryName);
+      }
+
+      target.totalPurchased += item.totalPurchased || 0;
+      target.totalPurchaseValue += item.totalPurchaseValue || 0;
+      target.totalSold += item.totalSold || 0;
+      target.totalSoldBeforeCutoff += item.totalSoldBeforeCutoff || 0;
+      target.totalSalesValue += item.totalSalesValue || 0;
+      target.totalCheckedOut += item.totalCheckedOut || 0;
+      target.totalCheckedOutAfterCutoff += item.totalCheckedOutAfterCutoff || 0;
+      target.totalDiscrepancies += item.totalDiscrepancies || 0;
+      target.totalDiscrepancyDifference += item.totalDiscrepancyDifference || 0;
+      target.itemCount += item.itemCount || 0;
+      target.invoiceCount += item.invoiceCount || 0;
+    });
+
+    // Recalculate stockRemaining for each consolidated item
+    consolidatedSellMap.forEach(item => {
+      item.stockRemaining = item.totalPurchased
+                          - item.totalSoldBeforeCutoff
+                          - item.totalCheckedOutAfterCutoff;
+      console.log(`[StockSummary] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Remaining=${item.stockRemaining}`);
+    });
+
     console.timeEnd('[StockSummary] Step 3: Build result maps');
     console.time('[StockSummary] Step 4: Sort and totals');
     const useStock = Array.from(useStockMap.values()).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
-    const sellStock = Array.from(sellStockMap.values()).sort((a, b) =>
+    const sellStock = Array.from(consolidatedSellMap.values()).sort((a, b) =>
       a.categoryName.localeCompare(b.categoryName)
     );
     const useTotals = useStock.reduce((acc, item) => ({

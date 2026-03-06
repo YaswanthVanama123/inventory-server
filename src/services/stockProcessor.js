@@ -171,5 +171,49 @@ class StockProcessor {
     if (!stockSummary) return false;
     return stockSummary.isLowStock;
   }
+
+  /**
+   * Reverse stock movements for a purchase order (used when updating or deleting manual orders)
+   * Creates OUT movements to negate the original IN movements
+   * @param {Object} purchaseOrder - The purchase order to reverse
+   * @param {String} userId - User performing the reversal
+   */
+  static async reverseOrderStockMovements(purchaseOrder, userId = null) {
+    if (!purchaseOrder.stockProcessed) {
+      console.log(`Purchase order ${purchaseOrder.orderNumber} not processed, nothing to reverse`);
+      return;
+    }
+
+    const reversalMovements = [];
+
+    for (const item of purchaseOrder.items) {
+      try {
+        // Create OUT movement to reverse the original IN
+        const movement = await StockMovement.create({
+          sku: item.sku,
+          type: 'OUT',
+          qty: item.qty,
+          refType: 'PURCHASE_ORDER_REVERSAL',
+          refId: purchaseOrder._id,
+          sourceRef: purchaseOrder.orderNumber,
+          notes: `Reversal: Order update/delete - ${purchaseOrder.vendor.name}`,
+          createdBy: userId
+        });
+
+        reversalMovements.push(movement);
+
+        // Update stock summary by removing the quantity
+        await this.updateStockSummary(item.sku, item.qty, 'OUT', userId);
+
+        console.log(`Stock reversal: ${item.sku} -${item.qty} from PO ${purchaseOrder.orderNumber}`);
+      } catch (error) {
+        console.error(`Error reversing item ${item.sku}:`, error.message);
+        throw error;
+      }
+    }
+
+    console.log(`Reversed stock for ${purchaseOrder.orderNumber}`);
+    return reversalMovements;
+  }
 }
 module.exports = StockProcessor;

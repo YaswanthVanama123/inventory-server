@@ -46,34 +46,66 @@ class ModelCategoryService {
     };
   }
   async getRouteStarItems() {
-    const allItems = await RouteStarItem.find()
-      .select('itemName itemParent description')
-      .sort({ itemName: 1 })
-      .lean();
-    const aliasMap = await RouteStarItemAlias.buildLookupMap();
-    const groupedByCanonical = {};
-    allItems.forEach(item => {
-      const canonicalName = aliasMap[item.itemName] || item.itemName;
-      if (!groupedByCanonical[canonicalName]) {
-        groupedByCanonical[canonicalName] = {
-          _id: item._id,
-          itemName: canonicalName,
-          itemParent: item.itemParent,
-          description: item.description,
-          isMapped: !!aliasMap[item.itemName],
-          mergedCount: 0,
-          variations: []
-        };
+    // Fetch both canonical mappings and all RouteStarItems in parallel
+    const [allMappings, allRouteStarItems] = await Promise.all([
+      RouteStarItemAlias.find({ isActive: true })
+        .select('_id canonicalName description aliases')
+        .sort({ canonicalName: 1 })
+        .lean(),
+      RouteStarItem.find()
+        .select('_id itemName itemParent description')
+        .sort({ itemName: 1 })
+        .lean()
+    ]);
+
+    // Build a Set of mapped item names (lowercase for case-insensitive comparison)
+    const mappedItemNames = new Set();
+    for (const mapping of allMappings) {
+      if (mapping.aliases && Array.isArray(mapping.aliases)) {
+        for (const alias of mapping.aliases) {
+          if (alias && alias.name) {
+            // Add both the exact name and lowercase version for matching
+            mappedItemNames.add(alias.name.toLowerCase().trim());
+          }
+        }
       }
-      groupedByCanonical[canonicalName].mergedCount++;
-      groupedByCanonical[canonicalName].variations.push(item.itemName);
-    });
-    const mergedItems = Object.values(groupedByCanonical).sort((a, b) =>
-      a.itemName.localeCompare(b.itemName)
+    }
+
+    // Filter unmapped items efficiently
+    const unmappedItems = [];
+    for (const item of allRouteStarItems) {
+      if (item.itemName) {
+        const itemNameLower = item.itemName.toLowerCase().trim();
+        // Only include if NOT mapped to any canonical name
+        if (!mappedItemNames.has(itemNameLower)) {
+          unmappedItems.push({
+            _id: item._id,
+            itemName: item.itemName,
+            description: item.description,
+            type: 'routestar',
+            itemParent: item.itemParent
+          });
+        }
+      }
+    }
+
+    // Format canonical items (these should always appear)
+    const canonicalItems = allMappings.map(mapping => ({
+      _id: mapping._id,
+      itemName: mapping.canonicalName,
+      description: mapping.description,
+      type: 'canonical',
+      aliasCount: mapping.aliases?.length || 0
+    }));
+
+    // Combine and sort alphabetically
+    const allItems = [...canonicalItems, ...unmappedItems].sort((a, b) =>
+      a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' })
     );
+
     return {
-      items: mergedItems,
-      total: mergedItems.length
+      items: allItems,
+      total: allItems.length
     };
   }
   async saveMapping(mappingData, userId) {
