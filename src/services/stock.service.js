@@ -1,4 +1,5 @@
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const PurchaseOrder = require('../models/PurchaseOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const TruckCheckout = require('../models/TruckCheckout');
 const ModelCategory = require('../models/ModelCategory');
@@ -196,7 +197,8 @@ class StockService {
     }
     console.log(`[getCategorySales] Found ${skus.length} SKUs`);
     console.time('[getCategorySales] Step 3: Parallel aggregations');
-    const [purchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
+    const [ccPurchaseData, manualPurchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
+      // CustomerConnect purchases
       CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -224,7 +226,44 @@ class StockService {
                 unitPrice: '$items.unitPrice',
                 lineTotal: '$items.lineTotal',
                 vendor: '$vendor.name',
-                status: '$status'
+                status: '$status',
+                source: 'customerconnect'
+              }
+            }
+          }
+        }
+      ]),
+      // Manual purchases
+      PurchaseOrder.aggregate([
+        {
+          $match: {
+            source: 'manual',
+            status: { $in: ['confirmed', 'received', 'completed'] },
+            'items.sku': { $in: skus }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $match: {
+            'items.sku': { $in: skus }
+          }
+        },
+        {
+          $group: {
+            _id: { $toUpper: '$items.sku' },
+            itemName: { $first: '$items.name' },
+            totalPurchased: { $sum: '$items.qty' },
+            totalPurchaseValue: { $sum: '$items.lineTotal' },
+            purchaseHistory: {
+              $push: {
+                orderNumber: '$orderNumber',
+                orderDate: '$orderDate',
+                quantity: '$items.qty',
+                unitPrice: '$items.unitPrice',
+                lineTotal: '$items.lineTotal',
+                vendor: '$vendor.name',
+                status: '$status',
+                source: 'manual'
               }
             }
           }
@@ -328,17 +367,49 @@ class StockService {
         .lean()
     ]);
     console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
-    const skuData = {};
-    purchaseData.forEach(item => {
-      skuData[item._id] = {
+
+    // Combine purchase data from both sources
+    const purchaseDataMap = new Map();
+
+    // Add CustomerConnect purchases
+    ccPurchaseData.forEach(item => {
+      purchaseDataMap.set(item._id, {
         sku: item._id,
         itemName: item.itemName || '',
         totalPurchased: item.totalPurchased || 0,
         totalPurchaseValue: item.totalPurchaseValue || 0,
+        purchaseHistory: item.purchaseHistory || []
+      });
+    });
+
+    // Add or merge Manual purchases
+    manualPurchaseData.forEach(item => {
+      if (purchaseDataMap.has(item._id)) {
+        // Merge with existing
+        const existing = purchaseDataMap.get(item._id);
+        existing.totalPurchased += item.totalPurchased || 0;
+        existing.totalPurchaseValue += item.totalPurchaseValue || 0;
+        existing.purchaseHistory.push(...(item.purchaseHistory || []));
+      } else {
+        // Add new entry
+        purchaseDataMap.set(item._id, {
+          sku: item._id,
+          itemName: item.itemName || '',
+          totalPurchased: item.totalPurchased || 0,
+          totalPurchaseValue: item.totalPurchaseValue || 0,
+          purchaseHistory: item.purchaseHistory || []
+        });
+      }
+    });
+
+    // Convert Map to object for SKU data
+    const skuData = {};
+    purchaseDataMap.forEach((data, sku) => {
+      skuData[sku] = {
+        ...data,
         totalSold: 0,
         totalSalesValue: 0,
         totalCheckedOut: 0,
-        purchaseHistory: item.purchaseHistory || [],
         salesHistory: [],
         checkoutHistory: [],
         discrepancyHistory: []
@@ -358,7 +429,7 @@ class StockService {
     };
 
     // Calculate total purchases to distribute sales proportionally
-    const totalPurchased = purchaseData.reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
+    const totalPurchased = Array.from(purchaseDataMap.values()).reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
 
     const skuCount = skus.length || 1;
     skus.forEach(sku => {
@@ -380,19 +451,54 @@ class StockService {
         };
       }
 
-      // Distribute sales proportionally based on purchase quantity
-      const purchaseRatio = totalPurchased > 0 ? (skuData[skuUpper].totalPurchased || 0) / totalPurchased : (1 / skuCount);
-      skuData[skuUpper].totalSold = Math.round(categorySalesData.totalSold * purchaseRatio);
-      skuData[skuUpper].totalSalesValue = categorySalesData.totalSalesValue * purchaseRatio;
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
-
-      // Distribute checkouts proportionally based on purchase quantity
-      skuData[skuUpper].totalCheckedOut = Math.round(categoryCheckoutData.totalCheckedOut * purchaseRatio);
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
-
       skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
         d.itemSku === sku || d.categoryName === categoryName
       );
+    });
+
+    // Distribute sales using remainder distribution to avoid rounding errors
+    const salesDistribution = [];
+    skus.forEach(sku => {
+      const skuUpper = sku.toUpperCase();
+      const purchaseRatio = totalPurchased > 0 ? (skuData[skuUpper].totalPurchased || 0) / totalPurchased : (1 / skuCount);
+      const exactValue = categorySalesData.totalSold * purchaseRatio;
+      const floorValue = Math.floor(exactValue);
+      const fractionalPart = exactValue - floorValue;
+      salesDistribution.push({ sku: skuUpper, floorValue, fractionalPart, purchaseRatio });
+    });
+
+    // Sort by fractional part descending to distribute remainder
+    salesDistribution.sort((a, b) => b.fractionalPart - a.fractionalPart);
+    const totalSalesFloored = salesDistribution.reduce((sum, item) => sum + item.floorValue, 0);
+    const salesRemainder = categorySalesData.totalSold - totalSalesFloored;
+
+    // Distribute the remainder to SKUs with largest fractional parts
+    salesDistribution.forEach((item, index) => {
+      skuData[item.sku].totalSold = item.floorValue + (index < salesRemainder ? 1 : 0);
+      skuData[item.sku].totalSalesValue = categorySalesData.totalSalesValue * item.purchaseRatio;
+    });
+
+    // Distribute checkouts using remainder distribution to avoid rounding errors
+    const checkoutDistribution = [];
+    skus.forEach(sku => {
+      const skuUpper = sku.toUpperCase();
+      const purchaseRatio = totalPurchased > 0 ? (skuData[skuUpper].totalPurchased || 0) / totalPurchased : (1 / skuCount);
+      const exactValue = categoryCheckoutData.totalCheckedOut * purchaseRatio;
+      const floorValue = Math.floor(exactValue);
+      const fractionalPart = exactValue - floorValue;
+      checkoutDistribution.push({ sku: skuUpper, floorValue, fractionalPart });
+    });
+
+    // Sort by fractional part descending to distribute remainder
+    checkoutDistribution.sort((a, b) => b.fractionalPart - a.fractionalPart);
+    const totalCheckoutsFloored = checkoutDistribution.reduce((sum, item) => sum + item.floorValue, 0);
+    const checkoutRemainder = categoryCheckoutData.totalCheckedOut - totalCheckoutsFloored;
+
+    // Distribute the remainder to SKUs with largest fractional parts
+    checkoutDistribution.forEach((item, index) => {
+      skuData[item.sku].totalCheckedOut = item.floorValue + (index < checkoutRemainder ? 1 : 0);
     });
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
@@ -964,38 +1070,75 @@ class StockService {
     let keywordData = this._cacheGet(keywordCacheKey);
     if (!keywordData) {
       const skuToItemNameMap = new Map();
-      const salesKeywordsSet = new Set(); 
-      const skuOrders = await CustomerConnectOrder.aggregate([
-        {
-          $match: {
-            status: { $in: ['Complete', 'Processing', 'Shipped'] },
-            'items.sku': { $in: sellSKUs }
-          }
-        },
-        { $unwind: '$items' },
-        {
-          $match: {
-            'items.sku': { $in: sellSKUs }
-          }
-        },
-        {
-          $group: {
-            _id: {
-              sku: { $toUpper: '$items.sku' },
-              name: '$items.name'
+      const salesKeywordsSet = new Set();
+
+      // Query both CustomerConnect and Manual orders
+      const [ccSkuOrders, manualSkuOrders] = await Promise.all([
+        CustomerConnectOrder.aggregate([
+          {
+            $match: {
+              status: { $in: ['Complete', 'Processing', 'Shipped'] },
+              'items.sku': { $in: sellSKUs }
             }
-          }
-        },
-        {
-          $project: {
-            _id: 0,
-            sku: '$_id.sku',
-            name: '$_id.name'
-          }
-        },
-        { $limit: 300 } 
+          },
+          { $unwind: '$items' },
+          {
+            $match: {
+              'items.sku': { $in: sellSKUs }
+            }
+          },
+          {
+            $group: {
+              _id: {
+                sku: { $toUpper: '$items.sku' },
+                name: '$items.name'
+              }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              sku: '$_id.sku',
+              name: '$_id.name'
+            }
+          },
+          { $limit: 300 }
+        ]),
+        PurchaseOrder.aggregate([
+          {
+            $match: {
+              source: 'manual',
+              status: { $in: ['confirmed', 'received', 'completed'] },
+              'items.sku': { $in: sellSKUs }
+            }
+          },
+          { $unwind: '$items' },
+          {
+            $match: {
+              'items.sku': { $in: sellSKUs }
+            }
+          },
+          {
+            $group: {
+              _id: {
+                sku: { $toUpper: '$items.sku' },
+                name: '$items.name'
+              }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              sku: '$_id.sku',
+              name: '$_id.name'
+            }
+          },
+          { $limit: 300 }
+        ])
       ]);
-      skuOrders.forEach(item => {
+
+      // Combine and process keywords from both sources
+      [...ccSkuOrders, ...manualSkuOrders].forEach(item => {
         if (item.sku && item.name) {
           skuToItemNameMap.set(item.sku, item.name);
           const quotedMatches = item.name.match(/"([^"]+)"/g);
@@ -1027,11 +1170,59 @@ class StockService {
     console.timeEnd('[StockSummary] Step 1.6: Extract sales keywords from purchases');
     console.log(`[StockSummary] Extracted ${salesKeywordsSet.size} sales keywords from item names`);
     console.time('[StockSummary] Step 2: Mega query');
-    const [ordersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
+    const [ccOrdersResult, manualOrdersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
+      // CustomerConnect orders
       (useSKUs.length > 0 || sellSKUs.length > 0) ? CustomerConnectOrder.aggregate([
         {
           $match: {
             status: { $in: ['Complete', 'Processing', 'Shipped'] },
+            'items.sku': { $in: [...useSKUs, ...sellSKUs] }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $match: {
+            'items.sku': { $in: [...useSKUs, ...sellSKUs] }
+          }
+        },
+        {
+          $addFields: {
+            'items.skuUpper': { $toUpper: '$items.sku' }
+          }
+        },
+        {
+          $facet: {
+            usePurchases: [
+              { $match: { 'items.sku': { $in: useSKUs } } },
+              {
+                $group: {
+                  _id: '$items.skuUpper',
+                  totalQuantity: { $sum: '$items.qty' },
+                  totalValue: { $sum: '$items.lineTotal' },
+                  itemCount: { $sum: 1 }
+                }
+              }
+            ],
+            sellPurchases: [
+              { $match: { 'items.sku': { $in: sellSKUs } } },
+              {
+                $group: {
+                  _id: '$items.skuUpper',
+                  totalPurchased: { $sum: '$items.qty' },
+                  totalPurchaseValue: { $sum: '$items.lineTotal' },
+                  itemCount: { $sum: 1 }
+                }
+              }
+            ]
+          }
+        }
+      ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
+      // Manual orders
+      (useSKUs.length > 0 || sellSKUs.length > 0) ? PurchaseOrder.aggregate([
+        {
+          $match: {
+            source: 'manual',
+            status: { $in: ['confirmed', 'received', 'completed'] },
             'items.sku': { $in: [...useSKUs, ...sellSKUs] }
           }
         },
@@ -1226,8 +1417,39 @@ class StockService {
         ]
       }).lean() : Promise.resolve([])
     ]);
-    const usePurchases = ordersResult[0]?.usePurchases || [];
-    const sellPurchases = ordersResult[0]?.sellPurchases || [];
+
+    // Merge CustomerConnect and Manual order results
+    const ccUsePurchases = ccOrdersResult[0]?.usePurchases || [];
+    const ccSellPurchases = ccOrdersResult[0]?.sellPurchases || [];
+    const manualUsePurchases = manualOrdersResult[0]?.usePurchases || [];
+    const manualSellPurchases = manualOrdersResult[0]?.sellPurchases || [];
+
+    // Combine and merge by SKU
+    const usePurchasesMap = new Map();
+    [...ccUsePurchases, ...manualUsePurchases].forEach(item => {
+      if (usePurchasesMap.has(item._id)) {
+        const existing = usePurchasesMap.get(item._id);
+        existing.totalQuantity += item.totalQuantity || 0;
+        existing.totalValue += item.totalValue || 0;
+        existing.itemCount += item.itemCount || 0;
+      } else {
+        usePurchasesMap.set(item._id, { ...item });
+      }
+    });
+    const usePurchases = Array.from(usePurchasesMap.values());
+
+    const sellPurchasesMap = new Map();
+    [...ccSellPurchases, ...manualSellPurchases].forEach(item => {
+      if (sellPurchasesMap.has(item._id)) {
+        const existing = sellPurchasesMap.get(item._id);
+        existing.totalPurchased += item.totalPurchased || 0;
+        existing.totalPurchaseValue += item.totalPurchaseValue || 0;
+        existing.itemCount += item.itemCount || 0;
+      } else {
+        sellPurchasesMap.set(item._id, { ...item });
+      }
+    });
+    const sellPurchases = Array.from(sellPurchasesMap.values());
     const allInvoices = invoicesResult[0]?.allInvoices || [];
     const invoicesBeforeCutoff = invoicesResult[0]?.invoicesBeforeCutoff || [];
     const allCheckoutsOld = checkoutsResult[0]?.allCheckoutsOld || [];
