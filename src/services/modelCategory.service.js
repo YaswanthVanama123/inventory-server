@@ -1,31 +1,20 @@
 const ModelCategory = require('../models/ModelCategory');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
 const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
 
 class ModelCategoryService {
   async getUniqueModels() {
-    const result = await CustomerConnectOrder.aggregate([
+    // Fetch CustomerConnect order items
+    const ccOrderItems = await CustomerConnectOrder.aggregate([
       { $unwind: '$items' },
       {
         $group: {
           _id: '$items.sku',
-          orderItemName: { $first: '$items.name' }
-        }
-      },
-      {
-        $lookup: {
-          from: 'modelcategories',
-          localField: '_id',
-          foreignField: 'modelNumber',
-          as: 'mapping'
-        }
-      },
-      {
-        $unwind: {
-          path: '$mapping',
-          preserveNullAndEmptyArrays: true
+          orderItemName: { $first: '$items.name' },
+          source: { $first: 'customerconnect' }
         }
       },
       {
@@ -33,13 +22,72 @@ class ModelCategoryService {
           _id: 0,
           modelNumber: '$_id',
           orderItemName: 1,
-          categoryItemName: { $ifNull: ['$mapping.categoryItemName', null] },
-          categoryItemId: { $ifNull: ['$mapping.categoryItemId', null] },
-          notes: { $ifNull: ['$mapping.notes', ''] }
+          source: 1
         }
-      },
-      { $sort: { modelNumber: 1 } }
+      }
     ]).allowDiskUse(true);
+
+    // Fetch Manual PO items
+    const manualPOItems = await ManualPurchaseOrderItem.find({ isActive: true })
+      .select('sku name')
+      .lean();
+
+    // Combine both sources into a Map to deduplicate by SKU
+    const modelsMap = new Map();
+
+    // Add CustomerConnect items
+    for (const item of ccOrderItems) {
+      modelsMap.set(item.modelNumber, {
+        modelNumber: item.modelNumber,
+        orderItemName: item.orderItemName,
+        source: 'customerconnect'
+      });
+    }
+
+    // Add Manual PO items (if SKU already exists from CC, mark as 'both')
+    for (const item of manualPOItems) {
+      if (modelsMap.has(item.sku)) {
+        const existing = modelsMap.get(item.sku);
+        existing.source = 'both';
+      } else {
+        modelsMap.set(item.sku, {
+          modelNumber: item.sku,
+          orderItemName: item.name,
+          source: 'manual'
+        });
+      }
+    }
+
+    // Convert Map to Array
+    const allModels = Array.from(modelsMap.values());
+
+    // Get all mappings at once
+    const mappings = await ModelCategory.find({
+      modelNumber: { $in: allModels.map(m => m.modelNumber) }
+    }).lean();
+
+    // Create a mapping lookup
+    const mappingLookup = new Map();
+    for (const mapping of mappings) {
+      mappingLookup.set(mapping.modelNumber, mapping);
+    }
+
+    // Combine models with their mappings
+    const result = allModels.map(model => {
+      const mapping = mappingLookup.get(model.modelNumber);
+      return {
+        modelNumber: model.modelNumber,
+        orderItemName: model.orderItemName,
+        source: model.source,
+        categoryItemName: mapping?.categoryItemName || null,
+        categoryItemId: mapping?.categoryItemId || null,
+        notes: mapping?.notes || ''
+      };
+    });
+
+    // Sort by model number
+    result.sort((a, b) => a.modelNumber.localeCompare(b.modelNumber));
+
     return {
       models: result,
       total: result.length
