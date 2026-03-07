@@ -47,6 +47,7 @@ class StockService {
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
+          verified: true,
           'items.sku': { $in: skus }
         }
       },
@@ -203,6 +204,7 @@ class StockService {
         {
           $match: {
             status: { $in: ['Complete', 'Processing', 'Shipped'] },
+            verified: true,
             'items.sku': { $in: skus }
           }
         },
@@ -239,6 +241,7 @@ class StockService {
           $match: {
             source: 'manual',
             status: { $in: ['confirmed', 'received', 'completed'] },
+            verified: true,
             'items.sku': { $in: skus }
           }
         },
@@ -454,7 +457,7 @@ class StockService {
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
       skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
-        d.itemSku === sku || d.categoryName === categoryName
+        d.itemSku === sku
       );
     });
 
@@ -529,7 +532,8 @@ class StockService {
       }
     });
     const orders = await CustomerConnectOrder.find({
-      status: { $in: ['Complete', 'Processing', 'Shipped'] }
+      status: { $in: ['Complete', 'Processing', 'Shipped'] },
+      verified: true
     }).lean();
     const categoryMap = {};
     orders.forEach(order => {
@@ -592,7 +596,8 @@ class StockService {
     console.log(`[getSellStock] Cutoff Date: ${cutoffDate ? cutoffDate.toISOString().split('T')[0] : 'Not Set'}`);
     const [orders, invoices, checkouts, discrepancies, aliasMap, aliasMappings] = await Promise.all([
       CustomerConnectOrder.find({
-        status: { $in: ['Complete', 'Processing', 'Shipped'] }
+        status: { $in: ['Complete', 'Processing', 'Shipped'] },
+        verified: true
       }).lean(),
       RouteStarInvoice.find({
         status: { $in: ['Completed', 'Closed', 'Pending'] }
@@ -823,12 +828,16 @@ class StockService {
       const rawCategory = discrepancy.categoryName;
       if (!rawCategory) return;
 
-      // Check if raw category is in allowedCategories
-      if (!allowedCategories.has(rawCategory)) return;
-
       // Convert to canonical name
       const categoryLower = rawCategory.toLowerCase();
       const matchedCategory = aliasMap[categoryLower] || rawCategory;
+
+      // Check if EITHER the raw category OR canonical name is in allowedCategories
+      const isAllowed = allowedCategories.has(rawCategory) ||
+                        allowedCategories.has(matchedCategory) ||
+                        expandedAllowedCategories.has(matchedCategory);
+
+      if (!isAllowed) return;
 
       const discrepancyKey = `${discrepancy._id}-${matchedCategory}`;
       if (processedDiscrepancies.has(discrepancyKey)) return;
@@ -1078,6 +1087,7 @@ class StockService {
           {
             $match: {
               status: { $in: ['Complete', 'Processing', 'Shipped'] },
+              verified: true,
               'items.sku': { $in: sellSKUs }
             }
           },
@@ -1109,6 +1119,7 @@ class StockService {
             $match: {
               source: 'manual',
               status: { $in: ['confirmed', 'received', 'completed'] },
+              verified: true,
               'items.sku': { $in: sellSKUs }
             }
           },
@@ -1176,6 +1187,7 @@ class StockService {
         {
           $match: {
             status: { $in: ['Complete', 'Processing', 'Shipped'] },
+            verified: true,
             'items.sku': { $in: [...useSKUs, ...sellSKUs] }
           }
         },
@@ -1223,6 +1235,7 @@ class StockService {
           $match: {
             source: 'manual',
             status: { $in: ['confirmed', 'received', 'completed'] },
+            verified: true,
             'items.sku': { $in: [...useSKUs, ...sellSKUs] }
           }
         },
@@ -1485,13 +1498,14 @@ class StockService {
       if (disc.itemSku && skuToCategoryMap.has(disc.itemSku)) {
         targetCategory = skuToCategoryMap.get(disc.itemSku);
       }
-      if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
+      if (!targetCategory || !(sellAllowedSet.has(targetCategory) || expandedSellAllowedSet.has(targetCategory))) {
         targetCategory = getCanonical(disc.categoryName || '');
       }
-      if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
+      if (!targetCategory || !(sellAllowedSet.has(targetCategory) || expandedSellAllowedSet.has(targetCategory))) {
         targetCategory = getCanonical(disc.itemName || '');
       }
-      if (targetCategory && sellAllowedSet.has(targetCategory)) {
+      if (targetCategory && (sellAllowedSet.has(targetCategory) || expandedSellAllowedSet.has(targetCategory))) {
+        console.log(`[StockSummary] Processing discrepancy for SKU=${disc.itemSku}, categoryName=${disc.categoryName}, targetCategory=${targetCategory}`);
         if (!discrepancyMap.has(targetCategory)) {
           discrepancyMap.set(targetCategory, {
             totalDiscrepancies: 0,
@@ -1505,6 +1519,8 @@ class StockService {
         if (disc.status === 'Approved') {
           aggData.approvedAdjustment += disc.difference || 0;
         }
+      } else {
+        console.log(`[StockSummary] SKIPPING discrepancy for SKU=${disc.itemSku}, categoryName=${disc.categoryName}, targetCategory=${targetCategory}, reason=notInAllowedSet`);
       }
     });
     const discrepancies = Array.from(discrepancyMap.entries()).map(([categoryName, data]) => ({

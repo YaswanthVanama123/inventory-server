@@ -94,14 +94,7 @@ class ManualOrderService {
 
     await order.save();
 
-    // Auto-process stock immediately
-    try {
-      await StockProcessor.processPurchaseOrder(order, userId);
-      console.log(`Manual order ${orderNumber} created and stock processed`);
-    } catch (stockError) {
-      console.error(`Manual order ${orderNumber} created but stock processing failed:`, stockError.message);
-      // Order is created but stock not processed - admin can manually process later
-    }
+    console.log(`Manual order ${orderNumber} created. Stock will be processed after manual verification.`);
 
     return order;
   }
@@ -252,13 +245,7 @@ class ManualOrderService {
 
     await order.save();
 
-    // Re-process stock with new data
-    try {
-      await StockProcessor.processPurchaseOrder(order, userId);
-      console.log(`Manual order ${orderNumber} updated and stock reprocessed`);
-    } catch (stockError) {
-      console.error(`Manual order ${orderNumber} updated but stock reprocessing failed:`, stockError.message);
-    }
+    console.log(`Manual order ${orderNumber} updated. Stock will be processed after manual verification.`);
 
     return order;
   }

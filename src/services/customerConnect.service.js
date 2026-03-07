@@ -212,7 +212,7 @@ class CustomerConnectService {
 
       // Manual orders from PurchaseOrder collection
       PurchaseOrder.find({ ...query, source: 'manual' })
-        .select('orderNumber orderDate status total stockProcessed vendor.name items source')
+        .select('orderNumber orderDate status total stockProcessed verified vendor.name items source')
         .lean()
     ]);
 
@@ -237,7 +237,7 @@ class CustomerConnectService {
         status: order.status,
         total: order.total,
         stockProcessed: order.stockProcessed,
-        verified: undefined, // Manual orders don't have verified field
+        verified: order.verified,
         vendor: { name: order.vendor?.name },
         itemCount: order.items?.length || 0,
         source: 'manual'

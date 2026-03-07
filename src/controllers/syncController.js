@@ -10,12 +10,12 @@ const Inventory = require('../models/Inventory');
 
 const syncCustomerConnect = async (req, res, next) => {
   try {
-    const { limit = 50, processStock = true } = req.body;
+    const { limit = 50 } = req.body;
     const syncService = new SyncCustomerConnect(req.user.id);
-    const result = await syncService.run({ limit, processStock });
+    const result = await syncService.run({ limit });
     res.status(200).json({
       success: true,
-      message: 'CustomerConnect sync completed',
+      message: 'CustomerConnect sync completed. Verify orders to process stock.',
       data: result
     });
   } catch (error) {
@@ -25,9 +25,9 @@ const syncCustomerConnect = async (req, res, next) => {
 };
 const syncRouteStar = async (req, res, next) => {
   try {
-    const { limit = 50, processStock = true } = req.body;
+    const { limit = 50 } = req.body;
     const syncService = new SyncRouteStar(req.user.id);
-    const result = await syncService.run({ limit, processStock });
+    const result = await syncService.run({ limit });
     res.status(200).json({
       success: true,
       message: 'RouteStar sync completed',
@@ -326,8 +326,7 @@ const retrySingleSync = async (syncLog, userId) => {
       };
     }
     const result = await syncService.run({
-      limit: syncLog.details?.limit || 50,
-      processStock: true
+      limit: syncLog.details?.limit || 50
     });
     return {
       syncLogId: syncLog._id,

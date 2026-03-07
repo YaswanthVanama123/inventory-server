@@ -105,8 +105,18 @@ const purchaseOrderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
     index: true
-  }, 
+  },
   stockProcessedAt: Date,
+  verified: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  verifiedAt: Date,
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   notes: String,
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

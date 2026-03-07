@@ -12,7 +12,7 @@ class SyncCustomerConnect {
     this.syncLog = null;
   }
   async run(options = {}) {
-    const { limit = 50, processStock = true } = options;
+    const { limit = 50 } = options;
     this.syncLog = await SyncLog.create({
       source: 'customerconnect',
       startedAt: new Date(),
@@ -48,14 +48,10 @@ class SyncCustomerConnect {
           failed++;
         }
       }
-      if (processStock) {
-        console.log('Processing stock movements...');
-        const processedCount = await StockProcessor.processUnprocessedPurchaseOrders(this.userId);
-        this.syncLog.details = {
-          ...this.syncLog.details,
-          stockMovementsProcessed: processedCount
-        };
-      }
+
+      // Stock processing removed - orders must be manually verified before stock is processed
+      console.log('Orders synced. Stock will be processed after manual verification.');
+
       this.syncLog.recordsInserted = inserted;
       this.syncLog.recordsUpdated = updated;
       this.syncLog.recordsFailed = failed;
