@@ -2,6 +2,16 @@ const RouteStarAutomation = require('../automation/routestar');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+const RouteStarCustomer = require('../models/RouteStarCustomer');
+const RouteStarCustomerContact = require('../models/RouteStarCustomerContact');
+const RouteStarCustomerEquipment = require('../models/RouteStarCustomerEquipment');
+const RouteStarCustomerRoute = require('../models/RouteStarCustomerRoute');
+const RouteStarCustomerNote = require('../models/RouteStarCustomerNote');
+const RouteStarCustomerActivity = require('../models/RouteStarCustomerActivity');
+const RouteStarCustomerAttachment = require('../models/RouteStarCustomerAttachment');
+const RouteStarCustomerPricing = require('../models/RouteStarCustomerPricing');
+const RouteStarCustomerBillingInfo = require('../models/RouteStarCustomerBillingInfo');
+const RouteStarCustomerParser = require('../automation/parsers/routestar-customer.parser');
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 const SyncLog = require('../models/SyncLog');
@@ -150,6 +160,285 @@ class RouteStarSyncService {
       throw error;
     }
   }
+
+  async syncCustomers(limit = Infinity) {
+    const fetchAll = limit === Infinity || limit === null || limit === 0;
+    console.log(`\n👥 Syncing RouteStar Customers to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    await this.createSyncLog('routestar_customers');
+    try {
+      const customers = await this.automation.fetchCustomersList(limit);
+      console.log(`✓ Fetched ${customers.length} customers from RouteStar`);
+      if (customers.length === 0) {
+        console.log(`ℹ️  No customers found - this is normal if there are no customers in the system`);
+        await this.updateSyncLog({
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          success: true
+        });
+        return {
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          customers: []
+        };
+      }
+      console.log(`\n💾 Saving ${customers.length} customers to database...`);
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+      const savedCustomers = [];
+      for (let i = 0; i < customers.length; i++) {
+        const rawCustomer = customers[i];
+        try {
+          const customerData = RouteStarCustomerParser.parseCustomerList(rawCustomer);
+
+          if (!customerData.customerId) {
+            console.log(`  ⊗ [${i + 1}/${customers.length}] Skipped: No customer ID`);
+            skipped++;
+            continue;
+          }
+
+          const existing = await RouteStarCustomer.findOne({
+            customerId: customerData.customerId
+          });
+
+          if (existing) {
+            Object.assign(existing, {
+              ...customerData,
+              lastSyncDate: new Date()
+            });
+            await existing.save();
+            updated++;
+            console.log(`  ✓ [${i + 1}/${customers.length}] Updated: ${customerData.customerName || customerData.customerId}`);
+            savedCustomers.push(existing);
+          } else {
+            const newCustomer = await RouteStarCustomer.create({
+              ...customerData,
+              lastSyncDate: new Date()
+            });
+            created++;
+            console.log(`  ✓ [${i + 1}/${customers.length}] Created: ${customerData.customerName || customerData.customerId}`);
+            savedCustomers.push(newCustomer);
+          }
+        } catch (error) {
+          failed++;
+          console.error(`  ✗ [${i + 1}/${customers.length}] Failed to save customer ${rawCustomer.customerId}:`, error.message);
+        }
+      }
+      console.log(`\n✅ Customer sync complete:`);
+      console.log(`   - Total fetched: ${customers.length}`);
+      console.log(`   - Created: ${created}`);
+      console.log(`   - Updated: ${updated}`);
+      console.log(`   - Skipped: ${skipped}`);
+      console.log(`   - Failed: ${failed}`);
+      await this.updateSyncLog({
+        total: customers.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        success: true
+      });
+      return {
+        total: customers.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        customers: savedCustomers
+      };
+    } catch (error) {
+      console.error('❌ Customers sync error:', error);
+      await this.updateSyncLog({
+        error: error.message,
+        success: false
+      });
+      throw error;
+    }
+  }
+
+  async syncCustomerDetails(customerId) {
+    try {
+      console.log(`\n  📥 Fetching details for customer: ${customerId}`);
+
+      const customer = await RouteStarCustomer.findOne({ customerId });
+      if (!customer) {
+        throw new Error(`Customer ${customerId} not found in database`);
+      }
+
+      // Fetch details from RouteStar
+      const details = await this.automation.fetchCustomerDetails(customerId);
+
+      // Parse customer details
+      const customerData = RouteStarCustomerParser.parseCustomerDetails(customerId, details);
+
+      console.log(`\n  💾 Saving customer details to database...`);
+      let updatedFields = 0;
+      let preservedFields = 0;
+
+      // Only update fields that have actual values (not null/undefined)
+      // This preserves data from the list sync
+      Object.keys(customerData).forEach(key => {
+        if (customerData[key] !== null && customerData[key] !== undefined && customerData[key] !== '') {
+          customer[key] = customerData[key];
+          updatedFields++;
+        } else {
+          preservedFields++;
+        }
+      });
+
+      console.log(`    ✓ Updated ${updatedFields} field(s)`);
+      console.log(`    ✓ Preserved ${preservedFields} existing field(s)`);
+
+      customer.lastSyncDate = new Date();
+      await customer.save();
+      console.log(`    ✓ Updated customer details for ${customerId}`);
+
+      // Parse and save additional contacts
+      if (details.contacts && details.contacts.length > 0) {
+        await RouteStarCustomerContact.deleteMany({ customerId }); // Clear old contacts
+        const contacts = RouteStarCustomerParser.parseContacts(customerId, details.contacts);
+        if (contacts.length > 0) {
+          await RouteStarCustomerContact.insertMany(contacts);
+          console.log(`    ✓ Saved ${contacts.length} contacts`);
+        }
+      }
+
+      // Parse and save equipment
+      if (details.equipment && details.equipment.length > 0) {
+        await RouteStarCustomerEquipment.deleteMany({ customerId }); // Clear old equipment
+        const equipment = RouteStarCustomerParser.parseEquipment(customerId, details.equipment);
+        if (equipment.length > 0) {
+          await RouteStarCustomerEquipment.insertMany(equipment);
+          console.log(`    ✓ Saved ${equipment.length} equipment items`);
+        }
+      }
+
+      // Parse and save routes
+      if (details.routes && details.routes.length > 0) {
+        await RouteStarCustomerRoute.deleteMany({ customerId }); // Clear old routes
+        const routes = RouteStarCustomerParser.parseRoutes(customerId, details.routes);
+        if (routes.length > 0) {
+          await RouteStarCustomerRoute.insertMany(routes);
+          console.log(`    ✓ Saved ${routes.length} routes`);
+        }
+      }
+
+      // Parse and save notes
+      if (details.notes && details.notes.length > 0) {
+        await RouteStarCustomerNote.deleteMany({ customerId }); // Clear old notes
+        const notes = RouteStarCustomerParser.parseNotes(customerId, details.notes);
+        if (notes.length > 0) {
+          await RouteStarCustomerNote.insertMany(notes);
+          console.log(`    ✓ Saved ${notes.length} notes`);
+        }
+      }
+
+      // Parse and save activities
+      if (details.activities && details.activities.length > 0) {
+        await RouteStarCustomerActivity.deleteMany({ customerId }); // Clear old activities
+        const activities = RouteStarCustomerParser.parseActivities(customerId, details.activities);
+        if (activities.length > 0) {
+          await RouteStarCustomerActivity.insertMany(activities);
+          console.log(`    ✓ Saved ${activities.length} activities`);
+        }
+      }
+
+      // Parse and save attachments
+      if (details.attachments && details.attachments.length > 0) {
+        await RouteStarCustomerAttachment.deleteMany({ customerId }); // Clear old attachments
+        const attachments = RouteStarCustomerParser.parseAttachments(customerId, details.attachments);
+        if (attachments.length > 0) {
+          await RouteStarCustomerAttachment.insertMany(attachments);
+          console.log(`    ✓ Saved ${attachments.length} attachments`);
+        }
+      }
+
+      // Parse and save pricing
+      if (details.pricing && details.pricing.length > 0) {
+        await RouteStarCustomerPricing.deleteMany({ customerId }); // Clear old pricing
+        const pricing = RouteStarCustomerParser.parsePricing(customerId, details.pricing);
+        if (pricing.length > 0) {
+          await RouteStarCustomerPricing.insertMany(pricing);
+          console.log(`    ✓ Saved ${pricing.length} pricing items`);
+        }
+      }
+
+      // Parse and save billing info
+      if (details.billingInfo) {
+        await RouteStarCustomerBillingInfo.deleteMany({ customerId }); // Clear old billing info
+        const billingInfo = RouteStarCustomerParser.parseBillingInfo(customerId, details.billingInfo);
+        await RouteStarCustomerBillingInfo.create(billingInfo);
+        console.log(`    ✓ Saved billing info`);
+      }
+
+      console.log(`  ✅ Successfully synced all details for customer: ${customerId}`);
+      return customer;
+    } catch (error) {
+      console.error(`  ✗ Error syncing customer details for ${customerId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async syncAllCustomerDetails(limit = Infinity, forceAll = false) {
+    const fetchAll = limit === Infinity || limit === null || limit === 0;
+    const forceText = forceAll ? ' (FORCE ALL)' : ' (BASIC INFO ONLY)';
+    console.log(`\n📥 Syncing customer details${forceText}${fetchAll ? ' (ALL)' : ` (limit: ${limit})`}...`);
+
+    try {
+      let queryFilter = {};
+      if (!forceAll) {
+        // Only sync customers that don't have detailed info yet (basic fields are null)
+        queryFilter = {
+          $or: [
+            { billingAddress1: null },
+            { serviceAddress2: null },
+            { latitude: null }
+          ]
+        };
+      }
+
+      const query = RouteStarCustomer.find(queryFilter).sort({ lastSyncDate: 1 });
+      const customersToSync = fetchAll ? await query : await query.limit(limit);
+
+      console.log(`   Found: ${customersToSync.length} customers to sync details`);
+
+      let synced = 0;
+      let skipped = 0;
+      const errors = [];
+
+      for (const customer of customersToSync) {
+        try {
+          await this.syncCustomerDetails(customer.customerId);
+          synced++;
+          // Add delay to avoid overwhelming the server
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error) {
+          errors.push({
+            customerId: customer.customerId,
+            error: error.message
+          });
+          skipped++;
+        }
+      }
+
+      console.log(`\n✅ Customer details sync completed:`);
+      console.log(`   - Details Synced: ${synced}`);
+      console.log(`   - Skipped: ${skipped}`);
+      console.log(`   - Total: ${customersToSync.length}`);
+
+      return { synced, skipped, total: customersToSync.length, errors };
+    } catch (error) {
+      console.error('❌ Customer details sync error:', error);
+      throw error;
+    }
+  }
+
   async createSyncLog(source = 'routestar') {
     this.syncLog = await SyncLog.create({
       source,

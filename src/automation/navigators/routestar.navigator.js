@@ -420,7 +420,7 @@ class RouteStarNavigator {
         if (textContent.includes('>>') ||
             textContent.includes('»»') ||
             textContent.includes('Last') ||
-            textContent.match(/\d{2,}/)) {  
+            textContent.match(/\d{2,}/)) {
           console.log(`   ⚠️  Skipping candidate ${i + 1} - appears to be fast-forward button: "${textContent}"`);
           continue;
         }
@@ -482,7 +482,7 @@ class RouteStarNavigator {
     try {
       await nextPageElement.scrollIntoViewIfNeeded();
       console.log('   ✓ Scrolled pagination into view');
-      await this.page.waitForTimeout(500); 
+      await this.page.waitForTimeout(500);
     } catch (e) {
       console.log('   ⚠️  Could not scroll pagination into view, attempting click anyway');
     }
@@ -510,7 +510,7 @@ class RouteStarNavigator {
     console.log('Waiting for table to reload...');
     if (firstItemBefore) {
       let pageChanged = false;
-      for (let i = 0; i < 15; i++) {  
+      for (let i = 0; i < 15; i++) {
         await this.page.waitForTimeout(1000);
         try {
           const masterTable = await this.page.$('div.ht_master');
@@ -532,9 +532,72 @@ class RouteStarNavigator {
         console.log(`   ⚠️  Warning: Page content may not have changed after clicking next`);
       }
     } else {
-      await this.page.waitForTimeout(5000); 
+      await this.page.waitForTimeout(5000);
     }
     return true;
+  }
+
+  async navigateToCustomers() {
+    const customersUrl = `${this.config.baseUrl}${this.config.routes.customers}`;
+    console.log(`Navigating to customers list: ${customersUrl}`);
+    console.log('  Navigating to page...');
+    try {
+      await this.page.goto(customersUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
+      console.log('  ✓ Page HTML loaded');
+    } catch (error) {
+      console.log('  ⚠️  DOMContentLoaded timeout, trying commit...');
+      await this.page.goto(customersUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+      console.log('  ✓ Navigation committed (fallback)');
+    }
+    const currentUrl = this.page.url();
+    console.log(`Current URL: ${currentUrl}`);
+    if (currentUrl.includes('/web/login')) {
+      throw new Error('Redirected to login page - session may have expired');
+    }
+    console.log('Waiting for page structure to render...');
+    await this.page.waitForTimeout(3000);
+    console.log('Waiting for customers table to render (max 5 minutes)...');
+    let tableRendered = false;
+    const startTime = Date.now();
+    const maxWaitMs = 300000;
+    const pollIntervalMs = 2000;
+    while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
+      const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
+      if (table) {
+        tableRendered = true;
+        break;
+      }
+      await this.page.waitForTimeout(pollIntervalMs);
+    }
+    if (!tableRendered) {
+      throw new Error('Customers table did not render. Page may have failed to load properly.');
+    }
+    console.log('✓ Table rendered successfully');
+    console.log('Waiting for table data to load...');
+    await this.page.waitForTimeout(5000);
+    console.log('✓ Successfully navigated to customers page');
+  }
+
+  async navigateToCustomerDetail(customerId) {
+    const customerUrl = `${this.config.baseUrl}${this.config.routes.customerDetail}${customerId}`;
+    try {
+      await this.page.goto(customerUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
+    } catch (error) {
+      await this.page.goto(customerUrl, {
+        waitUntil: 'commit',
+        timeout: 30000
+      });
+    }
+    await this.page.waitForTimeout(2000);
   }
 }
 module.exports = RouteStarNavigator;

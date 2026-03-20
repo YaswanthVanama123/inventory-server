@@ -4,7 +4,7 @@ const syncLogSchema = new mongoose.Schema({
   source: {
     type: String,
     required: [true, 'Source is required'],
-    enum: ['customerconnect', 'routestar', 'routestar_items'],
+    enum: ['customerconnect', 'routestar', 'routestar_items', 'routestar_customers'],
     index: true
   },
   startedAt: {

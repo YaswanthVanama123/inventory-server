@@ -8,6 +8,7 @@ const selectors = require('./selectors/routestar.selectors');
 const RouteStarNavigator = require('./navigators/routestar.navigator');
 const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
 const RouteStarItemsFetcher = require('./fetchers/RouteStarItemsFetcher');
+const RouteStarCustomerFetcher = require('./fetchers/RouteStarCustomerFetcher');
 const RouteStarParser = require('./parsers/routestar.parser');
 const logger = require('./utils/logger');
 const { retry } = require('./utils/retry');
@@ -21,6 +22,7 @@ class RouteStarAutomation {
     this.navigator = null;
     this.fetcher = null;
     this.itemsFetcher = null;
+    this.customerFetcher = null;
     this.page = null;
     this.isLoggedIn = false;
     this.logger = logger.child({ automation: 'RouteStar' });
@@ -34,6 +36,7 @@ class RouteStarAutomation {
       this.navigator = new RouteStarNavigator(this.page, config, selectors);
       this.fetcher = new RouteStarFetcher(this.page, this.navigator, selectors, config.baseUrl);
       this.itemsFetcher = new RouteStarItemsFetcher(this.page, this.navigator, selectors, config.baseUrl);
+      this.customerFetcher = new RouteStarCustomerFetcher(this.page, this.navigator, selectors, config.baseUrl);
       this.logger.info('Initialization complete');
       return this;
     } catch (error) {
@@ -163,6 +166,41 @@ class RouteStarAutomation {
       }
     );
   }
+
+  async fetchCustomersList(limit = Infinity) {
+    if (!this.isLoggedIn) {
+      await this.login();
+    }
+    return await retry(
+      async () => await this.customerFetcher.fetchCustomersList(limit),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching customers', { attempt, error: error.message });
+        }
+      }
+    );
+  }
+
+  async fetchCustomerDetails(customerId) {
+    if (!this.isLoggedIn) {
+      await this.login();
+    }
+    return await retry(
+      async () => await this.customerFetcher.fetchCustomerDetails(customerId),
+      {
+        attempts: 3,
+        delay: 2000,
+        backoff: true,
+        onRetry: (attempt, error) => {
+          this.logger.warn('Retry fetching customer details', { attempt, error: error.message, customerId });
+        }
+      }
+    );
+  }
+
   async fetchInvoiceDetails(invoiceUrl) {
     if (!this.isLoggedIn) {
       await this.login();

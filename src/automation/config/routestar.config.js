@@ -12,7 +12,9 @@ module.exports = {
     invoices: '/web/invoices/',
     closedInvoices: '/web/closedinvoices/',
     invoiceDetails: '/web/invoice/',
-    items: '/web/items/'
+    items: '/web/items/',
+    customers: '/web/customers/',
+    customerDetail: '/web/customerdetail/'
   },
   pagination: {
     itemsPerPage: 10,
