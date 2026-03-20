@@ -197,6 +197,27 @@ class RouteStarCustomerController {
       }
     }
   }
+
+  async getCustomersFromClosedInvoices(req, res, next) {
+    try {
+      const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
+      const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+
+      const customers = await routeStarCustomerService.getCustomersFromClosedInvoices(startDate, endDate);
+
+      res.json({
+        success: true,
+        data: customers
+      });
+    } catch (error) {
+      console.error('Error fetching customers from closed invoices:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch customers from closed invoices',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new RouteStarCustomerController();

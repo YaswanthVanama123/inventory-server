@@ -113,6 +113,7 @@ const orderDiscrepancyRoutes = require('./routes/orderDiscrepancy.routes');
 const manualPurchaseOrderItemRoutes = require('./routes/manualPurchaseOrderItem.routes');
 const vendorRoutes = require('./routes/vendor.routes');
 const manualOrderRoutes = require('./routes/manualOrder.routes');
+const goAuditsRoutes = require('./routes/goAudits.routes');
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -152,6 +153,7 @@ app.use('/api/order-discrepancies', orderDiscrepancyRoutes);
 app.use('/api/manual-po-items', manualPurchaseOrderItemRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/manual-orders', manualOrderRoutes);
+app.use('/api/goaudits', goAuditsRoutes);
 app.use(notFound);
 app.use(errorHandler);
 const PORT = process.env.PORT || 5000;

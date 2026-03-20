@@ -4,6 +4,7 @@ const routeStarCustomerController = require('../controllers/routeStarCustomerCon
 const { authenticate } = require('../middleware/auth');
 
 router.get('/stats', authenticate, routeStarCustomerController.getCustomerStats);
+router.get('/from-closed-invoices', authenticate, routeStarCustomerController.getCustomersFromClosedInvoices);
 router.get('/', authenticate, routeStarCustomerController.getCustomers);
 router.get('/:id', authenticate, routeStarCustomerController.getCustomerById);
 router.post('/sync', authenticate, routeStarCustomerController.syncCustomers);

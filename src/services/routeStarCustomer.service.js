@@ -249,6 +249,86 @@ class RouteStarCustomerService {
 
     return { deletedCount: result.deletedCount };
   }
+
+  async getCustomersFromClosedInvoices(startDate, endDate) {
+    const RouteStarInvoice = require('../models/RouteStarInvoice');
+
+    // Build query for date range
+    const query = { invoiceType: 'closed' };
+
+    if (startDate || endDate) {
+      query.invoiceDate = {};
+      if (startDate) {
+        query.invoiceDate.$gte = startDate;
+      }
+      if (endDate) {
+        // Set end date to end of day
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        query.invoiceDate.$lte = endOfDay;
+      }
+    }
+
+    // Get unique customer names from closed invoices
+    const customerNames = await RouteStarInvoice.distinct('customer.name', query);
+
+    // Get full customer details for each customer
+    const customers = await Promise.all(
+      customerNames.map(async (customerName) => {
+        // Find customer by name
+        const customer = await RouteStarCustomer.findOne({
+          customerName: customerName
+        }).lean();
+
+        if (!customer) {
+          // If customer not found in RouteStarCustomer collection,
+          // return basic info from invoices
+          const invoice = await RouteStarInvoice.findOne({
+            'customer.name': customerName,
+            ...query
+          }).lean();
+
+          return {
+            customerName: customerName,
+            customerId: null,
+            email: invoice?.customer?.email || null,
+            phone: invoice?.customer?.phone || null,
+            invoiceCount: await RouteStarInvoice.countDocuments({
+              'customer.name': customerName,
+              ...query
+            }),
+            totalAmount: await RouteStarInvoice.aggregate([
+              { $match: { 'customer.name': customerName, ...query } },
+              { $group: { _id: null, total: { $sum: '$total' } } }
+            ]).then(result => result[0]?.total || 0)
+          };
+        }
+
+        // Get invoice stats for this customer
+        const [invoiceCount, totalAmount] = await Promise.all([
+          RouteStarInvoice.countDocuments({
+            'customer.name': customerName,
+            ...query
+          }),
+          RouteStarInvoice.aggregate([
+            { $match: { 'customer.name': customerName, ...query } },
+            { $group: { _id: null, total: { $sum: '$total' } } }
+          ]).then(result => result[0]?.total || 0)
+        ]);
+
+        return {
+          ...customer,
+          invoiceCount,
+          totalAmount
+        };
+      })
+    );
+
+    // Sort by customer name
+    return customers
+      .filter(c => c) // Remove null entries
+      .sort((a, b) => (a.customerName || '').localeCompare(b.customerName || ''));
+  }
 }
 
 module.exports = new RouteStarCustomerService();
