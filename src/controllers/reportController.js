@@ -10,6 +10,7 @@ const Settings = require('../models/Settings');
 const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 const { getScheduler } = require('../services/scheduler');
+const CSVExporter = require('../utils/csvExporter');
 
 
 const getSyncStatistics = async () => {
@@ -2208,6 +2209,99 @@ const getStockProcessingStatus = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Export customers from RouteStar closed invoices with date range
+ * @route GET /api/reports/export-customers
+ * @query {string} startDate - Start date (YYYY-MM-DD)
+ * @query {string} endDate - End date (YYYY-MM-DD)
+ */
+const exportCustomers = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    // Validate date range
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Start date and end date are required'
+      });
+    }
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    console.log('Querying RouteStarInvoice with:', {
+      invoiceType: 'closed',
+      dateRange: { start, end }
+    });
+
+    // Find closed invoices within date range
+    const invoices = await RouteStarInvoice.find({
+      invoiceType: 'closed',
+      invoiceDate: {
+        $gte: start,
+        $lte: end
+      }
+    }).select('customer invoiceNumber invoiceDate').lean();
+
+    console.log(`Found ${invoices.length} closed invoices`);
+    console.log('First 5 invoices:', invoices.slice(0, 5).map(inv => ({
+      invoice: inv.invoiceNumber,
+      customer: inv.customer
+    })));
+
+    // Extract unique customers with case-insensitive deduplication
+    const customerMap = new Map();
+
+    invoices.forEach(invoice => {
+      const customerName = invoice.customer?.name;
+      if (customerName) {
+        // Normalize: trim whitespace and convert to lowercase for comparison
+        const normalizedName = customerName.trim().toLowerCase();
+
+        // Only add if this normalized name doesn't exist yet
+        if (!customerMap.has(normalizedName)) {
+          customerMap.set(normalizedName, {
+            customerName: customerName.trim(), // Keep original casing
+            address: '', // RouteStar invoices don't have separate address fields
+            city: '',
+            state: '',
+            pincode: '',
+            email: '',
+            phone: ''
+          });
+        }
+      }
+    });
+
+    const customers = Array.from(customerMap.values());
+
+    console.log(`Extracted ${customers.length} unique customers`);
+
+    // Define CSV columns (removed invoice-specific fields for unique customer export)
+    const columns = [
+      { key: 'customerName', label: 'Customer Name' },
+      { key: 'address', label: 'Address' },
+      { key: 'city', label: 'City' },
+      { key: 'state', label: 'State' },
+      { key: 'pincode', label: 'Pincode' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' }
+    ];
+
+    // Send CSV response
+    CSVExporter.sendCSVResponse(res, customers, columns, 'routestar_customers');
+
+  } catch (error) {
+    console.error('Export customers error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getDashboard,
   getStockSummary,
@@ -2227,5 +2321,6 @@ module.exports = {
   getDashboardSyncWidget,
   getInventorySyncStatus,
   getSyncHistory,
-  getStockProcessingStatus
+  getStockProcessingStatus,
+  exportCustomers
 };

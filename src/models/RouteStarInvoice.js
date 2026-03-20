@@ -35,7 +35,16 @@ const routeStarInvoiceSchema = new mongoose.Schema({
       trim: true,
       index: true
     },
-    link: String
+    link: String,
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true
+    },
+    phone: {
+      type: String,
+      trim: true
+    }
   },
   enteredBy: {
     type: String,
@@ -78,6 +87,10 @@ const routeStarInvoiceSchema = new mongoose.Schema({
   arrivalTime: String,
   departureTime: String,
   elapsedTime: String,
+  customerGrouping: String,
+  postedBy: String,
+  postedTimestamp: Date,
+  paymentMethod: String,
   lineItems: [{
     name: {
       type: String,

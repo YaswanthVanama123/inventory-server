@@ -379,6 +379,10 @@ class RouteStarSyncService {
             arrivalTime: invoice.arrivalTime,
             departureTime: invoice.departureTime,
             elapsedTime: invoice.elapsedTime,
+            customerGrouping: invoice.customerGrouping,
+            postedBy: invoice.postedBy,
+            postedTimestamp: parseRouteStarDate(invoice.postedTimestamp),
+            paymentMethod: invoice.paymentMethod,
             detailUrl: invoice.detailUrl,
             lastSyncedAt: new Date(),
             syncSource: 'closed',
@@ -484,6 +488,15 @@ class RouteStarSyncService {
       invoice.subtotal = parseFloat(details.subtotal) || 0;
       invoice.tax = parseFloat(details.tax) || 0;
       invoice.total = parseFloat(details.total) || 0;
+
+      // Update customer email and phone if available
+      if (details.customerEmail) {
+        invoice.customer.email = details.customerEmail;
+      }
+      if (details.customerPhone) {
+        invoice.customer.phone = details.customerPhone;
+      }
+
       await invoice.save();
       console.log(`✓ Invoice details saved for ${invoiceNumber}`);
       return invoice;

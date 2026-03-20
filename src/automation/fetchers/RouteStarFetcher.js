@@ -144,10 +144,13 @@ class RouteStarFetcher {
         selectors.assignedTo,
         el => el.textContent.trim()
       ).catch(() => null);
-      const stop = await row.$eval(
+
+      // Extract stop only if selector exists (pending invoices only)
+      const stop = selectors.stop ? await row.$eval(
         selectors.stop,
         el => el.textContent.trim()
-      ).catch(() => null);
+      ).catch(() => null) : null;
+
       const customerName = await row.$eval(
         selectors.customerName,
         el => el.textContent.trim()
@@ -181,22 +184,77 @@ class RouteStarFetcher {
           return null;
         }
       ).catch(() => null);
+
+      // Extract subtotal if selector exists (closed invoices only)
+      const subtotal = selectors.subtotal ? await row.$eval(
+        selectors.subtotal,
+        el => el.textContent.replace(/[$,]/g, '').trim()
+      ).catch(() => '0.00') : null;
+
       const total = await row.$eval(
         selectors.invoiceTotal,
         el => el.textContent.replace(/[$,]/g, '').trim()
       ).catch(() => '0.00');
+
+      // Extract dateCompleted if selector exists (closed invoices only)
+      const dateCompleted = selectors.dateCompleted ? await row.$eval(
+        selectors.dateCompleted,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
       const lastModified = await row.$eval(
         selectors.lastModified,
         el => el.textContent.trim()
       ).catch(() => null);
-      const payment = await row.$eval(
-        selectors.payment,
-        el => el.textContent.trim()
-      ).catch(() => null);
-      const arrivalTime = await row.$eval(
+
+      // Extract arrivalTime (closed invoices)
+      const arrivalTime = selectors.arrivalTime ? await row.$eval(
         selectors.arrivalTime,
         el => el.textContent.trim()
-      ).catch(() => null);
+      ).catch(() => null) : null;
+
+      // Extract departureTime (closed invoices)
+      const departureTime = selectors.departureTime ? await row.$eval(
+        selectors.departureTime,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract elapsedTime (closed invoices)
+      const elapsedTime = selectors.elapsedTime ? await row.$eval(
+        selectors.elapsedTime,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract customerGrouping (closed invoices)
+      const customerGrouping = selectors.customerGrouping ? await row.$eval(
+        selectors.customerGrouping,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract postedBy (closed invoices)
+      const postedBy = selectors.postedBy ? await row.$eval(
+        selectors.postedBy,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract postedTimestamp (closed invoices)
+      const postedTimestamp = selectors.postedTimestamp ? await row.$eval(
+        selectors.postedTimestamp,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract paymentMethod (closed invoices)
+      const paymentMethod = selectors.paymentMethod ? await row.$eval(
+        selectors.paymentMethod,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
+      // Extract payment only if selector exists (pending invoices only)
+      const payment = selectors.payment ? await row.$eval(
+        selectors.payment,
+        el => el.textContent.trim()
+      ).catch(() => null) : null;
+
       const isComplete = await row.$eval(
         selectors.complete,
         el => el.checked
@@ -205,6 +263,7 @@ class RouteStarFetcher {
         selectors.posted,
         el => el.checked
       ).catch(() => false);
+
       return {
         invoiceNumber,
         invoiceDate,
@@ -218,10 +277,18 @@ class RouteStarFetcher {
         status,
         isComplete,
         isPosted,
+        subtotal,
         total,
+        dateCompleted,
         lastModified,
         payment,
         arrivalTime,
+        departureTime,
+        elapsedTime,
+        customerGrouping,
+        postedBy,
+        postedTimestamp,
+        paymentMethod,
         detailUrl: invoiceLink ? new URL(invoiceLink, this.baseUrl).href : null
       };
     } catch (error) {

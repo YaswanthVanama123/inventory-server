@@ -18,7 +18,8 @@ const {
   getInventorySyncStatus,
   getSyncHistory,
   getStockProcessingStatus,
-  getDashboardSyncWidget
+  getDashboardSyncWidget,
+  exportCustomers
 } = require('../controllers/reportController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
@@ -41,6 +42,7 @@ router.get('/profit-analysis', getProfitAnalysis);
 router.get('/inventory-sync-status', getInventorySyncStatus);
 router.get('/sync-history', getSyncHistory);
 router.get('/stock-processing-status', getStockProcessingStatus);
+router.get('/export-customers', exportCustomers);
 router.get('/:type/export/csv', exportReportToCSV);
 router.get('/:type/export/pdf', exportReportToPDF);
 module.exports = router;

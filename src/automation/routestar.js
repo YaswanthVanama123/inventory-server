@@ -378,11 +378,13 @@ class RouteStarAutomation {
         return '';
       }
     };
-    const signedBy = await extractField(selectors.invoiceDetail.signedBy);
-    const invoiceMemo = await extractField(selectors.invoiceDetail.invoiceMemo);
-    const serviceNotes = await extractField(selectors.invoiceDetail.serviceNotes);
+    const signedBy = await extractField(this.selectors.invoiceDetail.signedBy);
+    const invoiceMemo = await extractField(this.selectors.invoiceDetail.invoiceMemo);
+    const serviceNotes = await extractField(this.selectors.invoiceDetail.serviceNotes);
+    const customerEmail = await extractField(this.selectors.invoiceDetail.customerEmail);
+    const customerPhone = await extractField(this.selectors.invoiceDetail.customerPhone);
     const salesTaxRate = await this.page.$eval(
-      selectors.invoiceDetail.salesTaxRate,
+      this.selectors.invoiceDetail.salesTaxRate,
       el => {
         const selectedOption = el.options[el.selectedIndex];
         return selectedOption ? selectedOption.textContent.trim() : '';
@@ -392,7 +394,9 @@ class RouteStarAutomation {
       signedBy,
       invoiceMemo,
       serviceNotes,
-      salesTaxRate
+      salesTaxRate,
+      customerEmail,
+      customerPhone
     };
   }
   async takeScreenshot(name) {
