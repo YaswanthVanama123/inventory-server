@@ -10,7 +10,7 @@ const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
 const RouteStarItemsFetcher = require('./fetchers/RouteStarItemsFetcher');
 const RouteStarCustomerFetcher = require('./fetchers/RouteStarCustomerFetcher');
 const RouteStarParser = require('./parsers/routestar.parser');
-const logger = require('./utils/logger');
+const logger = require('./utils/Logger'); // Fixed: capital L
 const { retry } = require('./utils/retry');
 const { LoginError, NavigationError, ParsingError } = require('./errors');
 class RouteStarAutomation {

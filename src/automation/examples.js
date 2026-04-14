@@ -3,7 +3,7 @@
 const CustomerConnectService = require('./services/CustomerConnectService');
 const RouteStarService = require('./services/RouteStarService');
 const { retry } = require('./utils/retry');
-const logger = require('./utils/logger');
+const logger = require('./utils/Logger'); // Fixed: capital L
 async function fetchCustomerConnectOrders() {
   const service = new CustomerConnectService();
   try {

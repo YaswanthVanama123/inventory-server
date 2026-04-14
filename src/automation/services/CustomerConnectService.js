@@ -1,7 +1,7 @@
 const BaseBrowser = require('../core/BaseBrowser');
 const BaseNavigator = require('../core/BaseNavigator');
 const BaseParser = require('../core/BaseParser');
-const logger = require('../utils/logger');
+const logger = require('../utils/Logger'); // Fixed: capital L
 const { retry } = require('../utils/retry');
 const { LoginError, NavigationError } = require('../errors');
 

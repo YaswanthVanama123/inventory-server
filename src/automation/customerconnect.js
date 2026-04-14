@@ -8,7 +8,7 @@ const selectors = require('./selectors/customerconnect.selectors');
 const CustomerConnectNavigator = require('./navigators/customerconnect.navigator');
 const CustomerConnectFetcher = require('./fetchers/CustomerConnectFetcher');
 const CustomerConnectParser = require('./parsers/customerconnect.parser');
-const logger = require('./utils/logger');
+const logger = require('./utils/Logger'); // Fixed: capital L
 const { retry } = require('./utils/retry');
 const { LoginError, NavigationError, ParsingError } = require('./errors');
 class CustomerConnectAutomation {
