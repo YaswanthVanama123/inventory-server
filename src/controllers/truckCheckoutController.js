@@ -1,5 +1,6 @@
 const truckCheckoutService = require('../services/truckCheckout.service');
 const stockCalculationService = require('../services/stockCalculation.service');
+const stockService = require('../services/stock.service');
 
 
 class TruckCheckoutController {
@@ -83,15 +84,63 @@ class TruckCheckoutController {
   }
   async searchItems(req, res, next) {
     try {
-      const options = {
-        q: req.query.q || '',
-        forSell: req.query.forSell === 'true',
-        limit: parseInt(req.query.limit) || 100
-      };
-      const items = await stockCalculationService.searchItemsWithStock(options);
+      const searchQuery = req.query.q || '';
+
+      // Use the SAME API as Stock page - getStockSummary (includes manual purchase orders)
+      const stockResult = await stockService.getStockSummary();
+      const sellStock = stockResult.sellStock; // getStockSummary returns { useStock, sellStock }
+
+      console.log('[TruckCheckout] Sample stock items from getStockSummary:');
+      sellStock.items.slice(0, 5).forEach(item => {
+        console.log(`  ${item.categoryName}: purchased=${item.totalPurchased}, aliases=${JSON.stringify(item.aliases)}`);
+      });
+
+      // Expand each stock item to show canonical name + all aliases separately
+      const expandedItems = [];
+
+      sellStock.items.forEach(item => {
+        // Add the canonical name as an item
+        expandedItems.push({
+          itemName: item.categoryName,
+          currentStock: item.stockRemaining,
+          totalPurchased: item.totalPurchased,
+          totalSold: item.totalSoldBeforeCutoff,
+          totalCheckedOut: item.totalCheckedOutAfterCutoff,
+          totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0
+        });
+
+        // Add each alias as a separate item with the SAME stock data
+        if (item.aliases && Array.isArray(item.aliases)) {
+          item.aliases.forEach(aliasName => {
+            expandedItems.push({
+              itemName: aliasName,
+              currentStock: item.stockRemaining,
+              totalPurchased: item.totalPurchased,
+              totalSold: item.totalSoldBeforeCutoff,
+              totalCheckedOut: item.totalCheckedOutAfterCutoff,
+              totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0
+            });
+          });
+        }
+      });
+
+      // Filter by search query if provided
+      let filteredItems = expandedItems;
+      if (searchQuery) {
+        const queryLower = searchQuery.toLowerCase();
+        filteredItems = expandedItems.filter(item =>
+          item.itemName.toLowerCase().includes(queryLower)
+        );
+      }
+
+      // Sort by item name
+      filteredItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+      console.log(`[TruckCheckout] Returning ${filteredItems.length} items (filtered from ${expandedItems.length})`);
+
       res.json({
         success: true,
-        data: items
+        data: filteredItems
       });
     } catch (error) {
       console.error('Search items error:', error);

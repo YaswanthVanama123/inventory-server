@@ -12,17 +12,9 @@ class StockCalculationService {
     try {
       const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
       const sku = (canonicalName || itemName).toUpperCase();
-      const stockSummary = await StockSummary.findOne({ sku });
-      if (stockSummary) {
-        return {
-          sku,
-          canonicalName,
-          availableQty: stockSummary.availableQty,
-          totalInQty: stockSummary.totalInQty,
-          totalOutQty: stockSummary.totalOutQty,
-          source: 'StockSummary'
-        };
-      }
+
+      // Always calculate from sources to get the full breakdown
+      // StockSummary only has totalInQty/totalOutQty, not the breakdown by purchase/sold/checkout
       return await this._calculateStockFromSources(canonicalName, sku);
     } catch (error) {
       console.error('Error calculating current stock:', error);
@@ -30,18 +22,26 @@ class StockCalculationService {
     }
   }
   async _calculateStockFromSources(canonicalName, sku) {
+    // Get cutoff date from settings
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const cutoffDate = settings.stockCalculationCutoffDate;
+
     const totalPurchased = await this._calculatePurchases(canonicalName);
-    const totalSold = await this._calculateSales(canonicalName);
-    const totalCheckedOut = await this._calculateCheckouts(canonicalName);
+    const totalSoldBeforeCutoff = await this._calculateSales(canonicalName, cutoffDate);
+    const totalCheckedOutAfterCutoff = await this._calculateCheckouts(canonicalName, cutoffDate);
     const totalDiscrepancyAdjustment = await this._calculateDiscrepancyAdjustments(canonicalName);
-    const availableQty = totalPurchased - totalSold - totalCheckedOut + totalDiscrepancyAdjustment;
+
+    // Match stock.service.js formula: totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + discrepancyAdjustment
+    const availableQty = totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + totalDiscrepancyAdjustment;
+
     return {
       sku,
       canonicalName,
       availableQty,
       totalPurchased,
-      totalSold,
-      totalCheckedOut,
+      totalSold: totalSoldBeforeCutoff, // For backward compatibility, keep same field name
+      totalCheckedOut: totalCheckedOutAfterCutoff, // For backward compatibility, keep same field name
       totalDiscrepancyAdjustment,
       source: 'Calculated'
     };
@@ -50,27 +50,62 @@ class StockCalculationService {
     const mappings = await ModelCategory.find({ categoryItemName: canonicalName }).lean();
     const skus = mappings.map(m => m.modelNumber);
     if (skus.length === 0) return 0;
-    const orders = await CustomerConnectOrder.find({
-      status: { $in: ['Complete', 'Processing', 'Shipped'] },
-      'items.sku': { $in: skus }
-    }).lean();
+
+    // Query both CustomerConnect orders AND Manual purchase orders
+    const PurchaseOrder = require('../models/PurchaseOrder');
+
+    const [ccOrders, manualOrders] = await Promise.all([
+      // CustomerConnect orders
+      CustomerConnectOrder.find({
+        status: { $in: ['Complete', 'Processing', 'Shipped'] },
+        verified: true,  // Only count verified orders
+        'items.sku': { $in: skus }
+      }).lean(),
+      // Manual purchase orders
+      PurchaseOrder.find({
+        source: 'manual',
+        status: { $in: ['confirmed', 'received', 'completed'] },
+        verified: true,
+        'items.sku': { $in: skus }
+      }).lean()
+    ]);
+
     let total = 0;
-    orders.forEach(order => {
+
+    // Count CustomerConnect orders
+    ccOrders.forEach(order => {
       order.items?.forEach(item => {
         if (skus.includes(item.sku?.toUpperCase())) {
           total += item.qty || 0;
         }
       });
     });
+
+    // Count Manual purchase orders
+    manualOrders.forEach(order => {
+      order.items?.forEach(item => {
+        if (skus.includes(item.sku?.toUpperCase())) {
+          total += item.qty || 0;
+        }
+      });
+    });
+
     return total;
   }
-  async _calculateSales(canonicalName) {
+  async _calculateSales(canonicalName, cutoffDate) {
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     const variations = await this._getItemVariations(canonicalName, aliasMap);
-    const invoices = await RouteStarInvoice.find({
+    const query = {
       status: { $in: ['Completed', 'Closed', 'Pending'] },
       'lineItems.name': { $in: variations }
-    }).lean();
+    };
+
+    // If cutoff date exists, only count invoices before the cutoff
+    if (cutoffDate) {
+      query.invoiceDate = { $lt: cutoffDate };
+    }
+
+    const invoices = await RouteStarInvoice.find(query).lean();
     let total = 0;
     invoices.forEach(invoice => {
       invoice.lineItems?.forEach(item => {
@@ -82,16 +117,23 @@ class StockCalculationService {
     });
     return total;
   }
-  async _calculateCheckouts(canonicalName) {
+  async _calculateCheckouts(canonicalName, cutoffDate) {
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
     const variations = await this._getItemVariations(canonicalName, aliasMap);
-    const checkouts = await TruckCheckout.find({
+    const query = {
       status: 'checked_out',
       $or: [
         { itemName: { $in: variations } },
         { 'itemsTaken.name': { $in: variations } }
       ]
-    }).lean();
+    };
+
+    // If cutoff date exists, only count checkouts after the cutoff
+    if (cutoffDate) {
+      query.checkoutDate = { $gte: cutoffDate };
+    }
+
+    const checkouts = await TruckCheckout.find(query).lean();
     let total = 0;
     checkouts.forEach(checkout => {
       if (checkout.quantityTaking && variations.includes(checkout.itemName)) {
@@ -176,13 +218,20 @@ class StockCalculationService {
       .lean();
     const itemNames = items.map(item => item.itemName);
     const stockMap = await this.getBatchStock(itemNames);
-    return items.map(item => ({
-      itemName: item.itemName,
-      itemParent: item.itemParent,
-      qtyOnHand: item.qtyOnHand,
-      currentStock: stockMap[item.itemName]?.availableQty || 0,
-      stockInfo: stockMap[item.itemName]
-    }));
+    return items.map(item => {
+      const stockInfo = stockMap[item.itemName] || {};
+      return {
+        itemName: item.itemName,
+        itemParent: item.itemParent,
+        qtyOnHand: item.qtyOnHand,
+        currentStock: stockInfo.availableQty || 0,
+        totalPurchased: stockInfo.totalPurchased || 0,
+        totalSold: stockInfo.totalSold || 0,
+        totalCheckedOut: stockInfo.totalCheckedOut || 0,
+        totalDiscrepancyAdjustment: stockInfo.totalDiscrepancyAdjustment || 0,
+        stockInfo: stockInfo
+      };
+    });
   }
 }
 module.exports = new StockCalculationService();

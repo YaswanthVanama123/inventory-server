@@ -114,6 +114,7 @@ const manualPurchaseOrderItemRoutes = require('./routes/manualPurchaseOrderItem.
 const vendorRoutes = require('./routes/vendor.routes');
 const manualOrderRoutes = require('./routes/manualOrder.routes');
 const goAuditsRoutes = require('./routes/goAudits.routes');
+const screenPermissionRoutes = require('./routes/screenPermission.routes');
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -154,6 +155,7 @@ app.use('/api/manual-po-items', manualPurchaseOrderItemRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/manual-orders', manualOrderRoutes);
 app.use('/api/goaudits', goAuditsRoutes);
+app.use('/api/screen-permissions', screenPermissionRoutes);
 app.use(notFound);
 app.use(errorHandler);
 const PORT = process.env.PORT || 5000;

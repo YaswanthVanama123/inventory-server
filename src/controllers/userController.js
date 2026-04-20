@@ -124,8 +124,12 @@ const createUser = async (req, res, next) => {
 };
 const updateUser = async (req, res, next) => {
   try {
-    const { email, fullName, role, isActive, truckNumber } = req.body;
-    const user = await User.findOne({ _id: req.params.id, isDeleted: false });
+    const { email, fullName, role, isActive, truckNumber, password } = req.body;
+
+    // If password is being updated, we need to select it
+    const selectFields = password ? '+password' : '';
+    const user = await User.findOne({ _id: req.params.id, isDeleted: false }).select(selectFields);
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -140,14 +144,28 @@ const updateUser = async (req, res, next) => {
     if (role) user.role = role;
     if (typeof isActive === 'boolean') user.isActive = isActive;
     if (truckNumber !== undefined) user.truckNumber = truckNumber || null;
+
+    // Admin can reset password without knowing current password
+    if (password) {
+      user.password = password;
+      // Mark password as modified to ensure the pre-save hook runs
+      user.markModified('password');
+    }
+
     user.lastUpdatedBy = req.user.id;
     await user.save();
+
+    const auditDetails = { email, fullName, role, isActive, truckNumber };
+    if (password) {
+      auditDetails.passwordReset = true;
+    }
+
     await AuditLog.create({
       action: 'UPDATE',
       resource: 'USER',
       resourceId: user._id,
       performedBy: req.user.id,
-      details: { email, fullName, role, isActive, truckNumber },
+      details: auditDetails,
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
@@ -217,7 +235,8 @@ const deleteUser = async (req, res, next) => {
 const resetPassword = async (req, res, next) => {
   try {
     const { newPassword } = req.body;
-    const user = await User.findOne({ _id: req.params.id, isDeleted: false });
+    // Need to select password field to update it
+    const user = await User.findOne({ _id: req.params.id, isDeleted: false }).select('+password');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -228,6 +247,8 @@ const resetPassword = async (req, res, next) => {
       });
     }
     user.password = newPassword;
+    // Mark password as modified to ensure the pre-save hook runs
+    user.markModified('password');
     await user.save();
     await AuditLog.create({
       action: 'PASSWORD_RESET',
