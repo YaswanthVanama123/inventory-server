@@ -172,13 +172,11 @@ class CustomerConnectService {
       includeRange = true
     } = options;
 
-    // Build query for filters (common to both sources)
     const query = {};
     if (status) query.status = status;
     if (vendor) query['vendor.name'] = new RegExp(vendor, 'i');
     if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
 
-    // Verified filter only applies to CustomerConnect orders
     const ccQuery = { ...query };
     if (verified !== undefined) {
       if (verified === 'true') {
@@ -203,20 +201,16 @@ class CustomerConnectService {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Query both sources in parallel
     const [ccOrders, manualOrders] = await Promise.all([
-      // CustomerConnect orders
       CustomerConnectOrder.find(ccQuery)
         .select('orderNumber orderDate status total stockProcessed verified vendor.name items')
         .lean(),
 
-      // Manual orders from PurchaseOrder collection
       PurchaseOrder.find({ ...query, source: 'manual' })
         .select('orderNumber orderDate status total stockProcessed verified vendor.name items source')
         .lean()
     ]);
 
-    // Combine and transform both sources
     const allOrders = [
       ...ccOrders.map(order => ({
         _id: order._id,
@@ -244,25 +238,21 @@ class CustomerConnectService {
       }))
     ];
 
-    // Sort combined results by orderNumber descending
     allOrders.sort((a, b) => {
       const aNum = parseInt(a.orderNumber.replace(/\D/g, '')) || 0;
       const bNum = parseInt(b.orderNumber.replace(/\D/g, '')) || 0;
       return bNum - aNum;
     });
 
-    // Get total count
     const total = allOrders.length;
 
-    // Paginate the combined results
     const paginatedOrders = allOrders.slice(skip, skip + limitNum);
 
-    // Get range data if needed
     const now = Date.now();
     const shouldFetchRange = includeRange && (!rangeCache.timestamp || (now - rangeCache.timestamp > rangeCache.ttl));
 
     if (shouldFetchRange && allOrders.length > 0) {
-      const highest = allOrders[0]; // Already sorted descending
+      const highest = allOrders[0];
       const lowest = allOrders[allOrders.length - 1];
 
       rangeCache.data = {
@@ -294,19 +284,15 @@ class CustomerConnectService {
     return response;
   }
   async getOrderByNumber(orderNumber) {
-    // Check CustomerConnect orders first
     let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
 
-    // If not found, check manual orders
     if (!order) {
       order = await PurchaseOrder.findOne({ orderNumber, source: 'manual' });
       if (order) {
-        // Add source field to identify as manual order
         order = order.toObject();
         order.source = 'manual';
       }
     } else {
-      // Add source field to identify as CustomerConnect order
       order = order.toObject ? order.toObject() : order;
       order.source = 'customerconnect';
     }
@@ -372,10 +358,7 @@ class CustomerConnectService {
       { $unwind: '$items' },
       ...(search ? [{
         $match: {
-          $or: [
-            { 'items.sku': { $regex: search, $options: 'i' } },
-            { 'items.name': { $regex: search, $options: 'i' } }
-          ]
+          'items.name': { $regex: search, $options: 'i' }
         }
       }] : []),
       {

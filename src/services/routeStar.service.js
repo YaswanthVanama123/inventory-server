@@ -700,10 +700,7 @@ class RouteStarService {
           $match: {
             'lineItems.name': { $exists: true, $ne: null, $ne: '' },
             ...(search ? {
-              $or: [
-                { 'lineItems.name': { $regex: search, $options: 'i' } },
-                { 'lineItems.sku': { $regex: search, $options: 'i' } }
-              ]
+              'lineItems.name': { $regex: search, $options: 'i' }
             } : {})
           }
         },
