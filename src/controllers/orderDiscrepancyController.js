@@ -104,13 +104,18 @@ exports.verifyOrder = async (req, res, next) => {
     if (allGood) {
       console.log(`✓ Order ${order.orderNumber} verified - All Good`);
 
-      // Mark order as verified
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
+
+      order.items.forEach(item => {
+        item.itemVerified = true;
+        item.itemVerifiedAt = new Date();
+        item.itemVerifiedBy = req.user._id;
+      });
+
       await order.save();
 
-      // Process stock for all verified orders (if not already processed)
       if (!order.stockProcessed) {
         try {
           await StockProcessor.processPurchaseOrder(order, req.user._id);
@@ -185,13 +190,18 @@ exports.verifyOrder = async (req, res, next) => {
       }
     }
 
-    // Mark order as verified
     order.verified = true;
     order.verifiedAt = new Date();
     order.verifiedBy = req.user._id;
+
+    order.items.forEach(item => {
+      item.itemVerified = true;
+      item.itemVerifiedAt = new Date();
+      item.itemVerifiedBy = req.user._id;
+    });
+
     await order.save();
 
-    // Process stock for all verified orders (even with discrepancies, process the expected quantities)
     if (!order.stockProcessed) {
       try {
         await StockProcessor.processPurchaseOrder(order, req.user._id);

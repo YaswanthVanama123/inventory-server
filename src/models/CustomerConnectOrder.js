@@ -58,6 +58,17 @@ const customerConnectOrderSchema = new mongoose.Schema({
       type: Number,
       required: [true, 'Line total is required'],
       min: [0, 'Line total cannot be negative']
+    },
+    itemVerified: {
+      type: Boolean,
+      default: false
+    },
+    itemVerifiedAt: {
+      type: Date
+    },
+    itemVerifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     }
   }],
   subtotal: {

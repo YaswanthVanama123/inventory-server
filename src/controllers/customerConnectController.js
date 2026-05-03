@@ -237,5 +237,39 @@ class CustomerConnectController {
       next(error);
     }
   }
+  async verifyOrderItem(req, res, next) {
+    try {
+      const { orderNumber, itemIndex } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'User ID is required'
+        });
+      }
+
+      const result = await customerConnectService.verifyOrderItem(
+        orderNumber,
+        parseInt(itemIndex),
+        userId
+      );
+
+      res.json({
+        success: true,
+        message: 'Item verified successfully',
+        data: result
+      });
+    } catch (error) {
+      console.error('Verify order item error:', error);
+      if (error.message === 'Order not found' || error.message === 'Invalid item index') {
+        return res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      }
+      next(error);
+    }
+  }
 }
 module.exports = new CustomerConnectController();

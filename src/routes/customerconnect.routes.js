@@ -12,6 +12,7 @@ router.post('/sync/stock', authenticate, requireAdmin(), customerConnectControll
 router.post('/sync/full', authenticate, requireAdmin(), customerConnectController.fullSync);
 router.get('/orders', authenticate, customerConnectController.getOrders);
 router.get('/orders/:orderNumber', authenticate, customerConnectController.getOrderByNumber);
+router.post('/orders/:orderNumber/items/:itemIndex/verify', authenticate, customerConnectController.verifyOrderItem);
 router.get('/stats', authenticate, customerConnectController.getStats);
 router.get('/items/grouped', authenticate, customerConnectController.getGroupedItems);
 router.post('/orders/bulk-delete', authenticate, requireAdmin(), customerConnectController.bulkDeleteBySKUs);

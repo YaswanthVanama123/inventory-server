@@ -344,7 +344,10 @@ class CustomerConnectService {
     const sortDirection = sortOrder === 'desc' ? -1 : 1;
     const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
     const minQty = parseInt(minQuantity);
+
+    // Combine orders from both CustomerConnectOrder and PurchaseOrder (manual orders)
     const result = await CustomerConnectOrder.aggregate([
+      // Match synced orders from CustomerConnect
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] }
@@ -355,10 +358,31 @@ class CustomerConnectService {
           items: 1
         }
       },
+      // Union with manual PurchaseOrders
+      {
+        $unionWith: {
+          coll: 'purchaseorders',
+          pipeline: [
+            {
+              $match: {
+                status: { $in: ['confirmed', 'received', 'completed'] }
+              }
+            },
+            {
+              $project: {
+                items: 1
+              }
+            }
+          ]
+        }
+      },
       { $unwind: '$items' },
       ...(search ? [{
         $match: {
-          'items.name': { $regex: search, $options: 'i' }
+          $or: [
+            { 'items.name': { $regex: search, $options: 'i' } },
+            { 'items.sku': { $regex: search, $options: 'i' } }
+          ]
         }
       }] : []),
       {
@@ -411,33 +435,74 @@ class CustomerConnectService {
   }
   async bulkDeleteBySKUs(skus) {
     console.log(`[Bulk Delete] Deleting orders with SKUs: ${skus.join(', ')}`);
-    const result = await CustomerConnectOrder.deleteMany({
-      'items.sku': { $in: skus }
-    });
-    console.log(`[Bulk Delete] Deleted ${result.deletedCount} orders`);
+
+    // Delete from both CustomerConnectOrder and PurchaseOrder (manual orders)
+    const [ccResult, poResult] = await Promise.all([
+      CustomerConnectOrder.deleteMany({
+        'items.sku': { $in: skus }
+      }),
+      PurchaseOrder.deleteMany({
+        'items.sku': { $in: skus }
+      })
+    ]);
+
+    const totalDeleted = ccResult.deletedCount + poResult.deletedCount;
+    console.log(`[Bulk Delete] Deleted ${ccResult.deletedCount} CustomerConnect orders and ${poResult.deletedCount} manual orders (${totalDeleted} total)`);
+
     return {
-      deletedCount: result.deletedCount,
+      deletedCount: totalDeleted,
+      ccDeletedCount: ccResult.deletedCount,
+      poDeletedCount: poResult.deletedCount,
       skus: skus
     };
   }
   async bulkDeleteByOrderNumbers(orderNumbers) {
     console.log(`[Bulk Delete Orders] Deleting orders with numbers: ${orderNumbers.join(', ')}`);
-    const result = await CustomerConnectOrder.deleteMany({
-      orderNumber: { $in: orderNumbers }
-    });
-    console.log(`[Bulk Delete Orders] Deleted ${result.deletedCount} orders`);
+
+    // Delete from both CustomerConnectOrder and PurchaseOrder (manual orders)
+    const [ccResult, poResult] = await Promise.all([
+      CustomerConnectOrder.deleteMany({
+        orderNumber: { $in: orderNumbers }
+      }),
+      PurchaseOrder.deleteMany({
+        orderNumber: { $in: orderNumbers }
+      })
+    ]);
+
+    const totalDeleted = ccResult.deletedCount + poResult.deletedCount;
+    console.log(`[Bulk Delete Orders] Deleted ${ccResult.deletedCount} CustomerConnect orders and ${poResult.deletedCount} manual orders (${totalDeleted} total)`);
+
     return {
-      deletedCount: result.deletedCount,
+      deletedCount: totalDeleted,
+      ccDeletedCount: ccResult.deletedCount,
+      poDeletedCount: poResult.deletedCount,
       orderNumbers: orderNumbers
     };
   }
   async getOrdersBySKU(sku) {
     console.log(`[getOrdersBySKU] Looking for SKU: ${sku}`);
-    const orders = await CustomerConnectOrder.find({
-      'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
-    }).sort({ orderNumber: -1 }).lean();
-    console.log(`[getOrdersBySKU] Found ${orders.length} orders`);
-    const orderEntries = orders.map(order => {
+
+    // Query both CustomerConnectOrder and PurchaseOrder (manual orders)
+    const [ccOrders, poOrders] = await Promise.all([
+      CustomerConnectOrder.find({
+        'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
+      })
+      .populate('items.itemVerifiedBy', 'username name')
+      .sort({ orderNumber: -1 })
+      .lean(),
+
+      PurchaseOrder.find({
+        'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
+      })
+      .populate('items.itemVerifiedBy', 'username name')
+      .sort({ orderNumber: -1 })
+      .lean()
+    ]);
+
+    console.log(`[getOrdersBySKU] Found ${ccOrders.length} CustomerConnect orders and ${poOrders.length} manual orders`);
+
+    // Extract matching entries from CustomerConnect orders
+    const ccEntries = ccOrders.map(order => {
       const matchingItems = order.items.filter(item =>
         item.sku.toLowerCase() === sku.toLowerCase()
       );
@@ -452,14 +517,47 @@ class CustomerConnectService {
         qty: item.qty,
         unitPrice: item.unitPrice,
         lineTotal: item.lineTotal,
-        stockProcessed: order.stockProcessed
+        stockProcessed: order.stockProcessed,
+        itemVerified: item.itemVerified || false,
+        itemVerifiedAt: item.itemVerifiedAt,
+        itemVerifiedBy: item.itemVerifiedBy
       }));
     }).flat();
-    console.log(`[getOrdersBySKU] Extracted ${orderEntries.length} matching entries`);
+
+    // Extract matching entries from manual PurchaseOrders
+    const poEntries = poOrders.map(order => {
+      const matchingItems = order.items.filter(item =>
+        item.sku.toLowerCase() === sku.toLowerCase()
+      );
+      return matchingItems.map(item => ({
+        orderNumber: order.orderNumber,
+        poNumber: null, // Manual orders don't have PO number from CustomerConnect
+        orderDate: order.orderDate,
+        status: order.status,
+        vendor: order.vendor?.name || 'N/A',
+        sku: item.sku,
+        name: item.name,
+        qty: item.qty,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+        stockProcessed: order.stockProcessed,
+        itemVerified: item.itemVerified || false,
+        itemVerifiedAt: item.itemVerifiedAt,
+        itemVerifiedBy: item.itemVerifiedBy
+      }));
+    }).flat();
+
+    // Combine and sort all entries by order date (newest first)
+    const orderEntries = [...ccEntries, ...poEntries].sort((a, b) =>
+      new Date(b.orderDate) - new Date(a.orderDate)
+    );
+
+    console.log(`[getOrdersBySKU] Extracted ${orderEntries.length} matching entries (${ccEntries.length} from CC, ${poEntries.length} from manual)`);
+
     return {
       sku: sku,
       entries: orderEntries,
-      totalOrders: orders.length,
+      totalOrders: ccOrders.length + poOrders.length,
       totalQuantity: orderEntries.reduce((sum, entry) => sum + entry.qty, 0)
     };
   }
@@ -475,6 +573,38 @@ class CustomerConnectService {
     return {
       message: `Successfully deleted ${result.deletedCount} orders`,
       deletedCount: result.deletedCount
+    };
+  }
+  async verifyOrderItem(orderNumber, itemIndex, userId) {
+    // Try to find order in CustomerConnectOrder first
+    let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
+    let isManualOrder = false;
+
+    // If not found, try PurchaseOrder (manual orders)
+    if (!order) {
+      order = await PurchaseOrder.findOne({ orderNumber });
+      isManualOrder = true;
+    }
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (itemIndex < 0 || itemIndex >= order.items.length) {
+      throw new Error('Invalid item index');
+    }
+
+    order.items[itemIndex].itemVerified = true;
+    order.items[itemIndex].itemVerifiedAt = new Date();
+    order.items[itemIndex].itemVerifiedBy = userId;
+
+    await order.save();
+
+    return {
+      orderNumber: order.orderNumber,
+      itemIndex,
+      item: order.items[itemIndex],
+      isManualOrder
     };
   }
 }

@@ -69,7 +69,18 @@ const purchaseOrderSchema = new mongoose.Schema({
       required: [true, 'Line total is required'],
       min: [0, 'Line total cannot be negative']
     },
-    rawText: String 
+    rawText: String,
+    itemVerified: {
+      type: Boolean,
+      default: false
+    },
+    itemVerifiedAt: {
+      type: Date
+    },
+    itemVerifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }
   }],
   subtotal: {
     type: Number,
