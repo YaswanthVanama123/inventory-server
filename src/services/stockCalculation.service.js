@@ -13,8 +13,31 @@ class StockCalculationService {
       const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
       const sku = (canonicalName || itemName).toUpperCase();
 
-      // Always calculate from sources to get the full breakdown
-      // StockSummary only has totalInQty/totalOutQty, not the breakdown by purchase/sold/checkout
+      // Use stock.service.js calculation which has all the sophisticated matching logic
+      const stockService = require('./stock.service');
+      const stockSummary = await stockService.getStockSummary();
+
+      // Find the item in the sell stock data
+      const itemData = stockSummary.sellStock.items.find(
+        item => item.categoryName === canonicalName || item.categoryName === itemName
+      );
+
+      if (itemData) {
+        console.log(`[stockCalculation getCurrentStock] Using stock.service data for ${canonicalName}:`, itemData);
+        return {
+          sku,
+          canonicalName: itemData.categoryName,
+          availableQty: itemData.stockRemaining,
+          totalPurchased: itemData.totalPurchased,
+          totalSold: itemData.totalSold,
+          totalCheckedOut: itemData.totalCheckedOut,
+          totalDiscrepancyAdjustment: itemData.totalDiscrepancyDifference,
+          source: 'StockService'
+        };
+      }
+
+      // Fallback to direct calculation if not found in stock summary
+      console.log(`[stockCalculation getCurrentStock] Item ${canonicalName} not found in stock.service, using direct calculation`);
       return await this._calculateStockFromSources(canonicalName, sku);
     } catch (error) {
       console.error('Error calculating current stock:', error);
@@ -29,11 +52,13 @@ class StockCalculationService {
 
     const totalPurchased = await this._calculatePurchases(canonicalName);
     const totalSoldBeforeCutoff = await this._calculateSales(canonicalName, cutoffDate);
-    const totalCheckedOutAfterCutoff = await this._calculateCheckouts(canonicalName, cutoffDate);
+    const totalCheckedOut = await this._calculateCheckouts(canonicalName, null); // Get ALL checkouts
     const totalDiscrepancyAdjustment = await this._calculateDiscrepancyAdjustments(canonicalName);
 
-    // Match stock.service.js formula: totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + discrepancyAdjustment
-    const availableQty = totalPurchased - totalSoldBeforeCutoff - totalCheckedOutAfterCutoff + totalDiscrepancyAdjustment;
+    // Match stock.service.js formula: totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + discrepancyAdjustment
+    const availableQty = totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + totalDiscrepancyAdjustment;
+
+    console.log(`[stockCalculation] ${canonicalName}: purchased=${totalPurchased}, sold=${totalSoldBeforeCutoff}, checkedOut=${totalCheckedOut}, discrepancy=${totalDiscrepancyAdjustment}, TOTAL=${availableQty}`);
 
     return {
       sku,
@@ -41,7 +66,7 @@ class StockCalculationService {
       availableQty,
       totalPurchased,
       totalSold: totalSoldBeforeCutoff, // For backward compatibility, keep same field name
-      totalCheckedOut: totalCheckedOutAfterCutoff, // For backward compatibility, keep same field name
+      totalCheckedOut: totalCheckedOut, // ALL checkouts
       totalDiscrepancyAdjustment,
       source: 'Calculated'
     };
@@ -105,16 +130,22 @@ class StockCalculationService {
       query.invoiceDate = { $lt: cutoffDate };
     }
 
+    console.log(`[_calculateSales] ${canonicalName} - searching with variations:`, variations);
+
     const invoices = await RouteStarInvoice.find(query).lean();
+    console.log(`[_calculateSales] ${canonicalName} - found ${invoices.length} invoices`);
+
     let total = 0;
     invoices.forEach(invoice => {
       invoice.lineItems?.forEach(item => {
         const itemCanonical = aliasMap[item.name?.toLowerCase()] || item.name;
         if (itemCanonical === canonicalName) {
+          console.log(`[_calculateSales] ${canonicalName} - matched line item: ${item.name} (qty: ${item.quantity})`);
           total += item.quantity || 0;
         }
       });
     });
+    console.log(`[_calculateSales] ${canonicalName} - total sales: ${total}`);
     return total;
   }
   async _calculateCheckouts(canonicalName, cutoffDate) {
@@ -129,6 +160,7 @@ class StockCalculationService {
     };
 
     // If cutoff date exists, only count checkouts after the cutoff
+    // If cutoffDate is null, get ALL checkouts
     if (cutoffDate) {
       query.checkoutDate = { $gte: cutoffDate };
     }
@@ -176,8 +208,13 @@ class StockCalculationService {
   async validateCheckoutStock(itemName, quantityTaking, userRemainingQuantity) {
     const currentStock = await this.getCurrentStock(itemName);
     const systemCalculatedRemaining = currentStock.availableQty - quantityTaking;
-    const hasDiscrepancy = userRemainingQuantity !== systemCalculatedRemaining;
+
+    // Use tolerance for floating-point comparison (allow 0.01 difference for rounding)
+    const tolerance = 0.01;
+    const difference = Math.abs(userRemainingQuantity - systemCalculatedRemaining);
+    const hasDiscrepancy = difference > tolerance;
     const discrepancyDifference = userRemainingQuantity - systemCalculatedRemaining;
+
     return {
       isValid: !hasDiscrepancy,
       hasDiscrepancy,

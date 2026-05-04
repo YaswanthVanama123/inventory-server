@@ -258,5 +258,37 @@ class TruckCheckoutController {
       next(error);
     }
   }
+
+  /**
+   * Get current truck inventory for a specific truck and item
+   * GET /api/truck-checkouts/truck-inventory/:truckNumber/:itemName
+   */
+  async getTruckInventory(req, res, next) {
+    try {
+      const { truckNumber, itemName } = req.params;
+      const employeeName = req.query.employeeName || req.user?.fullName;
+
+      if (!truckNumber || !itemName) {
+        return res.status(400).json({
+          success: false,
+          message: 'Truck number and item name are required'
+        });
+      }
+
+      const truckInventory = await truckCheckoutService.getTruckInventory(
+        truckNumber,
+        itemName,
+        employeeName
+      );
+
+      res.status(200).json({
+        success: true,
+        data: truckInventory
+      });
+    } catch (error) {
+      console.error('Get truck inventory error:', error);
+      next(error);
+    }
+  }
 }
 module.exports = new TruckCheckoutController();

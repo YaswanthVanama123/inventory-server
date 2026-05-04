@@ -6,6 +6,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.get('/items/search', authenticate, truckCheckoutController.searchItems);
 router.get('/stock/:itemName', authenticate, truckCheckoutController.getItemStock);
+router.get('/truck-inventory/:truckNumber/:itemName', authenticate, truckCheckoutController.getTruckInventory);
 router.get('/active', authenticate, truckCheckoutController.getActiveCheckouts);
 router.get('/employee/:employeeName', authenticate, truckCheckoutController.getCheckoutsByEmployee);
 router.get('/stats/employee/:employeeName', authenticate, truckCheckoutController.getEmployeeStats);
