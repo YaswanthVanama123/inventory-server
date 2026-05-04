@@ -456,9 +456,13 @@ class StockService {
 
       skuData[skuUpper].salesHistory = categorySalesData.salesHistory || [];
       skuData[skuUpper].checkoutHistory = categoryCheckoutData.checkoutHistory || [];
-      skuData[skuUpper].discrepancyHistory = discrepancies.filter(d =>
-        d.itemSku === sku
-      );
+      const skuDiscrepancies = discrepancies.filter(d => d.itemSku === sku);
+      skuData[skuUpper].discrepancyHistory = skuDiscrepancies;
+
+      // Calculate total discrepancy difference for this SKU
+      skuData[skuUpper].totalDiscrepancyDifference = skuDiscrepancies
+        .filter(d => d.status === 'Approved')
+        .reduce((sum, d) => sum + (d.difference || 0), 0);
     });
 
     // Distribute sales using remainder distribution to avoid rounding errors
@@ -510,6 +514,19 @@ class StockService {
     return {
       categoryName,
       skus: skuArray,
+      categoryDiscrepancies: discrepancies.map(d => ({
+        invoiceNumber: d.invoiceNumber,
+        reportedAt: d.reportedAt,
+        systemQuantity: d.systemQuantity,
+        actualQuantity: d.actualQuantity,
+        difference: d.difference,
+        discrepancyType: d.discrepancyType,
+        status: d.status,
+        reportedBy: d.reportedBy,
+        resolvedBy: d.resolvedBy,
+        reason: d.reason,
+        notes: d.notes
+      })),
       summary: {
         totalPurchased: skuArray.reduce((sum, s) => sum + s.totalPurchased, 0),
         totalPurchaseValue: skuArray.reduce((sum, s) => sum + s.totalPurchaseValue, 0),
@@ -517,7 +534,8 @@ class StockService {
         totalSalesValue: categorySalesData.totalSalesValue,
         totalCheckedOut: categoryCheckoutData.totalCheckedOut,
         totalDiscrepancies: discrepancies.length,
-        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased, 0) - categorySalesData.totalSold - categoryCheckoutData.totalCheckedOut
+        totalDiscrepancyDifference: skuArray.reduce((sum, s) => sum + (s.totalDiscrepancyDifference || 0), 0),
+        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased + (s.totalDiscrepancyDifference || 0), 0) - categorySalesData.totalSold - categoryCheckoutData.totalCheckedOut
       }
     };
   }
@@ -858,10 +876,10 @@ class StockService {
       const adjustment = category.discrepancyAdjustment || 0;
       category.stockRemaining = category.totalPurchased
                               - category.totalSoldBeforeCutoff
-                              - category.totalCheckedOutAfterCutoff
+                              - category.totalCheckedOut
                               + adjustment;
       delete category.discrepancyAdjustment;
-      console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${category.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
+      console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckedOut=${category.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
     // Add canonical names that don't have any data yet
     canonicalNames.forEach(canonicalName => {
@@ -964,8 +982,9 @@ class StockService {
     consolidatedMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
                           - item.totalSoldBeforeCutoff
-                          - item.totalCheckedOutAfterCutoff;
-      console.log(`[getSellStock] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Remaining=${item.stockRemaining}`);
+                          - item.totalCheckedOut
+                          + (item.totalDiscrepancyDifference || 0);
+      console.log(`[getSellStock] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference || 0}, Remaining=${item.stockRemaining}`);
     });
 
     const stockData = Array.from(consolidatedMap.values()).sort((a, b) =>
@@ -1830,9 +1849,9 @@ class StockService {
       const adjustment = discrepancy ? (discrepancy.approvedAdjustment || 0) : 0;
       item.stockRemaining = item.totalPurchased
                           - item.totalSoldBeforeCutoff
-                          - item.totalCheckedOutAfterCutoff
+                          - item.totalCheckedOut
                           + adjustment;
-      console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
+      console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
 
     // Add canonical names that don't have any data yet
@@ -1930,8 +1949,9 @@ class StockService {
     consolidatedSellMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
                           - item.totalSoldBeforeCutoff
-                          - item.totalCheckedOutAfterCutoff;
-      console.log(`[StockSummary] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckoutAfterCutoff=${item.totalCheckedOutAfterCutoff}, Remaining=${item.stockRemaining}`);
+                          - item.totalCheckedOut
+                          + item.totalDiscrepancyDifference;
+      console.log(`[StockSummary] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference}, Remaining=${item.stockRemaining}`);
     });
 
     console.timeEnd('[StockSummary] Step 3: Build result maps');

@@ -85,46 +85,60 @@ class TruckCheckoutController {
   async searchItems(req, res, next) {
     try {
       const searchQuery = req.query.q || '';
+      const forSell = req.query.forSell !== 'false'; // Default to true
 
-      // Use the SAME API as Stock page - getStockSummary (includes manual purchase orders)
+      console.log(`[TruckCheckout searchItems] Query: "${searchQuery}", forSell: ${forSell}`);
+
+      // Use the EXACT SAME service as Stock page
       const stockResult = await stockService.getStockSummary();
-      const sellStock = stockResult.sellStock; // getStockSummary returns { useStock, sellStock }
+      const sellStock = stockResult.sellStock; // { items: [...], totals: {...} }
 
-      console.log('[TruckCheckout] Sample stock items from getStockSummary:');
-      sellStock.items.slice(0, 5).forEach(item => {
-        console.log(`  ${item.categoryName}: purchased=${item.totalPurchased}, aliases=${JSON.stringify(item.aliases)}`);
-      });
+      console.log(`[TruckCheckout] Loaded ${sellStock.items.length} items from stock service`);
 
-      // Expand each stock item to show canonical name + all aliases separately
+      // Expand each stock item to include canonical name + all aliases as separate entries
       const expandedItems = [];
 
       sellStock.items.forEach(item => {
-        // Add the canonical name as an item
+        // Stock remaining formula (same as stock page):
+        // stockRemaining = totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + totalDiscrepancyDifference
+        const stockRemaining = item.stockRemaining || 0;
+
+        // Add the canonical name
         expandedItems.push({
           itemName: item.categoryName,
-          currentStock: item.stockRemaining,
-          totalPurchased: item.totalPurchased,
-          totalSold: item.totalSoldBeforeCutoff,
-          totalCheckedOut: item.totalCheckedOutAfterCutoff,
-          totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0
+          sku: item.categoryName,
+          currentStock: stockRemaining,
+          totalPurchased: item.totalPurchased || 0,
+          totalSold: item.totalSold || 0, // Use totalSold for display
+          totalCheckedOut: item.totalCheckedOut || 0, // ALL checkouts
+          totalDiscrepancies: item.totalDiscrepancies || 0, // Discrepancy count
+          totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0, // Discrepancy adjustment
+          unit: 'pieces',
+          category: item.categoryName,
+          department: item.categoryName
         });
 
-        // Add each alias as a separate item with the SAME stock data
+        // Add each alias as a separate entry with the SAME stock data
         if (item.aliases && Array.isArray(item.aliases)) {
           item.aliases.forEach(aliasName => {
             expandedItems.push({
               itemName: aliasName,
-              currentStock: item.stockRemaining,
-              totalPurchased: item.totalPurchased,
-              totalSold: item.totalSoldBeforeCutoff,
-              totalCheckedOut: item.totalCheckedOutAfterCutoff,
-              totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0
+              sku: aliasName,
+              currentStock: stockRemaining,
+              totalPurchased: item.totalPurchased || 0,
+              totalSold: item.totalSold || 0,
+              totalCheckedOut: item.totalCheckedOut || 0,
+              totalDiscrepancies: item.totalDiscrepancies || 0,
+              totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
+              unit: 'pieces',
+              category: item.categoryName,
+              department: item.categoryName
             });
           });
         }
       });
 
-      // Filter by search query if provided
+      // Filter by search query
       let filteredItems = expandedItems;
       if (searchQuery) {
         const queryLower = searchQuery.toLowerCase();
@@ -136,14 +150,14 @@ class TruckCheckoutController {
       // Sort by item name
       filteredItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
 
-      console.log(`[TruckCheckout] Returning ${filteredItems.length} items (filtered from ${expandedItems.length})`);
+      console.log(`[TruckCheckout] Returning ${filteredItems.length} items`);
 
       res.json({
         success: true,
         data: filteredItems
       });
     } catch (error) {
-      console.error('Search items error:', error);
+      console.error('[TruckCheckout searchItems] Error:', error);
       next(error);
     }
   }
