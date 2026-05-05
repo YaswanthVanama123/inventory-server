@@ -49,16 +49,13 @@ class TruckCheckoutService {
     if (actualTruckInventory !== undefined && actualTruckInventory !== null && truckNumber) {
       console.log(`\n🚛 Validating truck inventory for truck ${truckNumber}...`);
 
-      // Get current truck inventory BEFORE this checkout (for this employee)
       const currentTruckInventory = await this.getTruckInventory(truckNumber, itemName, employeeName);
 
-      // Expected truck inventory AFTER this checkout = current + quantityTaking
       const expectedTruckInventory = currentTruckInventory.currentTruckInventory + quantityTaking;
       console.log(`   Expected truck inventory after checkout: ${expectedTruckInventory}`);
       console.log(`   Employee entered: ${actualTruckInventory}`);
 
       const truckDiscrepancyDifference = actualTruckInventory - expectedTruckInventory;
-      // Use tolerance for floating-point comparison (allow 0.01 difference for rounding)
       const tolerance = 0.01;
       const hasTruckDiscrepancy = Math.abs(truckDiscrepancyDifference) > tolerance;
 

@@ -535,7 +535,7 @@ class StockService {
         totalCheckedOut: categoryCheckoutData.totalCheckedOut,
         totalDiscrepancies: discrepancies.length,
         totalDiscrepancyDifference: skuArray.reduce((sum, s) => sum + (s.totalDiscrepancyDifference || 0), 0),
-        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased + (s.totalDiscrepancyDifference || 0), 0) - categorySalesData.totalSold - categoryCheckoutData.totalCheckedOut
+        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased + (s.totalDiscrepancyDifference || 0), 0) - categoryCheckoutData.totalCheckedOut
       }
     };
   }
@@ -875,11 +875,10 @@ class StockService {
     Object.values(categoryMap).forEach(category => {
       const adjustment = category.discrepancyAdjustment || 0;
       category.stockRemaining = category.totalPurchased
-                              - category.totalSoldBeforeCutoff
                               - category.totalCheckedOut
                               + adjustment;
       delete category.discrepancyAdjustment;
-      console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, SoldBeforeCutoff=${category.totalSoldBeforeCutoff}, CheckedOut=${category.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
+      console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, Sold=${category.totalSold} (NOT subtracted), CheckedOut=${category.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
     // Add canonical names that don't have any data yet
     canonicalNames.forEach(canonicalName => {
@@ -981,10 +980,9 @@ class StockService {
     // Recalculate stockRemaining for each consolidated item
     consolidatedMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
-                          - item.totalSoldBeforeCutoff
                           - item.totalCheckedOut
                           + (item.totalDiscrepancyDifference || 0);
-      console.log(`[getSellStock] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference || 0}, Remaining=${item.stockRemaining}`);
+      console.log(`[getSellStock] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, Sold=${item.totalSold} (NOT subtracted), CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference || 0}, Remaining=${item.stockRemaining}`);
     });
 
     const stockData = Array.from(consolidatedMap.values()).sort((a, b) =>
@@ -1848,10 +1846,9 @@ class StockService {
       const discrepancy = discrepancies.find(d => d.categoryName === category);
       const adjustment = discrepancy ? (discrepancy.approvedAdjustment || 0) : 0;
       item.stockRemaining = item.totalPurchased
-                          - item.totalSoldBeforeCutoff
                           - item.totalCheckedOut
                           + adjustment;
-      console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
+      console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, Sold=${item.totalSold} (NOT subtracted), CheckedOut=${item.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
 
     // Add canonical names that don't have any data yet
@@ -1948,10 +1945,9 @@ class StockService {
     // Recalculate stockRemaining for each consolidated item
     consolidatedSellMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
-                          - item.totalSoldBeforeCutoff
                           - item.totalCheckedOut
                           + item.totalDiscrepancyDifference;
-      console.log(`[StockSummary] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, SoldBeforeCutoff=${item.totalSoldBeforeCutoff}, CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference}, Remaining=${item.stockRemaining}`);
+      console.log(`[StockSummary] CONSOLIDATED ${item.categoryName}: Purchased=${item.totalPurchased}, Sold=${item.totalSold} (NOT subtracted), CheckedOut=${item.totalCheckedOut}, Discrepancy=${item.totalDiscrepancyDifference}, Remaining=${item.stockRemaining}`);
     });
 
     console.timeEnd('[StockSummary] Step 3: Build result maps');

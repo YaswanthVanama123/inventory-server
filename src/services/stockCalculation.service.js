@@ -13,11 +13,9 @@ class StockCalculationService {
       const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
       const sku = (canonicalName || itemName).toUpperCase();
 
-      // Use stock.service.js calculation which has all the sophisticated matching logic
       const stockService = require('./stock.service');
       const stockSummary = await stockService.getStockSummary();
 
-      // Find the item in the sell stock data
       const itemData = stockSummary.sellStock.items.find(
         item => item.categoryName === canonicalName || item.categoryName === itemName
       );
@@ -36,7 +34,6 @@ class StockCalculationService {
         };
       }
 
-      // Fallback to direct calculation if not found in stock summary
       console.log(`[stockCalculation getCurrentStock] Item ${canonicalName} not found in stock.service, using direct calculation`);
       return await this._calculateStockFromSources(canonicalName, sku);
     } catch (error) {
@@ -45,28 +42,26 @@ class StockCalculationService {
     }
   }
   async _calculateStockFromSources(canonicalName, sku) {
-    // Get cutoff date from settings
     const Settings = require('../models/Settings');
     const settings = await Settings.getSettings();
     const cutoffDate = settings.stockCalculationCutoffDate;
 
     const totalPurchased = await this._calculatePurchases(canonicalName);
-    const totalSoldBeforeCutoff = await this._calculateSales(canonicalName, cutoffDate);
-    const totalCheckedOut = await this._calculateCheckouts(canonicalName, null); // Get ALL checkouts
+    const totalSold = await this._calculateSales(canonicalName, cutoffDate);
+    const totalCheckedOut = await this._calculateCheckouts(canonicalName, null);
     const totalDiscrepancyAdjustment = await this._calculateDiscrepancyAdjustments(canonicalName);
 
-    // Match stock.service.js formula: totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + discrepancyAdjustment
-    const availableQty = totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + totalDiscrepancyAdjustment;
+    const availableQty = totalPurchased - totalCheckedOut + totalDiscrepancyAdjustment;
 
-    console.log(`[stockCalculation] ${canonicalName}: purchased=${totalPurchased}, sold=${totalSoldBeforeCutoff}, checkedOut=${totalCheckedOut}, discrepancy=${totalDiscrepancyAdjustment}, TOTAL=${availableQty}`);
+    console.log(`[stockCalculation] ${canonicalName}: purchased=${totalPurchased}, sold=${totalSold} (NOT subtracted), checkedOut=${totalCheckedOut}, discrepancy=${totalDiscrepancyAdjustment}, TOTAL=${availableQty}`);
 
     return {
       sku,
       canonicalName,
       availableQty,
       totalPurchased,
-      totalSold: totalSoldBeforeCutoff, // For backward compatibility, keep same field name
-      totalCheckedOut: totalCheckedOut, // ALL checkouts
+      totalSold: totalSold,
+      totalCheckedOut: totalCheckedOut,
       totalDiscrepancyAdjustment,
       source: 'Calculated'
     };
@@ -125,7 +120,6 @@ class StockCalculationService {
       'lineItems.name': { $in: variations }
     };
 
-    // If cutoff date exists, only count invoices before the cutoff
     if (cutoffDate) {
       query.invoiceDate = { $lt: cutoffDate };
     }
@@ -159,8 +153,6 @@ class StockCalculationService {
       ]
     };
 
-    // If cutoff date exists, only count checkouts after the cutoff
-    // If cutoffDate is null, get ALL checkouts
     if (cutoffDate) {
       query.checkoutDate = { $gte: cutoffDate };
     }
