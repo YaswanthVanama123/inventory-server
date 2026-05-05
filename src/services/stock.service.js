@@ -754,15 +754,16 @@ class StockService {
       if (checkout.itemsTaken && Array.isArray(checkout.itemsTaken)) {
         checkout.itemsTaken.forEach(item => {
           const itemName = item.name ? item.name.trim() : '';
-
-          // Check if original item name is in allowedCategories
-          if (!allowedCategories.has(itemName)) {
-            return;
-          }
-
-          // Convert to canonical name
           const itemNameLower = itemName.toLowerCase();
           const canonicalName = aliasMap[itemNameLower] || itemName;
+
+          const isAllowed = allowedCategories.has(itemName) ||
+                           allowedCategories.has(canonicalName) ||
+                           expandedAllowedCategories.has(canonicalName);
+
+          if (!isAllowed) {
+            return;
+          }
 
           if (!categoryMap[canonicalName]) {
             categoryMap[canonicalName] = {
@@ -796,15 +797,16 @@ class StockService {
       }
       if (checkout.itemName && checkout.quantityTaking) {
         const itemName = checkout.itemName.trim();
-
-        // Check if original item name is in allowedCategories
-        if (!allowedCategories.has(itemName)) {
-          return;
-        }
-
-        // Convert to canonical name
         const itemNameLower = itemName.toLowerCase();
         const canonicalName = aliasMap[itemNameLower] || itemName;
+
+        const isAllowed = allowedCategories.has(itemName) ||
+                         allowedCategories.has(canonicalName) ||
+                         expandedAllowedCategories.has(canonicalName);
+
+        if (!isAllowed) {
+          return;
+        }
 
         if (!categoryMap[canonicalName]) {
           categoryMap[canonicalName] = {
@@ -1197,6 +1199,7 @@ class StockService {
     const finalSellVariationsArray = Array.from(sellVariationsSet);
     console.timeEnd('[StockSummary] Step 1.6: Extract sales keywords from purchases');
     console.log(`[StockSummary] Extracted ${salesKeywordsSet.size} sales keywords from item names`);
+    console.log(`[StockSummary] Total variations for checkout matching: ${finalSellVariationsArray.length}`);
     console.time('[StockSummary] Step 2: Mega query');
     const [ccOrdersResult, manualOrdersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
       // CustomerConnect orders
@@ -1484,11 +1487,13 @@ class StockService {
     const invoicesBeforeCutoff = invoicesResult[0]?.invoicesBeforeCutoff || [];
     const allCheckoutsOld = checkoutsResult[0]?.allCheckoutsOld || [];
     const allCheckoutsNew = checkoutsResult[0]?.allCheckoutsNew || [];
+    console.log(`[StockSummary] Checkout aggregation results: Old=${allCheckoutsOld.length}, New=${allCheckoutsNew.length}`);
     const checkoutsAfterCutoffOld = checkoutsResult[0]?.checkoutsAfterCutoffOld || [];
     const checkoutsAfterCutoffNew = checkoutsResult[0]?.checkoutsAfterCutoffNew || [];
     const allCheckoutsMap = new Map();
     [...allCheckoutsOld, ...allCheckoutsNew].forEach(item => {
       const key = item._id || item.itemName;
+      console.log(`[StockSummary] Found checkout: key="${key}", totalCheckedOut=${item.totalCheckedOut}`);
       if (!allCheckoutsMap.has(key)) {
         allCheckoutsMap.set(key, { itemName: key, totalCheckedOut: 0 });
       }
@@ -1765,12 +1770,21 @@ class StockService {
       stock.totalSoldBeforeCutoff += saleData.totalSoldBeforeCutoff || 0;
     });
     allCheckoutsData.forEach(c => {
-      // Check if original item name is allowed
-      if (!sellAllowedSet.has(c.itemName)) {
+      const itemNameLower = c.itemName ? c.itemName.toLowerCase() : '';
+      let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
+      if (!targetCategory) {
+        targetCategory = getCanonical(c.itemName);
+        if (!sellAllowedSet.has(targetCategory)) {
+          targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
+        }
+      }
+
+      if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
+        console.log(`[StockSummary] SKIPPING checkout for "${c.itemName}" - not found in allowed categories`);
         return;
       }
 
-      const canonical = getCanonical(c.itemName);
+      const canonical = targetCategory;
       if (!sellStockMap.has(canonical)) {
         sellStockMap.set(canonical, {
           categoryName: canonical,
@@ -1790,14 +1804,23 @@ class StockService {
       }
       const stock = sellStockMap.get(canonical);
       stock.totalCheckedOut += c.totalCheckedOut || 0;
+      console.log(`[StockSummary] Added checkout for "${canonical}": +${c.totalCheckedOut}, total now: ${stock.totalCheckedOut}`);
     });
     checkoutsAfterCutoffData.forEach(c => {
-      // Check if original item name is allowed
-      if (!sellAllowedSet.has(c.itemName)) {
+      const itemNameLower = c.itemName ? c.itemName.toLowerCase() : '';
+      let targetCategory = lowercaseToCategoryMap.get(itemNameLower);
+      if (!targetCategory) {
+        targetCategory = getCanonical(c.itemName);
+        if (!sellAllowedSet.has(targetCategory)) {
+          targetCategory = lowercaseToCategoryMap.get(targetCategory.toLowerCase());
+        }
+      }
+
+      if (!targetCategory || !sellAllowedSet.has(targetCategory)) {
         return;
       }
 
-      const canonical = getCanonical(c.itemName);
+      const canonical = targetCategory;
       if (!sellStockMap.has(canonical)) {
         sellStockMap.set(canonical, {
           categoryName: canonical,
