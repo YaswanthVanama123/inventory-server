@@ -299,31 +299,66 @@ const getAllInvoices = async (req, res, next) => {
 };
 const getInvoice = async (req, res, next) => {
   try {
-    const invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false })
+    // First try to find in regular Invoice collection
+    let invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName email')
       .populate('lastUpdatedBy', 'username fullName email');
-    if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          message: 'Invoice not found',
-          code: 'INVOICE_NOT_FOUND'
-        }
-      });
+
+    let invoiceType = 'manual';
+    let invoiceObj;
+
+    if (invoice) {
+      // Found in Invoice collection
+      const stockMovements = await StockMovement.find({
+        refType: 'INVOICE',
+        refId: invoice._id
+      }).sort({ timestamp: -1 });
+
+      invoiceObj = invoice.toObject();
+      invoiceObj.syncInfo = {
+        source: invoiceObj.syncMetadata?.source || 'manual',
+        isSynced: invoiceObj.syncMetadata?.isSynced || false,
+        sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
+        lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
+      };
+      invoiceObj.stockMovements = stockMovements;
+      invoiceObj.invoiceType = 'manual';
+    } else {
+      // Try to find in RouteStarInvoice collection
+      const routeStarInvoice = await RouteStarInvoice.findById(req.params.id);
+
+      if (!routeStarInvoice) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'Invoice not found',
+            code: 'INVOICE_NOT_FOUND'
+          }
+        });
+      }
+
+      // Transform RouteStarInvoice to match expected format
+      invoiceObj = routeStarInvoice.toObject();
+      invoiceObj.invoiceType = 'routestar';
+      invoiceObj.invoiceDate = invoiceObj.invoiceDate || invoiceObj.createdAt;
+      invoiceObj.totalAmount = invoiceObj.total || 0;
+      invoiceObj.items = (invoiceObj.lineItems || []).map(item => ({
+        itemName: item.name,
+        skuCode: item.sku,
+        quantity: item.quantity,
+        unit: 'pieces',
+        priceAtSale: item.rate || 0,
+        subtotal: item.amount || 0
+      }));
+      invoiceObj.syncInfo = {
+        source: 'routestar',
+        isSynced: true,
+        sourceInvoiceId: invoiceObj._id,
+        lastSyncedAt: invoiceObj.lastSyncedAt
+      };
     }
-    const stockMovements = await StockMovement.find({
-      refType: 'INVOICE',
-      refId: invoice._id
-    }).sort({ timestamp: -1 });
-    const invoiceObj = invoice.toObject();
-    invoiceObj.syncInfo = {
-      source: invoiceObj.syncMetadata?.source || 'manual',
-      isSynced: invoiceObj.syncMetadata?.isSynced || false,
-      sourceInvoiceId: invoiceObj.syncMetadata?.sourceInvoiceId || null,
-      lastSyncedAt: invoiceObj.syncMetadata?.lastSyncedAt || null
-    };
-    invoiceObj.stockMovements = stockMovements;
+
     res.status(200).json({
       success: true,
       data: { invoice: invoiceObj }

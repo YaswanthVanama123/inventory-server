@@ -1,5 +1,6 @@
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
+const ModelCategory = require('../models/ModelCategory');
 
 
 class RouteStarItemAliasService {
@@ -11,13 +12,41 @@ class RouteStarItemAliasService {
     };
   }
   async getUniqueItems() {
-    const routeStarItems = await RouteStarItem.find()
-      .select('itemName itemParent description qtyOnHand')
-      .sort({ itemName: 1 })
-      .lean();
+    const [routeStarItems, lookupMap, modelCategoryMappings] = await Promise.all([
+      RouteStarItem.find()
+        .select('itemName itemParent description qtyOnHand')
+        .sort({ itemName: 1 })
+        .lean(),
+      RouteStarItemAlias.buildLookupMap(),
+      ModelCategory.find().select('categoryItemName').lean()
+    ]);
+
     console.log(`[unique-items] Found ${routeStarItems.length} RouteStarItems`);
-    const lookupMap = await RouteStarItemAlias.buildLookupMap();
-    const itemsWithMappingStatus = routeStarItems.map(item => ({
+    console.log(`[unique-items] ModelCategory mappings:`, modelCategoryMappings.map(mc => mc.categoryItemName).filter(Boolean));
+
+    // Create a Set of RouteStarItem names that are already mapped in ModelCategory
+    const mappedInModelCategory = new Set(
+      modelCategoryMappings
+        .filter(mc => mc.categoryItemName)
+        .map(mc => mc.categoryItemName.toLowerCase())
+    );
+
+    console.log(`[unique-items] Found ${mappedInModelCategory.size} items already mapped in ModelCategory`);
+    console.log(`[unique-items] Mapped items (lowercase):`, Array.from(mappedInModelCategory));
+
+    // Filter out items that are already mapped in ModelCategory
+    const availableRouteStarItems = routeStarItems.filter(item =>
+      !mappedInModelCategory.has(item.itemName.toLowerCase())
+    );
+
+    console.log(`[unique-items] ${availableRouteStarItems.length} items available after filtering`);
+    console.log(`[unique-items] Filtered out items:`,
+      routeStarItems
+        .filter(item => mappedInModelCategory.has(item.itemName.toLowerCase()))
+        .map(item => item.itemName)
+    );
+
+    const itemsWithMappingStatus = availableRouteStarItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
       description: item.description,
@@ -28,9 +57,10 @@ class RouteStarItemAliasService {
       totalQuantity: item.qtyOnHand || 0
     }));
     const stats = {
-      totalUniqueItems: routeStarItems.length,
+      totalUniqueItems: availableRouteStarItems.length,
       mappedItems: itemsWithMappingStatus.filter(i => i.isMapped).length,
-      unmappedItems: itemsWithMappingStatus.filter(i => !i.isMapped).length
+      unmappedItems: itemsWithMappingStatus.filter(i => !i.isMapped).length,
+      excludedByModelMapping: mappedInModelCategory.size
     };
     console.log(`[unique-items] Stats:`, stats);
     return {
@@ -159,7 +189,7 @@ class RouteStarItemAliasService {
     };
   }
   async getPageDataOptimized() {
-    const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings] = await Promise.all([
+    const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings, modelCategoryMappings] = await Promise.all([
       RouteStarItemAlias.getAllActiveMappings(),
       RouteStarItem.find()
         .select('itemName itemParent description qtyOnHand')
@@ -167,10 +197,36 @@ class RouteStarItemAliasService {
         .lean(),
       RouteStarItemAlias.buildLookupMap(),
       RouteStarItemAlias.countDocuments(),
-      RouteStarItemAlias.countDocuments({ isActive: true })
+      RouteStarItemAlias.countDocuments({ isActive: true }),
+      ModelCategory.find().select('categoryItemName').lean()
     ]);
+
     console.log(`[page-data-optimized] Found ${routeStarItems.length} RouteStarItems, ${mappings.length} mappings`);
-    const itemsWithMappingStatus = routeStarItems.map(item => ({
+    console.log(`[page-data-optimized] ModelCategory mappings:`, modelCategoryMappings.map(mc => mc.categoryItemName).filter(Boolean));
+
+    // Create a Set of RouteStarItem names that are already mapped in ModelCategory
+    const mappedInModelCategory = new Set(
+      modelCategoryMappings
+        .filter(mc => mc.categoryItemName)
+        .map(mc => mc.categoryItemName.toLowerCase())
+    );
+
+    console.log(`[page-data-optimized] Found ${mappedInModelCategory.size} items already mapped in ModelCategory`);
+    console.log(`[page-data-optimized] Mapped items (lowercase):`, Array.from(mappedInModelCategory));
+
+    // Filter out items that are already mapped in ModelCategory
+    const availableRouteStarItems = routeStarItems.filter(item =>
+      !mappedInModelCategory.has(item.itemName.toLowerCase())
+    );
+
+    console.log(`[page-data-optimized] ${availableRouteStarItems.length} items available after filtering`);
+    console.log(`[page-data-optimized] Filtered out items:`,
+      routeStarItems
+        .filter(item => mappedInModelCategory.has(item.itemName.toLowerCase()))
+        .map(item => item.itemName)
+    );
+
+    const itemsWithMappingStatus = availableRouteStarItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
       description: item.description,
@@ -187,9 +243,10 @@ class RouteStarItemAliasService {
       totalMappings,
       activeMappings,
       totalAliases,
-      totalUniqueItems: routeStarItems.length,
+      totalUniqueItems: availableRouteStarItems.length,
       mappedItems: mappedItemsCount,
-      unmappedItems: unmappedItemsCount
+      unmappedItems: unmappedItemsCount,
+      excludedByModelMapping: mappedInModelCategory.size
     };
     console.log(`[page-data-optimized] Stats:`, stats);
     return {
@@ -200,7 +257,7 @@ class RouteStarItemAliasService {
       uniqueItems: {
         items: itemsWithMappingStatus,
         stats: {
-          totalUniqueItems: routeStarItems.length,
+          totalUniqueItems: availableRouteStarItems.length,
           mappedItems: mappedItemsCount,
           unmappedItems: unmappedItemsCount
         }
