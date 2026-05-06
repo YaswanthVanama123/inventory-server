@@ -75,12 +75,10 @@ exports.verifyOrder = async (req, res, next) => {
     const { orderId } = req.params;
     const { items, allGood, notes } = req.body;
 
-    // Try to find order in both CustomerConnectOrder and PurchaseOrder (manual orders)
     let order = await CustomerConnectOrder.findById(orderId);
     let isManualOrder = false;
 
     if (!order) {
-      // Check if it's a manual order
       order = await PurchaseOrder.findById(orderId);
       if (!order) {
         return res.status(404).json({
@@ -91,29 +89,30 @@ exports.verifyOrder = async (req, res, next) => {
       isManualOrder = true;
     }
 
-    // Check if already verified
-    if (order.verified) {
-      return res.status(400).json({
-        success: false,
-        message: 'Order has already been verified'
-      });
-    }
-
     const createdDiscrepancies = [];
+    const partiallyVerifiedItems = [];
 
     if (allGood) {
-      console.log(`✓ Order ${order.orderNumber} verified - All Good`);
+      console.log(`✓ Order ${order.orderNumber} verified - All Good (Fully Received)`);
+
+      order.items.forEach(item => {
+        item.receivedQuantity = item.qty;
+        item.remainingQuantity = 0;
+        item.itemVerified = true;
+        item.itemVerifiedAt = new Date();
+        item.itemVerifiedBy = req.user._id;
+        if (!item.verificationHistory) item.verificationHistory = [];
+        item.verificationHistory.push({
+          receivedQty: item.qty,
+          verifiedAt: new Date(),
+          verifiedBy: req.user._id,
+          notes: notes || 'All items received as expected'
+        });
+      });
 
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
-
-      order.items.forEach(item => {
-        item.itemVerified = true;
-        item.itemVerifiedAt = new Date();
-        item.itemVerifiedBy = req.user._id;
-      });
-
       await order.save();
 
       if (!order.stockProcessed) {
@@ -131,7 +130,7 @@ exports.verifyOrder = async (req, res, next) => {
 
       return res.status(200).json({
         success: true,
-        message: 'Order verified successfully and stock processed',
+        message: 'Order fully received and verified - stock processed',
         data: {
           order,
           discrepancies: []
@@ -139,29 +138,66 @@ exports.verifyOrder = async (req, res, next) => {
       });
     }
 
-    // Process discrepancies
     for (const item of items) {
-      const expectedQuantity = parseFloat(item.expectedQuantity);
-      const receivedQuantity = parseFloat(item.receivedQuantity);
+      const orderItem = order.items.find(oi => oi.sku === item.sku);
+      if (!orderItem) {
+        console.warn(`Item ${item.sku} not found in order ${order.orderNumber}`);
+        continue;
+      }
 
-      if (receivedQuantity !== expectedQuantity) {
-        // Create OrderDiscrepancy
+      const receivingNow = parseFloat(item.receivedQuantity || 0);
+      if (receivingNow <= 0) {
+        continue;
+      }
+
+      const previouslyReceived = orderItem.receivedQuantity || 0;
+      const newTotalReceived = previouslyReceived + receivingNow;
+      const expectedQuantity = orderItem.qty;
+      const newRemaining = Math.max(0, expectedQuantity - newTotalReceived);
+
+      if (!orderItem.verificationHistory) orderItem.verificationHistory = [];
+      orderItem.verificationHistory.push({
+        receivedQty: receivingNow,
+        verifiedAt: new Date(),
+        verifiedBy: req.user._id,
+        notes: item.notes || notes
+      });
+
+      orderItem.receivedQuantity = newTotalReceived;
+      orderItem.remainingQuantity = newRemaining;
+
+      if (newTotalReceived >= expectedQuantity) {
+        orderItem.itemVerified = true;
+        orderItem.itemVerifiedAt = new Date();
+        orderItem.itemVerifiedBy = req.user._id;
+        console.log(`  ✓ Item ${item.sku} fully received: ${newTotalReceived}/${expectedQuantity}`);
+      } else {
+        orderItem.itemVerified = false;
+        partiallyVerifiedItems.push({
+          sku: item.sku,
+          name: item.itemName,
+          expected: expectedQuantity,
+          received: newTotalReceived,
+          remaining: newRemaining
+        });
+        console.log(`  ⚠ Item ${item.sku} partially received: ${newTotalReceived}/${expectedQuantity} (${newRemaining} remaining)`);
+      }
+
+      if (newTotalReceived !== expectedQuantity) {
         const discrepancy = await OrderDiscrepancy.createDiscrepancy({
           orderId: order._id,
           orderNumber: order.orderNumber,
           sku: item.sku,
           itemName: item.itemName,
           expectedQuantity,
-          receivedQuantity,
+          receivedQuantity: newTotalReceived,
           reportedBy: req.user._id,
           notes: item.notes || notes,
           status: 'pending'
         });
         createdDiscrepancies.push(discrepancy);
 
-        // Also create StockDiscrepancy so it appears in Stock screen
         try {
-          // Look up categoryName from ModelCategory
           const mapping = await ModelCategory.findOne({ modelNumber: item.sku });
           const categoryName = mapping ? mapping.categoryItemName : item.itemName;
 
@@ -173,9 +209,9 @@ exports.verifyOrder = async (req, res, next) => {
             itemSku: item.sku,
             categoryName: categoryName,
             systemQuantity: expectedQuantity,
-            actualQuantity: receivedQuantity,
-            difference: receivedQuantity - expectedQuantity,
-            discrepancyType: receivedQuantity < expectedQuantity ? 'Shortage' : 'Overage',
+            actualQuantity: newTotalReceived,
+            difference: newTotalReceived - expectedQuantity,
+            discrepancyType: newTotalReceived < expectedQuantity ? 'Shortage' : 'Overage',
             reason: 'Order verification discrepancy',
             notes: item.notes || notes,
             status: 'Pending',
@@ -183,29 +219,26 @@ exports.verifyOrder = async (req, res, next) => {
           });
         } catch (stockDiscError) {
           console.error(`Failed to create StockDiscrepancy for ${item.sku}:`, stockDiscError.message);
-          // Continue anyway - OrderDiscrepancy was created successfully
         }
 
-        console.log(`  ✗ Discrepancy found for ${item.sku}: Expected ${expectedQuantity}, Received ${receivedQuantity}`);
+        console.log(`  ✗ Discrepancy: Expected ${expectedQuantity}, Total Received ${newTotalReceived}`);
       }
     }
 
-    order.verified = true;
-    order.verifiedAt = new Date();
-    order.verifiedBy = req.user._id;
+    const allItemsFullyReceived = order.items.every(item => item.receivedQuantity >= item.qty);
 
-    order.items.forEach(item => {
-      item.itemVerified = true;
-      item.itemVerifiedAt = new Date();
-      item.itemVerifiedBy = req.user._id;
-    });
+    if (allItemsFullyReceived) {
+      order.verified = true;
+      order.verifiedAt = new Date();
+      order.verifiedBy = req.user._id;
+    }
 
     await order.save();
 
-    if (!order.stockProcessed) {
+    if (allItemsFullyReceived && !order.stockProcessed) {
       try {
         await StockProcessor.processPurchaseOrder(order, req.user._id);
-        console.log(`✓ Stock processed for order ${order.orderNumber} with ${createdDiscrepancies.length} discrepancies`);
+        console.log(`✓ Stock processed for order ${order.orderNumber}`);
       } catch (stockError) {
         console.error(`✗ Failed to process stock for order ${order.orderNumber}:`, stockError.message);
         return res.status(500).json({
@@ -213,20 +246,27 @@ exports.verifyOrder = async (req, res, next) => {
           message: 'Order verified but stock processing failed: ' + stockError.message,
           data: {
             order,
-            discrepancies: createdDiscrepancies
+            discrepancies: createdDiscrepancies,
+            partiallyVerifiedItems
           }
         });
       }
     }
 
-    console.log(`✓ Order ${order.orderNumber} verified with ${createdDiscrepancies.length} discrepancies`);
+    const message = allItemsFullyReceived
+      ? `Order fully received and verified with ${createdDiscrepancies.length} discrepancy(ies)`
+      : `Partial receipt recorded - ${partiallyVerifiedItems.length} item(s) still pending`;
+
+    console.log(`✓ Order ${order.orderNumber}: ${message}`);
 
     res.status(200).json({
       success: true,
-      message: `Order verified and stock processed with ${createdDiscrepancies.length} discrepancy(ies)`,
+      message,
       data: {
         order,
-        discrepancies: createdDiscrepancies
+        discrepancies: createdDiscrepancies,
+        partiallyVerifiedItems,
+        fullyReceived: allItemsFullyReceived
       }
     });
   } catch (error) {

@@ -59,6 +59,17 @@ const customerConnectOrderSchema = new mongoose.Schema({
       required: [true, 'Line total is required'],
       min: [0, 'Line total cannot be negative']
     },
+    receivedQuantity: {
+      type: Number,
+      default: 0,
+      min: [0, 'Received quantity cannot be negative']
+    },
+    remainingQuantity: {
+      type: Number,
+      default: function() {
+        return this.qty;
+      }
+    },
     itemVerified: {
       type: Boolean,
       default: false
@@ -69,7 +80,21 @@ const customerConnectOrderSchema = new mongoose.Schema({
     itemVerifiedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
-    }
+    },
+    verificationHistory: [{
+      receivedQty: Number,
+      verifiedAt: Date,
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      notes: String,
+      stockProcessed: {
+        type: Boolean,
+        default: false
+      },
+      stockProcessedAt: Date
+    }]
   }],
   subtotal: {
     type: Number,

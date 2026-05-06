@@ -47,7 +47,6 @@ class StockService {
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] },
-          verified: true,
           'items.sku': { $in: skus }
         }
       },
@@ -61,13 +60,33 @@ class StockService {
         $group: {
           _id: { $toUpper: '$items.sku' },
           itemName: { $first: '$items.name' },
-          totalQuantity: { $sum: '$items.qty' },
+          totalQuantity: {
+            $sum: {
+              $cond: [
+                { $and: [
+                  { $ifNull: ['$items.receivedQuantity', false] },
+                  { $gt: ['$items.receivedQuantity', 0] }
+                ]},
+                '$items.receivedQuantity',
+                { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+              ]
+            }
+          },
           totalValue: { $sum: '$items.lineTotal' },
           purchaseHistory: {
             $push: {
               orderNumber: '$orderNumber',
               orderDate: '$orderDate',
-              quantity: '$items.qty',
+              quantity: {
+                $cond: [
+                  { $and: [
+                    { $ifNull: ['$items.receivedQuantity', false] },
+                    { $gt: ['$items.receivedQuantity', 0] }
+                  ]},
+                  '$items.receivedQuantity',
+                  { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                ]
+              },
               unitPrice: '$items.unitPrice',
               lineTotal: '$items.lineTotal',
               vendor: '$vendor.name',
@@ -83,15 +102,35 @@ class StockService {
           itemName: 1,
           totalQuantity: 1,
           totalValue: 1,
-          purchaseHistory: 1
+          purchaseHistory: {
+            $filter: {
+              input: '$purchaseHistory',
+              as: 'order',
+              cond: { $gt: ['$$order.quantity', 0] }
+            }
+          }
         }
       },
       { $sort: { sku: 1 } }
     ]);
     console.timeEnd('[getCategorySkus] Step 2: Aggregate SKU data');
+    console.log(`[getCategorySkus] Aggregation returned ${skuAggregation.length} SKUs`);
+
     const skuData = {};
     skuAggregation.forEach(item => {
-      skuData[item.sku] = item;
+      console.log(`[getCategorySkus] SKU ${item.sku}: totalQuantity=${item.totalQuantity}, purchaseHistory count=${item.purchaseHistory?.length || 0}`);
+
+      // Filter out purchase history entries with quantity <= 0 (defensive filter)
+      const filteredPurchaseHistory = (item.purchaseHistory || []).filter(order => (order.quantity || 0) > 0);
+
+      if (filteredPurchaseHistory.length > 0) {
+        console.log(`[getCategorySkus] First purchase history entry:`, JSON.stringify(filteredPurchaseHistory[0]));
+      }
+
+      skuData[item.sku] = {
+        ...item,
+        purchaseHistory: filteredPurchaseHistory
+      };
     });
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -204,7 +243,6 @@ class StockService {
         {
           $match: {
             status: { $in: ['Complete', 'Processing', 'Shipped'] },
-            verified: true,
             'items.sku': { $in: skus }
           }
         },
@@ -218,13 +256,33 @@ class StockService {
           $group: {
             _id: { $toUpper: '$items.sku' },
             itemName: { $first: '$items.name' },
-            totalPurchased: { $sum: '$items.qty' },
+            totalPurchased: {
+              $sum: {
+                $cond: [
+                  { $and: [
+                    { $ifNull: ['$items.receivedQuantity', false] },
+                    { $gt: ['$items.receivedQuantity', 0] }
+                  ]},
+                  '$items.receivedQuantity',
+                  { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                ]
+              }
+            },
             totalPurchaseValue: { $sum: '$items.lineTotal' },
             purchaseHistory: {
               $push: {
                 orderNumber: '$orderNumber',
                 orderDate: '$orderDate',
-                quantity: '$items.qty',
+                quantity: {
+                  $cond: [
+                    { $and: [
+                      { $ifNull: ['$items.receivedQuantity', false] },
+                      { $gt: ['$items.receivedQuantity', 0] }
+                    ]},
+                    '$items.receivedQuantity',
+                    { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                  ]
+                },
                 unitPrice: '$items.unitPrice',
                 lineTotal: '$items.lineTotal',
                 vendor: '$vendor.name',
@@ -241,7 +299,6 @@ class StockService {
           $match: {
             source: 'manual',
             status: { $in: ['confirmed', 'received', 'completed'] },
-            verified: true,
             'items.sku': { $in: skus }
           }
         },
@@ -255,13 +312,33 @@ class StockService {
           $group: {
             _id: { $toUpper: '$items.sku' },
             itemName: { $first: '$items.name' },
-            totalPurchased: { $sum: '$items.qty' },
+            totalPurchased: {
+              $sum: {
+                $cond: [
+                  { $and: [
+                    { $ifNull: ['$items.receivedQuantity', false] },
+                    { $gt: ['$items.receivedQuantity', 0] }
+                  ]},
+                  '$items.receivedQuantity',
+                  { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                ]
+              }
+            },
             totalPurchaseValue: { $sum: '$items.lineTotal' },
             purchaseHistory: {
               $push: {
                 orderNumber: '$orderNumber',
                 orderDate: '$orderDate',
-                quantity: '$items.qty',
+                quantity: {
+                  $cond: [
+                    { $and: [
+                      { $ifNull: ['$items.receivedQuantity', false] },
+                      { $gt: ['$items.receivedQuantity', 0] }
+                    ]},
+                    '$items.receivedQuantity',
+                    { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                  ]
+                },
                 unitPrice: '$items.unitPrice',
                 lineTotal: '$items.lineTotal',
                 vendor: '$vendor.name',
@@ -408,8 +485,12 @@ class StockService {
     // Convert Map to object for SKU data
     const skuData = {};
     purchaseDataMap.forEach((data, sku) => {
+      // Filter out purchase history entries with quantity <= 0
+      const filteredPurchaseHistory = (data.purchaseHistory || []).filter(order => (order.quantity || 0) > 0);
+
       skuData[sku] = {
         ...data,
+        purchaseHistory: filteredPurchaseHistory,
         totalSold: 0,
         totalSalesValue: 0,
         totalCheckedOut: 0,
@@ -1207,7 +1288,6 @@ class StockService {
         {
           $match: {
             status: { $in: ['Complete', 'Processing', 'Shipped'] },
-            verified: true,
             'items.sku': { $in: [...useSKUs, ...sellSKUs] }
           }
         },
@@ -1229,7 +1309,18 @@ class StockService {
               {
                 $group: {
                   _id: '$items.skuUpper',
-                  totalQuantity: { $sum: '$items.qty' },
+                  totalQuantity: {
+                    $sum: {
+                      $cond: [
+                        { $and: [
+                          { $ifNull: ['$items.receivedQuantity', false] },
+                          { $gt: ['$items.receivedQuantity', 0] }
+                        ]},
+                        '$items.receivedQuantity',
+                        { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                      ]
+                    }
+                  },
                   totalValue: { $sum: '$items.lineTotal' },
                   itemCount: { $sum: 1 }
                 }
@@ -1240,7 +1331,18 @@ class StockService {
               {
                 $group: {
                   _id: '$items.skuUpper',
-                  totalPurchased: { $sum: '$items.qty' },
+                  totalPurchased: {
+                    $sum: {
+                      $cond: [
+                        { $and: [
+                          { $ifNull: ['$items.receivedQuantity', false] },
+                          { $gt: ['$items.receivedQuantity', 0] }
+                        ]},
+                        '$items.receivedQuantity',
+                        { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                      ]
+                    }
+                  },
                   totalPurchaseValue: { $sum: '$items.lineTotal' },
                   itemCount: { $sum: 1 }
                 }
@@ -1255,7 +1357,6 @@ class StockService {
           $match: {
             source: 'manual',
             status: { $in: ['confirmed', 'received', 'completed'] },
-            verified: true,
             'items.sku': { $in: [...useSKUs, ...sellSKUs] }
           }
         },
@@ -1277,7 +1378,18 @@ class StockService {
               {
                 $group: {
                   _id: '$items.skuUpper',
-                  totalQuantity: { $sum: '$items.qty' },
+                  totalQuantity: {
+                    $sum: {
+                      $cond: [
+                        { $and: [
+                          { $ifNull: ['$items.receivedQuantity', false] },
+                          { $gt: ['$items.receivedQuantity', 0] }
+                        ]},
+                        '$items.receivedQuantity',
+                        { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                      ]
+                    }
+                  },
                   totalValue: { $sum: '$items.lineTotal' },
                   itemCount: { $sum: 1 }
                 }
@@ -1288,7 +1400,18 @@ class StockService {
               {
                 $group: {
                   _id: '$items.skuUpper',
-                  totalPurchased: { $sum: '$items.qty' },
+                  totalPurchased: {
+                    $sum: {
+                      $cond: [
+                        { $and: [
+                          { $ifNull: ['$items.receivedQuantity', false] },
+                          { $gt: ['$items.receivedQuantity', 0] }
+                        ]},
+                        '$items.receivedQuantity',
+                        { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                      ]
+                    }
+                  },
                   totalPurchaseValue: { $sum: '$items.lineTotal' },
                   itemCount: { $sum: 1 }
                 }

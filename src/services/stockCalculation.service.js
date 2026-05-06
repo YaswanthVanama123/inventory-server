@@ -75,17 +75,16 @@ class StockCalculationService {
     const PurchaseOrder = require('../models/PurchaseOrder');
 
     const [ccOrders, manualOrders] = await Promise.all([
-      // CustomerConnect orders
+      // CustomerConnect orders - include all orders with matching SKUs
+      // We'll filter by receivedQuantity/itemVerified in the counting logic
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] },
-        verified: true,  // Only count verified orders
         'items.sku': { $in: skus }
       }).lean(),
-      // Manual purchase orders
+      // Manual purchase orders - include all orders with matching SKUs
       PurchaseOrder.find({
         source: 'manual',
         status: { $in: ['confirmed', 'received', 'completed'] },
-        verified: true,
         'items.sku': { $in: skus }
       }).lean()
     ]);
@@ -96,7 +95,14 @@ class StockCalculationService {
     ccOrders.forEach(order => {
       order.items?.forEach(item => {
         if (skus.includes(item.sku?.toUpperCase())) {
-          total += item.qty || 0;
+          // Use receivedQuantity if partial verification is enabled, otherwise use full qty
+          const quantityToCount = item.receivedQuantity !== undefined && item.receivedQuantity > 0
+            ? item.receivedQuantity
+            : (item.itemVerified ? item.qty : 0);
+          if (quantityToCount > 0) {
+            console.log(`[_calculatePurchases] Counting ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
+          }
+          total += quantityToCount || 0;
         }
       });
     });
@@ -105,10 +111,19 @@ class StockCalculationService {
     manualOrders.forEach(order => {
       order.items?.forEach(item => {
         if (skus.includes(item.sku?.toUpperCase())) {
-          total += item.qty || 0;
+          // Use receivedQuantity if partial verification is enabled, otherwise use full qty
+          const quantityToCount = item.receivedQuantity !== undefined && item.receivedQuantity > 0
+            ? item.receivedQuantity
+            : (item.itemVerified ? item.qty : 0);
+          if (quantityToCount > 0) {
+            console.log(`[_calculatePurchases] Counting manual order ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
+          }
+          total += quantityToCount || 0;
         }
       });
     });
+
+    console.log(`[_calculatePurchases] Total for ${canonicalName}: ${total} units from ${ccOrders.length} CC orders and ${manualOrders.length} manual orders`);
 
     return total;
   }

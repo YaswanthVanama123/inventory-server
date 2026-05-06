@@ -503,48 +503,64 @@ class CustomerConnectService {
 
     // Extract matching entries from CustomerConnect orders
     const ccEntries = ccOrders.map(order => {
-      const matchingItems = order.items.filter(item =>
-        item.sku.toLowerCase() === sku.toLowerCase()
-      );
-      return matchingItems.map(item => ({
-        orderNumber: order.orderNumber,
-        poNumber: order.poNumber,
-        orderDate: order.orderDate,
-        status: order.status,
-        vendor: order.vendor?.name || 'N/A',
-        sku: item.sku,
-        name: item.name,
-        qty: item.qty,
-        unitPrice: item.unitPrice,
-        lineTotal: item.lineTotal,
-        stockProcessed: order.stockProcessed,
-        itemVerified: item.itemVerified || false,
-        itemVerifiedAt: item.itemVerifiedAt,
-        itemVerifiedBy: item.itemVerifiedBy
-      }));
+      // Find matching items and their indices
+      const entries = [];
+      order.items.forEach((item, itemIndex) => {
+        if (item.sku.toLowerCase() === sku.toLowerCase()) {
+          entries.push({
+            orderNumber: order.orderNumber,
+            poNumber: order.poNumber,
+            orderDate: order.orderDate,
+            status: order.status,
+            vendor: order.vendor?.name || 'N/A',
+            sku: item.sku,
+            name: item.name,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+            stockProcessed: order.stockProcessed,
+            itemVerified: item.itemVerified || false,
+            itemVerifiedAt: item.itemVerifiedAt,
+            itemVerifiedBy: item.itemVerifiedBy,
+            receivedQuantity: item.receivedQuantity || 0,
+            remainingQuantity: item.remainingQuantity !== undefined ? item.remainingQuantity : item.qty,
+            verificationHistory: item.verificationHistory || [],
+            itemIndex: itemIndex // Add the actual index within the order's items array
+          });
+        }
+      });
+      return entries;
     }).flat();
 
     // Extract matching entries from manual PurchaseOrders
     const poEntries = poOrders.map(order => {
-      const matchingItems = order.items.filter(item =>
-        item.sku.toLowerCase() === sku.toLowerCase()
-      );
-      return matchingItems.map(item => ({
-        orderNumber: order.orderNumber,
-        poNumber: null, // Manual orders don't have PO number from CustomerConnect
-        orderDate: order.orderDate,
-        status: order.status,
-        vendor: order.vendor?.name || 'N/A',
-        sku: item.sku,
-        name: item.name,
-        qty: item.qty,
-        unitPrice: item.unitPrice,
-        lineTotal: item.lineTotal,
-        stockProcessed: order.stockProcessed,
-        itemVerified: item.itemVerified || false,
-        itemVerifiedAt: item.itemVerifiedAt,
-        itemVerifiedBy: item.itemVerifiedBy
-      }));
+      // Find matching items and their indices
+      const entries = [];
+      order.items.forEach((item, itemIndex) => {
+        if (item.sku.toLowerCase() === sku.toLowerCase()) {
+          entries.push({
+            orderNumber: order.orderNumber,
+            poNumber: null, // Manual orders don't have PO number from CustomerConnect
+            orderDate: order.orderDate,
+            status: order.status,
+            vendor: order.vendor?.name || 'N/A',
+            sku: item.sku,
+            name: item.name,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+            stockProcessed: order.stockProcessed,
+            itemVerified: item.itemVerified || false,
+            itemVerifiedAt: item.itemVerifiedAt,
+            itemVerifiedBy: item.itemVerifiedBy,
+            receivedQuantity: item.receivedQuantity || 0,
+            remainingQuantity: item.remainingQuantity !== undefined ? item.remainingQuantity : item.qty,
+            verificationHistory: item.verificationHistory || [],
+            itemIndex: itemIndex // Add the actual index within the order's items array
+          });
+        }
+      });
+      return entries;
     }).flat();
 
     // Combine and sort all entries by order date (newest first)
@@ -553,6 +569,19 @@ class CustomerConnectService {
     );
 
     console.log(`[getOrdersBySKU] Extracted ${orderEntries.length} matching entries (${ccEntries.length} from CC, ${poEntries.length} from manual)`);
+
+    if (orderEntries.length > 0) {
+      console.log(`[getOrdersBySKU] First entry data:`, {
+        orderNumber: orderEntries[0].orderNumber,
+        sku: orderEntries[0].sku,
+        qty: orderEntries[0].qty,
+        receivedQuantity: orderEntries[0].receivedQuantity,
+        remainingQuantity: orderEntries[0].remainingQuantity,
+        itemIndex: orderEntries[0].itemIndex,
+        verificationHistoryLength: orderEntries[0].verificationHistory?.length || 0,
+        verificationHistory: orderEntries[0].verificationHistory
+      });
+    }
 
     return {
       sku: sku,
@@ -575,7 +604,9 @@ class CustomerConnectService {
       deletedCount: result.deletedCount
     };
   }
-  async verifyOrderItem(orderNumber, itemIndex, userId) {
+  async verifyOrderItem(orderNumber, itemIndex, userId, receivedQty = null, notes = '') {
+    const StockProcessor = require('./stockProcessor');
+
     // Try to find order in CustomerConnectOrder first
     let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
     let isManualOrder = false;
@@ -594,17 +625,173 @@ class CustomerConnectService {
       throw new Error('Invalid item index');
     }
 
-    order.items[itemIndex].itemVerified = true;
-    order.items[itemIndex].itemVerifiedAt = new Date();
-    order.items[itemIndex].itemVerifiedBy = userId;
+    const item = order.items[itemIndex];
+    const expectedQuantity = item.qty;
+    const previouslyReceived = item.receivedQuantity || 0;
+
+    // If receivedQty is not provided, assume full quantity
+    const receivingNow = receivedQty !== null ? parseFloat(receivedQty) : (expectedQuantity - previouslyReceived);
+
+    if (receivingNow <= 0) {
+      throw new Error('Received quantity must be greater than 0');
+    }
+
+    const newTotalReceived = previouslyReceived + receivingNow;
+    const newRemaining = Math.max(0, expectedQuantity - newTotalReceived);
+
+    // Add to verification history
+    if (!item.verificationHistory) item.verificationHistory = [];
+    const verificationEntry = {
+      receivedQty: receivingNow,
+      verifiedAt: new Date(),
+      verifiedBy: userId,
+      notes: notes || `Received ${receivingNow} units`,
+      stockProcessed: false,
+      stockProcessedAt: null
+    };
+    item.verificationHistory.push(verificationEntry);
+
+    // Update cumulative totals
+    item.receivedQuantity = newTotalReceived;
+    item.remainingQuantity = newRemaining;
+
+    console.log(`[verifyOrderItem] Updating item ${item.sku}:`, {
+      previouslyReceived,
+      receivingNow,
+      newTotalReceived,
+      newRemaining,
+      verificationHistoryLength: item.verificationHistory.length
+    });
+
+    // Only mark as fully verified if all quantity received
+    if (newTotalReceived >= expectedQuantity) {
+      item.itemVerified = true;
+      item.itemVerifiedAt = new Date();
+      item.itemVerifiedBy = userId;
+    } else {
+      item.itemVerified = false;
+    }
 
     await order.save();
+    console.log(`[verifyOrderItem] Order saved successfully. Item receivedQuantity: ${item.receivedQuantity}`);
+
+    // Process stock immediately for this receipt
+    try {
+      const verificationIndex = item.verificationHistory.length - 1;
+      const verificationId = `${Date.now()}-${verificationIndex}`;
+
+      await StockProcessor.processItemVerification(
+        order,
+        item,
+        receivingNow,
+        verificationId,
+        userId
+      );
+
+      // Mark this verification as stock processed
+      item.verificationHistory[verificationIndex].stockProcessed = true;
+      item.verificationHistory[verificationIndex].stockProcessedAt = new Date();
+      await order.save();
+
+      console.log(`✓ Stock processed for ${item.sku}: +${receivingNow} units`);
+    } catch (stockError) {
+      console.error(`✗ Failed to process stock for ${item.sku}:`, stockError.message);
+      // Don't throw error - verification is saved, stock processing can be retried
+    }
+
+    // Check if ALL items in the order are fully verified
+    const allItemsVerified = order.items.every(orderItem => orderItem.itemVerified === true);
+
+    if (allItemsVerified && !order.verified) {
+      order.verified = true;
+      order.verifiedAt = new Date();
+      order.verifiedBy = userId;
+      await order.save();
+      console.log(`✓ Order ${order.orderNumber} marked as fully verified - all items received`);
+    }
 
     return {
       orderNumber: order.orderNumber,
       itemIndex,
       item: order.items[itemIndex],
-      isManualOrder
+      isManualOrder,
+      partiallyVerified: newTotalReceived < expectedQuantity,
+      previouslyReceived,
+      receivingNow,
+      newTotalReceived,
+      remaining: newRemaining,
+      fullyReceived: newTotalReceived >= expectedQuantity
+    };
+  }
+
+  async reprocessFailedVerifications(orderNumber) {
+    const StockProcessor = require('./stockProcessor');
+
+    // Try to find order in CustomerConnectOrder first
+    let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
+    let isManualOrder = false;
+
+    // If not found, try PurchaseOrder (manual orders)
+    if (!order) {
+      order = await PurchaseOrder.findOne({ orderNumber });
+      isManualOrder = true;
+    }
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    let processedCount = 0;
+    let failedCount = 0;
+
+    // Loop through all items
+    for (let itemIndex = 0; itemIndex < order.items.length; itemIndex++) {
+      const item = order.items[itemIndex];
+
+      if (!item.verificationHistory || item.verificationHistory.length === 0) {
+        continue;
+      }
+
+      // Loop through verification history
+      for (let historyIndex = 0; historyIndex < item.verificationHistory.length; historyIndex++) {
+        const verification = item.verificationHistory[historyIndex];
+
+        // Skip if already processed
+        if (verification.stockProcessed) {
+          continue;
+        }
+
+        try {
+          const verificationId = `reprocess-${Date.now()}-${historyIndex}`;
+
+          await StockProcessor.processItemVerification(
+            order,
+            item,
+            verification.receivedQty,
+            verificationId,
+            verification.verifiedBy
+          );
+
+          // Mark this verification as stock processed
+          verification.stockProcessed = true;
+          verification.stockProcessedAt = new Date();
+          processedCount++;
+
+          console.log(`✓ Reprocessed verification for ${item.sku}: +${verification.receivedQty} units`);
+        } catch (error) {
+          console.error(`✗ Failed to reprocess ${item.sku}:`, error.message);
+          failedCount++;
+        }
+      }
+    }
+
+    await order.save();
+
+    return {
+      orderNumber: order.orderNumber,
+      processedCount,
+      failedCount,
+      message: `Reprocessed ${processedCount} verification(s), ${failedCount} failed`
     };
   }
 }

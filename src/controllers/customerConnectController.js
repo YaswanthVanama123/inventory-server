@@ -240,7 +240,7 @@ class CustomerConnectController {
   async verifyOrderItem(req, res, next) {
     try {
       const { orderNumber, itemIndex } = req.params;
-      const { userId } = req.body;
+      const { userId, receivedQty, notes } = req.body;
 
       if (!userId) {
         return res.status(400).json({
@@ -252,17 +252,46 @@ class CustomerConnectController {
       const result = await customerConnectService.verifyOrderItem(
         orderNumber,
         parseInt(itemIndex),
-        userId
+        userId,
+        receivedQty,
+        notes
       );
+
+      const message = result.fullyReceived
+        ? 'Item fully received and verified'
+        : `Partial receipt recorded - ${result.remaining} unit(s) remaining`;
 
       res.json({
         success: true,
-        message: 'Item verified successfully',
+        message,
         data: result
       });
     } catch (error) {
       console.error('Verify order item error:', error);
       if (error.message === 'Order not found' || error.message === 'Invalid item index') {
+        return res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      }
+      next(error);
+    }
+  }
+
+  async reprocessFailedVerifications(req, res, next) {
+    try {
+      const { orderNumber } = req.params;
+
+      const result = await customerConnectService.reprocessFailedVerifications(orderNumber);
+
+      res.json({
+        success: true,
+        message: result.message,
+        data: result
+      });
+    } catch (error) {
+      console.error('Reprocess verifications error:', error);
+      if (error.message === 'Order not found') {
         return res.status(404).json({
           success: false,
           message: error.message

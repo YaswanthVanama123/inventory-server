@@ -215,5 +215,40 @@ class StockProcessor {
     console.log(`Reversed stock for ${purchaseOrder.orderNumber}`);
     return reversalMovements;
   }
+
+  /**
+   * Process stock for individual item verification (supports partial receipts)
+   * Creates stock movement for the received quantity and updates stock summary
+   * @param {Object} order - The order (CustomerConnectOrder or PurchaseOrder)
+   * @param {Object} item - The specific item from order.items
+   * @param {Number} receivedQty - Quantity received in this verification
+   * @param {String} verificationId - Unique ID for this verification (to track processed receipts)
+   * @param {String} userId - User performing the verification
+   */
+  static async processItemVerification(order, item, receivedQty, verificationId, userId = null) {
+    try {
+      // Create stock movement for received quantity
+      const movement = await StockMovement.create({
+        sku: item.sku,
+        type: 'IN',
+        qty: receivedQty,
+        refType: 'ITEM_VERIFICATION',
+        refId: order._id,
+        sourceRef: `${order.orderNumber} - Verification ${verificationId}`,
+        notes: `Partial receipt: ${receivedQty} units from ${order.vendor?.name || 'Unknown Vendor'}`,
+        createdBy: userId
+      });
+
+      // Update stock summary
+      await this.updateStockSummary(item.sku, receivedQty, 'IN', userId);
+
+      console.log(`✓ Stock IN (Verification): ${item.sku} +${receivedQty} from Order ${order.orderNumber}`);
+
+      return movement;
+    } catch (error) {
+      console.error(`✗ Error processing item verification for ${item.sku}:`, error.message);
+      throw error;
+    }
+  }
 }
 module.exports = StockProcessor;

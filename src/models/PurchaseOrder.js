@@ -59,6 +59,17 @@ const purchaseOrderSchema = new mongoose.Schema({
       required: [true, 'Quantity is required'],
       min: [0, 'Quantity cannot be negative']
     },
+    receivedQuantity: {
+      type: Number,
+      default: 0,
+      min: [0, 'Received quantity cannot be negative']
+    },
+    remainingQuantity: {
+      type: Number,
+      default: function() {
+        return this.qty;
+      }
+    },
     unitPrice: {
       type: Number,
       required: [true, 'Unit price is required'],
@@ -80,7 +91,21 @@ const purchaseOrderSchema = new mongoose.Schema({
     itemVerifiedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
-    }
+    },
+    verificationHistory: [{
+      receivedQty: Number,
+      verifiedAt: Date,
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      notes: String,
+      stockProcessed: {
+        type: Boolean,
+        default: false
+      },
+      stockProcessedAt: Date
+    }]
   }],
   subtotal: {
     type: Number,
@@ -159,6 +184,14 @@ purchaseOrderSchema.statics.getUnprocessedOrders = function() {
     stockProcessed: false,
     status: { $in: ['confirmed', 'received', 'completed'] }
   }).sort({ orderDate: 1 });
+};
+purchaseOrderSchema.methods.isFullyReceived = function() {
+  if (!this.items || this.items.length === 0) return false;
+  return this.items.every(item => item.receivedQuantity >= item.qty);
+};
+purchaseOrderSchema.methods.hasPartialReceipts = function() {
+  if (!this.items || this.items.length === 0) return false;
+  return this.items.some(item => item.receivedQuantity > 0 && item.receivedQuantity < item.qty);
 };
 const PurchaseOrder = mongoose.model('PurchaseOrder', purchaseOrderSchema);
 module.exports = PurchaseOrder;
