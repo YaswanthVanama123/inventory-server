@@ -9,6 +9,7 @@ const path = require('path');
 const connectDB = require('./config/database');
 const initModels = require('./config/initModels');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
+const { activityLogger } = require('./middleware/activityLogger');
 
 
 const app = express();
@@ -81,6 +82,12 @@ const generalLimiter = rateLimit({
 if (process.env.NODE_ENV !== 'development') {
   app.use(generalLimiter);
 }
+// Activity logging middleware - place after auth but before routes
+app.use(activityLogger({
+  excludePaths: ['/health', '/api/health'],
+  excludeMethods: [],
+  logSuccessOnly: false
+}));
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
@@ -115,6 +122,7 @@ const vendorRoutes = require('./routes/vendor.routes');
 const manualOrderRoutes = require('./routes/manualOrder.routes');
 const goAuditsRoutes = require('./routes/goAudits.routes');
 const screenPermissionRoutes = require('./routes/screenPermission.routes');
+const activityLogRoutes = require('./routes/activityLogRoutes');
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -156,6 +164,7 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/manual-orders', manualOrderRoutes);
 app.use('/api/goaudits', goAuditsRoutes);
 app.use('/api/screen-permissions', screenPermissionRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 app.use(notFound);
 app.use(errorHandler);
 const PORT = process.env.PORT || 5000;

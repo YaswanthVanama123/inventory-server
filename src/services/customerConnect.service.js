@@ -387,10 +387,8 @@ class CustomerConnectService {
       }] : []),
       {
         $group: {
-          _id: {
-            sku: '$items.sku',
-            name: '$items.name'
-          },
+          _id: '$items.sku',
+          name: { $first: '$items.name' },
           totalQuantity: { $sum: '$items.qty' },
           totalValue: { $sum: '$items.lineTotal' },
           avgUnitPrice: { $avg: '$items.unitPrice' },
@@ -405,8 +403,8 @@ class CustomerConnectService {
       {
         $project: {
           _id: 0,
-          sku: '$_id.sku',
-          name: '$_id.name',
+          sku: '$_id',
+          name: 1,
           totalQuantity: 1,
           totalValue: { $round: ['$totalValue', 2] },
           avgUnitPrice: { $round: ['$avgUnitPrice', 2] },
