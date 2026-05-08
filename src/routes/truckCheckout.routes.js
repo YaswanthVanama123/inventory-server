@@ -2,25 +2,26 @@ const express = require('express');
 const router = express.Router();
 const truckCheckoutController = require('../controllers/truckCheckoutController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { setActivityMeta } = require('../middleware/activityLogger');
 
 
-router.get('/items/search', authenticate, truckCheckoutController.searchItems);
-router.get('/stock/:itemName', authenticate, truckCheckoutController.getItemStock);
-router.get('/truck-inventory/:truckNumber/:itemName', authenticate, truckCheckoutController.getTruckInventory);
-router.get('/active', authenticate, truckCheckoutController.getActiveCheckouts);
-router.get('/employee/:employeeName', authenticate, truckCheckoutController.getCheckoutsByEmployee);
-router.get('/stats/employee/:employeeName', authenticate, truckCheckoutController.getEmployeeStats);
-router.get('/sales-tracking', authenticate, truckCheckoutController.getCheckoutSalesTracking);
-router.get('/employees/stats', authenticate, truckCheckoutController.getAllEmployeesWithStats);
-router.post('/create-new', authenticate, truckCheckoutController.createCheckout);
-router.get('/', authenticate, truckCheckoutController.getCheckouts);
-router.get('/:id', authenticate, truckCheckoutController.getCheckoutById);
-router.delete('/:id', authenticate, requireAdmin(), truckCheckoutController.deleteCheckout);
+router.get('/items/search', authenticate, setActivityMeta('SEARCH', 'TRUCK_CHECKOUT_ITEMS'), truckCheckoutController.searchItems);
+router.get('/stock/:itemName', authenticate, setActivityMeta('VIEW', 'ITEM_STOCK'), truckCheckoutController.getItemStock);
+router.get('/truck-inventory/:truckNumber/:itemName', authenticate, setActivityMeta('VIEW', 'TRUCK_INVENTORY'), truckCheckoutController.getTruckInventory);
+router.get('/active', authenticate, setActivityMeta('VIEW', 'ACTIVE_CHECKOUTS'), truckCheckoutController.getActiveCheckouts);
+router.get('/employee/:employeeName', authenticate, setActivityMeta('VIEW', 'EMPLOYEE_CHECKOUTS'), truckCheckoutController.getCheckoutsByEmployee);
+router.get('/stats/employee/:employeeName', authenticate, setActivityMeta('VIEW', 'EMPLOYEE_STATS'), truckCheckoutController.getEmployeeStats);
+router.get('/sales-tracking', authenticate, setActivityMeta('VIEW', 'SALES_TRACKING'), truckCheckoutController.getCheckoutSalesTracking);
+router.get('/employees/stats', authenticate, setActivityMeta('VIEW', 'ALL_EMPLOYEES_STATS'), truckCheckoutController.getAllEmployeesWithStats);
+router.post('/create-new', authenticate, setActivityMeta('CREATE', 'TRUCK_CHECKOUT'), truckCheckoutController.createCheckout);
+router.get('/', authenticate, setActivityMeta('VIEW', 'TRUCK_CHECKOUTS'), truckCheckoutController.getCheckouts);
+router.get('/:id', authenticate, setActivityMeta('VIEW', 'TRUCK_CHECKOUT'), truckCheckoutController.getCheckoutById);
+router.delete('/:id', authenticate, requireAdmin(), setActivityMeta('DELETE', 'TRUCK_CHECKOUT'), truckCheckoutController.deleteCheckout);
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarSyncService = require('../services/routeStarSync.service');
 const TruckCheckout = require('../models/TruckCheckout');
 const StockMovement = require('../models/StockMovement');
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, setActivityMeta('CREATE', 'TRUCK_CHECKOUT'), async (req, res) => {
   try {
     const {
       employeeName,
@@ -97,7 +98,7 @@ router.post('/', authenticate, async (req, res) => {
     });
   }
 });
-router.post('/:id/complete', authenticate, async (req, res) => {
+router.post('/:id/complete', authenticate, setActivityMeta('COMPLETE', 'TRUCK_CHECKOUT'), async (req, res) => {
   try {
     const { id } = req.params;
     const { invoiceNumbers, invoiceType = 'closed' } = req.body;
@@ -163,7 +164,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     });
   }
 });
-router.post('/:id/check-work', authenticate, async (req, res) => {
+router.post('/:id/check-work', authenticate, setActivityMeta('CHECK_WORK', 'TRUCK_CHECKOUT'), async (req, res) => {
   let syncService = null;
   try {
     const { id } = req.params;
@@ -335,7 +336,7 @@ router.post('/:id/check-work', authenticate, async (req, res) => {
     }
   }
 });
-router.post('/:id/cancel', authenticate, async (req, res) => {
+router.post('/:id/cancel', authenticate, setActivityMeta('CANCEL', 'TRUCK_CHECKOUT'), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -368,7 +369,7 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     });
   }
 });
-router.patch('/:id', authenticate, async (req, res) => {
+router.patch('/:id', authenticate, setActivityMeta('UPDATE', 'TRUCK_CHECKOUT'), async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;

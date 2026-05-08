@@ -23,5 +23,7 @@ router.route('/:id')
   .get(getUser)
   .put(userValidation.update, validate, updateUser)
   .delete(deleteUser);
-router.post('/:id/reset-password', userValidation.resetPassword, validate, resetPassword);
+
+router.put('/:id/reset-password', userValidation.resetPassword, validate, resetPassword);
+
 module.exports = router;

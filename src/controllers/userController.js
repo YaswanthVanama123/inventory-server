@@ -235,9 +235,11 @@ const deleteUser = async (req, res, next) => {
 const resetPassword = async (req, res, next) => {
   try {
     const { newPassword } = req.body;
+
     // Need to select password field to update it
-    const user = await User.findOne({ _id: req.params.id, isDeleted: false }).select('+password');
-    if (!user) {
+    const user = await User.findById(req.params.id).select('+password');
+
+    if (!user || user.isDeleted) {
       return res.status(404).json({
         success: false,
         error: {
@@ -246,10 +248,14 @@ const resetPassword = async (req, res, next) => {
         }
       });
     }
+
+    // Set the new password - pre-save hook will hash it automatically
     user.password = newPassword;
-    // Mark password as modified to ensure the pre-save hook runs
-    user.markModified('password');
+
+    // Save the user - pre-save hook will trigger
     await user.save();
+
+    // Log the password reset activity
     await AuditLog.create({
       action: 'PASSWORD_RESET',
       resource: 'USER',
@@ -258,6 +264,7 @@ const resetPassword = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
+
     res.status(200).json({
       success: true,
       message: 'Password reset successfully'
