@@ -24,7 +24,7 @@ const screenSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['Dashboard', 'RouteStar', 'CustomerConnect', 'GoAudits', 'Reports', 'Settings', 'Other'],
+    enum: ['Dashboard', 'RouteStar', 'CustomerConnect', 'Reports', 'Settings', 'Stock', 'Checkouts', 'Manual PO Items', 'Vendors', 'Inventory Items', 'Discrepancies', 'Other'],
     default: 'Other'
   },
   description: {

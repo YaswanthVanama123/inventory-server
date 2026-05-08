@@ -155,28 +155,142 @@ class ScreenPermissionService {
     }
   }
 
+  // Create a new screen
+  async createScreen(screenData) {
+    try {
+      // Check if screen with same name or path already exists
+      const existingScreen = await Screen.findOne({
+        $or: [
+          { name: screenData.name },
+          { path: screenData.path }
+        ]
+      });
+
+      if (existingScreen) {
+        throw new Error('Screen with this name or path already exists');
+      }
+
+      const screen = new Screen(screenData);
+      await screen.save();
+
+      return screen;
+    } catch (error) {
+      throw new Error(`Failed to create screen: ${error.message}`);
+    }
+  }
+
+  // Update a screen
+  async updateScreen(screenId, updateData) {
+    try {
+      // If updating name or path, check for duplicates
+      if (updateData.name || updateData.path) {
+        const existingScreen = await Screen.findOne({
+          _id: { $ne: screenId },
+          $or: [
+            ...(updateData.name ? [{ name: updateData.name }] : []),
+            ...(updateData.path ? [{ path: updateData.path }] : [])
+          ]
+        });
+
+        if (existingScreen) {
+          throw new Error('Screen with this name or path already exists');
+        }
+      }
+
+      const screen = await Screen.findByIdAndUpdate(
+        screenId,
+        updateData,
+        { new: true, runValidators: true }
+      );
+
+      if (!screen) {
+        throw new Error('Screen not found');
+      }
+
+      return screen;
+    } catch (error) {
+      throw new Error(`Failed to update screen: ${error.message}`);
+    }
+  }
+
+  // Delete a screen
+  async deleteScreen(screenId) {
+    try {
+      const screen = await Screen.findById(screenId);
+
+      if (!screen) {
+        throw new Error('Screen not found');
+      }
+
+      // Delete all user permissions for this screen
+      await UserScreenPermission.deleteMany({ screenId });
+
+      // Delete the screen
+      await Screen.findByIdAndDelete(screenId);
+
+      return { message: 'Screen and associated permissions deleted successfully' };
+    } catch (error) {
+      throw new Error(`Failed to delete screen: ${error.message}`);
+    }
+  }
+
+  // Get a single screen by ID
+  async getScreenById(screenId) {
+    try {
+      const screen = await Screen.findById(screenId);
+
+      if (!screen) {
+        throw new Error('Screen not found');
+      }
+
+      return screen;
+    } catch (error) {
+      throw new Error(`Failed to get screen: ${error.message}`);
+    }
+  }
+
   // Initialize default screens (run once during setup)
   async initializeDefaultScreens() {
     try {
       const defaultScreens = [
-        // Dashboard
-        { name: 'dashboard', displayName: 'Dashboard', path: '/', icon: 'HomeIcon', category: 'Dashboard', isDefault: true, order: 1 },
+        // Core
+        { name: 'dashboard', displayName: 'Dashboard', path: '/dashboard', icon: 'DashboardIcon', category: 'Core', isDefault: true, order: 1 },
 
-        // RouteStar
-        { name: 'routestar-invoices', displayName: 'RouteStar Invoices', path: '/routestar/invoices', icon: 'DocumentTextIcon', category: 'RouteStar', isDefault: true, order: 2 },
-        { name: 'routestar-closed-invoices', displayName: 'Closed Invoice Customers', path: '/routestar/closed-invoice-customers', icon: 'UserGroupIcon', category: 'RouteStar', isDefault: true, order: 3 },
+        // Inventory Management
+        { name: 'stock', displayName: 'Stock', path: '/stock', icon: 'PackageIcon', category: 'Inventory', isDefault: true, order: 2 },
+        { name: 'inventory', displayName: 'Inventory Items', path: '/inventory', icon: 'InventoryIcon', category: 'Inventory', isDefault: true, order: 3 },
+        { name: 'discrepancies', displayName: 'Discrepancies', path: '/discrepancies', icon: 'AlertTriangleIcon', category: 'Inventory', isDefault: true, order: 4 },
 
-        // CustomerConnect
-        { name: 'customerconnect-transactions', displayName: 'CustomerConnect Transactions', path: '/customerconnect/transactions', icon: 'CreditCardIcon', category: 'CustomerConnect', isDefault: false, order: 4 },
+        // Daily Operations
+        { name: 'orders', displayName: 'Orders', path: '/orders', icon: 'ShoppingCartIcon', category: 'Operations', isDefault: true, order: 5 },
+        { name: 'truck-checkouts', displayName: 'Truck Checkouts', path: '/truck-checkouts', icon: 'TruckIcon', category: 'Operations', isDefault: true, order: 6 },
+        { name: 'invoices', displayName: 'Invoices', path: '/invoices', icon: 'InvoicesIcon', category: 'Operations', isDefault: true, order: 7 },
+        { name: 'invoices-routestar-pending', displayName: 'Pending Invoices (RouteStar)', path: '/invoices/routestar/pending', icon: 'ClockHistoryIcon', category: 'Operations', isDefault: true, order: 8 },
+        { name: 'invoices-routestar-closed', displayName: 'Closed Invoices (RouteStar)', path: '/invoices/routestar/closed', icon: 'CheckCircleIcon', category: 'Operations', isDefault: true, order: 9 },
 
-        // GoAudits
-        { name: 'goaudits-locations', displayName: 'GoAudits Locations', path: '/goaudits/locations', icon: 'LocationMarkerIcon', category: 'GoAudits', isDefault: false, order: 5 },
+        // RouteStar Integration
+        { name: 'routestar-items', displayName: 'RouteStar Items', path: '/routestar/items', icon: 'CubeIcon', category: 'RouteStar', isDefault: false, order: 10 },
+        { name: 'routestar-model-mapping', displayName: 'Model Mapping', path: '/routestar/model-mapping', icon: 'LinkIcon', category: 'RouteStar', isDefault: false, order: 11 },
+        { name: 'routestar-item-alias-mapping', displayName: 'Item Alias Mapping', path: '/routestar/item-alias-mapping', icon: 'LinkIcon', category: 'RouteStar', isDefault: false, order: 12 },
 
-        // Reports
-        { name: 'reports', displayName: 'Reports', path: '/reports', icon: 'ChartBarIcon', category: 'Reports', isDefault: false, order: 6 },
+        // Master Data
+        { name: 'vendors', displayName: 'Vendors', path: '/vendors', icon: 'BuildingIcon', category: 'Master Data', isDefault: false, order: 13 },
+        { name: 'manual-po-items', displayName: 'Manual PO Items', path: '/manual-po-items', icon: 'TagIcon', category: 'Master Data', isDefault: false, order: 14 },
 
-        // Settings
-        { name: 'settings', displayName: 'Settings', path: '/settings', icon: 'CogIcon', category: 'Settings', isDefault: false, order: 7 }
+        // Reports & Analytics
+        { name: 'sales-report', displayName: 'Sales Report', path: '/routestar/sales-report', icon: 'ChartIcon', category: 'Reports', isDefault: false, order: 15 },
+        { name: 'items-invoice-usage', displayName: 'Items Invoice Usage', path: '/routestar/items-invoice-usage', icon: 'FolderIcon', category: 'Reports', isDefault: false, order: 16 },
+        { name: 'activities', displayName: 'Employee Activities', path: '/activities', icon: 'ActivityIcon', category: 'Reports', isDefault: false, order: 17 },
+
+        // System & Admin
+        { name: 'users', displayName: 'Users', path: '/users', icon: 'UsersIcon', category: 'Administration', isDefault: false, order: 18 },
+        { name: 'screen-permissions', displayName: 'Screen Permissions', path: '/admin/screen-permissions', icon: 'ShieldCheckIcon', category: 'Administration', isDefault: false, order: 19 },
+        { name: 'screen-management', displayName: 'Screen Management', path: '/admin/screens', icon: 'ClipboardListIcon', category: 'Administration', isDefault: false, order: 20 },
+        { name: 'settings', displayName: 'Settings', path: '/settings', icon: 'SettingsIcon', category: 'Administration', isDefault: false, order: 21 },
+        { name: 'fetch-history', displayName: 'Fetch History', path: '/system/fetch-history', icon: 'ClockHistoryIcon', category: 'Administration', isDefault: false, order: 22 },
+
+        // Personal
+        { name: 'profile', displayName: 'Profile', path: '/profile', icon: 'ProfileIcon', category: 'Personal', isDefault: false, order: 23 }
       ];
 
       const results = [];

@@ -22,27 +22,28 @@ const {
   exportCustomers
 } = require('../controllers/reportController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { setActivityMeta } = require('../middleware/activityLogger');
 
 
-router.get('/recent-activity', authenticate, getRecentActivity);
-router.get('/dashboard', authenticate, getDashboard);
+router.get('/recent-activity', authenticate, setActivityMeta('VIEW', 'REPORT'), getRecentActivity);
+router.get('/dashboard', authenticate, setActivityMeta('VIEW', 'DASHBOARD'), getDashboard);
 router.use(authenticate);
 router.use(requireAdmin());
-router.get('/dashboard-sync-widget', getDashboardSyncWidget);
-router.get('/stock-summary', getStockSummary);
-router.get('/profit-margin', getProfitMarginReport);
-router.get('/reorder-list', getReorderList);
-router.get('/audit-logs', getAuditLogs);
-router.get('/sales', getSalesReport);
-router.get('/valuation', getInventoryValuation);
-router.get('/top-selling', getTopSellingItems);
-router.get('/customers', getCustomerReport);
-router.get('/low-stock', getLowStockReport);
-router.get('/profit-analysis', getProfitAnalysis);
-router.get('/inventory-sync-status', getInventorySyncStatus);
-router.get('/sync-history', getSyncHistory);
-router.get('/stock-processing-status', getStockProcessingStatus);
-router.get('/export-customers', exportCustomers);
-router.get('/:type/export/csv', exportReportToCSV);
-router.get('/:type/export/pdf', exportReportToPDF);
+router.get('/dashboard-sync-widget', setActivityMeta('VIEW', 'DASHBOARD'), getDashboardSyncWidget);
+router.get('/stock-summary', setActivityMeta('VIEW', 'REPORT'), getStockSummary);
+router.get('/profit-margin', setActivityMeta('VIEW', 'REPORT'), getProfitMarginReport);
+router.get('/reorder-list', setActivityMeta('VIEW', 'REPORT'), getReorderList);
+router.get('/audit-logs', setActivityMeta('VIEW', 'REPORT'), getAuditLogs);
+router.get('/sales', setActivityMeta('VIEW', 'REPORT'), getSalesReport);
+router.get('/valuation', setActivityMeta('VIEW', 'REPORT'), getInventoryValuation);
+router.get('/top-selling', setActivityMeta('VIEW', 'REPORT'), getTopSellingItems);
+router.get('/customers', setActivityMeta('VIEW', 'REPORT'), getCustomerReport);
+router.get('/low-stock', setActivityMeta('VIEW', 'REPORT'), getLowStockReport);
+router.get('/profit-analysis', setActivityMeta('VIEW', 'REPORT'), getProfitAnalysis);
+router.get('/inventory-sync-status', setActivityMeta('VIEW', 'REPORT'), getInventorySyncStatus);
+router.get('/sync-history', setActivityMeta('VIEW', 'REPORT'), getSyncHistory);
+router.get('/stock-processing-status', setActivityMeta('VIEW', 'REPORT'), getStockProcessingStatus);
+router.get('/export-customers', setActivityMeta('EXPORT', 'REPORT'), exportCustomers);
+router.get('/:type/export/csv', setActivityMeta('EXPORT', 'REPORT'), exportReportToCSV);
+router.get('/:type/export/pdf', setActivityMeta('EXPORT', 'REPORT'), exportReportToPDF);
 module.exports = router;

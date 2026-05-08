@@ -154,6 +154,11 @@ const activityLogger = (options = {}) => {
           Object.assign(logData, req.activityMeta);
         }
 
+        // Skip logging if action or resource is missing (required fields)
+        if (!logData.action || !logData.resource) {
+          return;
+        }
+
         // Don't block response for logging
         setImmediate(() => {
           AuditLog.logActivity(logData).catch(err => {
