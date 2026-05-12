@@ -103,10 +103,34 @@ class ManualPurchaseOrderItemService {
   }
 
   async getAllItems() {
-    const items = await ManualPurchaseOrderItem.find()
-      .populate('vendorId', 'name email phone')
-      .sort({ name: 1 })
-      .lean();
+    const ModelCategory = require('../models/ModelCategory');
+
+    const [items, modelMappings] = await Promise.all([
+      ManualPurchaseOrderItem.find()
+        .populate('vendorId', 'name email phone')
+        .sort({ name: 1 })
+        .lean(),
+      ModelCategory.find({
+        modelNumber: { $regex: /^CUSTOM-/ }
+      }).lean()
+    ]);
+
+    // Build lookup of ModelCategory mappings by modelNumber
+    const modelMappingLookup = new Map();
+    for (const mapping of modelMappings) {
+      modelMappingLookup.set(mapping.modelNumber, mapping);
+    }
+
+    // Enrich items: if item has no mappedCategoryItemName but ModelCategory has a mapping, use it
+    for (const item of items) {
+      if (!item.mappedCategoryItemName) {
+        const mapping = modelMappingLookup.get(item.sku);
+        if (mapping?.categoryItemName) {
+          item.mappedCategoryItemName = mapping.categoryItemName;
+          item.mappedCategoryItemId = mapping.categoryItemId;
+        }
+      }
+    }
 
     return {
       items,

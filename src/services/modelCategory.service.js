@@ -171,6 +171,19 @@ class ModelCategoryService {
       mapping.notes = notes;
       await mapping.save();
     }
+
+    // Sync mapping back to ManualPurchaseOrderItem if this is a CUSTOM-* SKU
+    if (modelNumber.toUpperCase().startsWith('CUSTOM-')) {
+      await ManualPurchaseOrderItem.findOneAndUpdate(
+        { sku: modelNumber.toUpperCase() },
+        {
+          mappedCategoryItemId: categoryItemId || null,
+          mappedCategoryItemName: categoryItemName || null,
+          lastUpdatedBy: userId
+        }
+      );
+    }
+
     return mapping;
   }
   async deleteMapping(modelNumber) {
