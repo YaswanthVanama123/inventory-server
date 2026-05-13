@@ -102,7 +102,8 @@ class CustomerConnectController {
         startDate: req.query.startDate,
         endDate: req.query.endDate,
         stockProcessed: req.query.stockProcessed,
-        verified: req.query.verified
+        verified: req.query.verified,
+        source: req.query.source
       };
       const options = {
         page: parseInt(req.query.page) || 1,

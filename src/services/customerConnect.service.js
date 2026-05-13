@@ -164,7 +164,8 @@ class CustomerConnectService {
       startDate,
       endDate,
       stockProcessed,
-      verified
+      verified,
+      source
     } = filters;
     const {
       page = 1,
@@ -174,18 +175,30 @@ class CustomerConnectService {
 
     const query = {};
     if (status) query.status = status;
-    if (vendor) query['vendor.name'] = new RegExp(vendor, 'i');
+    if (vendor) {
+      const searchRegex = new RegExp(vendor, 'i');
+      query.$or = [
+        { 'vendor.name': searchRegex },
+        { orderNumber: searchRegex }
+      ];
+    }
     if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
 
     const ccQuery = { ...query };
+    if (query.$or) {
+      ccQuery.$or = [...query.$or];
+    }
     if (verified !== undefined) {
       if (verified === 'true') {
         ccQuery.verified = true;
       } else {
-        ccQuery.$or = [
-          { verified: false },
-          { verified: { $exists: false } }
-        ];
+        const verifiedCondition = { $or: [{ verified: false }, { verified: { $exists: false } }] };
+        if (ccQuery.$or) {
+          ccQuery.$and = [{ $or: ccQuery.$or }, verifiedCondition];
+          delete ccQuery.$or;
+        } else {
+          ccQuery.$or = verifiedCondition.$or;
+        }
       }
     }
 
@@ -202,10 +215,12 @@ class CustomerConnectService {
     const skip = (pageNum - 1) * limitNum;
 
     const [ccOrders, manualOrders] = await Promise.all([
+      source === 'manual' ? Promise.resolve([]) :
       CustomerConnectOrder.find(ccQuery)
         .select('orderNumber orderDate status total stockProcessed verified vendor.name items')
         .lean(),
 
+      source === 'customerconnect' ? Promise.resolve([]) :
       PurchaseOrder.find({ ...query, source: 'manual' })
         .select('orderNumber orderDate status total stockProcessed verified vendor.name items source')
         .lean()
