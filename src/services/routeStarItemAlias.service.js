@@ -12,17 +12,25 @@ class RouteStarItemAliasService {
     };
   }
   async getUniqueItems() {
-    const [routeStarItems, lookupMap, modelCategoryMappings] = await Promise.all([
+    const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+    const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
+
+    const [routeStarItems, lookupMap, modelCategoryMappings, orderItemNames, manualPOItems] = await Promise.all([
       RouteStarItem.find()
         .select('itemName itemParent description qtyOnHand')
         .sort({ itemName: 1 })
         .lean(),
       RouteStarItemAlias.buildLookupMap(),
-      ModelCategory.find().select('categoryItemName').lean()
+      ModelCategory.find().select('categoryItemName').lean(),
+      CustomerConnectOrder.aggregate([
+        { $unwind: '$items' },
+        { $group: { _id: '$items.name' } },
+        { $project: { _id: 0, name: '$_id' } }
+      ]),
+      ManualPurchaseOrderItem.find({ isActive: true })
+        .select('name sku')
+        .lean()
     ]);
-
-    console.log(`[unique-items] Found ${routeStarItems.length} RouteStarItems`);
-    console.log(`[unique-items] ModelCategory mappings:`, modelCategoryMappings.map(mc => mc.categoryItemName).filter(Boolean));
 
     // Create a Set of RouteStarItem names that are already mapped in ModelCategory
     const mappedInModelCategory = new Set(
@@ -31,22 +39,54 @@ class RouteStarItemAliasService {
         .map(mc => mc.categoryItemName.toLowerCase())
     );
 
-    console.log(`[unique-items] Found ${mappedInModelCategory.size} items already mapped in ModelCategory`);
-    console.log(`[unique-items] Mapped items (lowercase):`, Array.from(mappedInModelCategory));
-
     // Filter out items that are already mapped in ModelCategory
     const availableRouteStarItems = routeStarItems.filter(item =>
       !mappedInModelCategory.has(item.itemName.toLowerCase())
     );
 
-    console.log(`[unique-items] ${availableRouteStarItems.length} items available after filtering`);
-    console.log(`[unique-items] Filtered out items:`,
-      routeStarItems
-        .filter(item => mappedInModelCategory.has(item.itemName.toLowerCase()))
-        .map(item => item.itemName)
+    // Build a Set of all RouteStarItem names (lowercase) to avoid duplicates
+    const routeStarItemNamesSet = new Set(
+      routeStarItems.map(item => item.itemName.toLowerCase())
     );
 
-    const itemsWithMappingStatus = availableRouteStarItems.map(item => ({
+    // Collect purchased item names that are NOT already in RouteStarItems
+    const purchasedItems = [];
+    const seenPurchasedNames = new Set();
+
+    for (const orderItem of orderItemNames) {
+      if (orderItem.name) {
+        const nameLower = orderItem.name.toLowerCase().trim();
+        if (!routeStarItemNamesSet.has(nameLower) && !seenPurchasedNames.has(nameLower)) {
+          seenPurchasedNames.add(nameLower);
+          purchasedItems.push({
+            itemName: orderItem.name,
+            itemParent: 'CustomerConnect Order',
+            description: null,
+            qtyOnHand: 0
+          });
+        }
+      }
+    }
+
+    for (const poItem of manualPOItems) {
+      if (poItem.name) {
+        const nameLower = poItem.name.toLowerCase().trim();
+        if (!routeStarItemNamesSet.has(nameLower) && !seenPurchasedNames.has(nameLower)) {
+          seenPurchasedNames.add(nameLower);
+          purchasedItems.push({
+            itemName: poItem.name,
+            itemParent: `Manual PO (${poItem.sku})`,
+            description: null,
+            qtyOnHand: 0
+          });
+        }
+      }
+    }
+
+    // Combine RouteStarItems + purchased items
+    const allAvailableItems = [...availableRouteStarItems, ...purchasedItems];
+
+    const itemsWithMappingStatus = allAvailableItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
       description: item.description,
@@ -56,13 +96,16 @@ class RouteStarItemAliasService {
       occurrences: 1,
       totalQuantity: item.qtyOnHand || 0
     }));
+
+    // Sort alphabetically
+    itemsWithMappingStatus.sort((a, b) => a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' }));
+
     const stats = {
-      totalUniqueItems: availableRouteStarItems.length,
+      totalUniqueItems: allAvailableItems.length,
       mappedItems: itemsWithMappingStatus.filter(i => i.isMapped).length,
       unmappedItems: itemsWithMappingStatus.filter(i => !i.isMapped).length,
       excludedByModelMapping: mappedInModelCategory.size
     };
-    console.log(`[unique-items] Stats:`, stats);
     return {
       items: itemsWithMappingStatus,
       stats
@@ -189,7 +232,10 @@ class RouteStarItemAliasService {
     };
   }
   async getPageDataOptimized() {
-    const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings, modelCategoryMappings] = await Promise.all([
+    const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+    const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
+
+    const [mappings, routeStarItems, lookupMap, totalMappings, activeMappings, modelCategoryMappings, orderItemNames, manualPOItems] = await Promise.all([
       RouteStarItemAlias.getAllActiveMappings(),
       RouteStarItem.find()
         .select('itemName itemParent description qtyOnHand')
@@ -198,11 +244,16 @@ class RouteStarItemAliasService {
       RouteStarItemAlias.buildLookupMap(),
       RouteStarItemAlias.countDocuments(),
       RouteStarItemAlias.countDocuments({ isActive: true }),
-      ModelCategory.find().select('categoryItemName').lean()
+      ModelCategory.find().select('categoryItemName').lean(),
+      CustomerConnectOrder.aggregate([
+        { $unwind: '$items' },
+        { $group: { _id: '$items.name' } },
+        { $project: { _id: 0, name: '$_id' } }
+      ]),
+      ManualPurchaseOrderItem.find({ isActive: true })
+        .select('name sku')
+        .lean()
     ]);
-
-    console.log(`[page-data-optimized] Found ${routeStarItems.length} RouteStarItems, ${mappings.length} mappings`);
-    console.log(`[page-data-optimized] ModelCategory mappings:`, modelCategoryMappings.map(mc => mc.categoryItemName).filter(Boolean));
 
     // Create a Set of RouteStarItem names that are already mapped in ModelCategory
     const mappedInModelCategory = new Set(
@@ -211,22 +262,54 @@ class RouteStarItemAliasService {
         .map(mc => mc.categoryItemName.toLowerCase())
     );
 
-    console.log(`[page-data-optimized] Found ${mappedInModelCategory.size} items already mapped in ModelCategory`);
-    console.log(`[page-data-optimized] Mapped items (lowercase):`, Array.from(mappedInModelCategory));
-
     // Filter out items that are already mapped in ModelCategory
     const availableRouteStarItems = routeStarItems.filter(item =>
       !mappedInModelCategory.has(item.itemName.toLowerCase())
     );
 
-    console.log(`[page-data-optimized] ${availableRouteStarItems.length} items available after filtering`);
-    console.log(`[page-data-optimized] Filtered out items:`,
-      routeStarItems
-        .filter(item => mappedInModelCategory.has(item.itemName.toLowerCase()))
-        .map(item => item.itemName)
+    // Build a Set of all RouteStarItem names (lowercase) to avoid duplicates
+    const routeStarItemNamesSet = new Set(
+      routeStarItems.map(item => item.itemName.toLowerCase())
     );
 
-    const itemsWithMappingStatus = availableRouteStarItems.map(item => ({
+    // Collect purchased item names that are NOT already in RouteStarItems
+    const purchasedItems = [];
+    const seenPurchasedNames = new Set();
+
+    for (const orderItem of orderItemNames) {
+      if (orderItem.name) {
+        const nameLower = orderItem.name.toLowerCase().trim();
+        if (!routeStarItemNamesSet.has(nameLower) && !seenPurchasedNames.has(nameLower)) {
+          seenPurchasedNames.add(nameLower);
+          purchasedItems.push({
+            itemName: orderItem.name,
+            itemParent: 'CustomerConnect Order',
+            description: null,
+            qtyOnHand: 0
+          });
+        }
+      }
+    }
+
+    for (const poItem of manualPOItems) {
+      if (poItem.name) {
+        const nameLower = poItem.name.toLowerCase().trim();
+        if (!routeStarItemNamesSet.has(nameLower) && !seenPurchasedNames.has(nameLower)) {
+          seenPurchasedNames.add(nameLower);
+          purchasedItems.push({
+            itemName: poItem.name,
+            itemParent: `Manual PO (${poItem.sku})`,
+            description: null,
+            qtyOnHand: 0
+          });
+        }
+      }
+    }
+
+    // Combine RouteStarItems + purchased items
+    const allAvailableItems = [...availableRouteStarItems, ...purchasedItems];
+
+    const itemsWithMappingStatus = allAvailableItems.map(item => ({
       itemName: item.itemName,
       itemParent: item.itemParent,
       description: item.description,
@@ -236,6 +319,10 @@ class RouteStarItemAliasService {
       occurrences: 1,
       totalQuantity: item.qtyOnHand || 0
     }));
+
+    // Sort alphabetically
+    itemsWithMappingStatus.sort((a, b) => a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' }));
+
     const totalAliases = Object.keys(lookupMap).length;
     const mappedItemsCount = itemsWithMappingStatus.filter(i => i.isMapped).length;
     const unmappedItemsCount = itemsWithMappingStatus.filter(i => !i.isMapped).length;
@@ -243,12 +330,11 @@ class RouteStarItemAliasService {
       totalMappings,
       activeMappings,
       totalAliases,
-      totalUniqueItems: availableRouteStarItems.length,
+      totalUniqueItems: allAvailableItems.length,
       mappedItems: mappedItemsCount,
       unmappedItems: unmappedItemsCount,
       excludedByModelMapping: mappedInModelCategory.size
     };
-    console.log(`[page-data-optimized] Stats:`, stats);
     return {
       mappings: {
         mappings,
@@ -257,7 +343,7 @@ class RouteStarItemAliasService {
       uniqueItems: {
         items: itemsWithMappingStatus,
         stats: {
-          totalUniqueItems: availableRouteStarItems.length,
+          totalUniqueItems: allAvailableItems.length,
           mappedItems: mappedItemsCount,
           unmappedItems: unmappedItemsCount
         }

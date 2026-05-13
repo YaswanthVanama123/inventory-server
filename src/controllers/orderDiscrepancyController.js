@@ -89,51 +89,68 @@ exports.verifyOrder = async (req, res, next) => {
       isManualOrder = true;
     }
 
-    const createdDiscrepancies = [];
     const partiallyVerifiedItems = [];
 
     if (allGood) {
       console.log(`✓ Order ${order.orderNumber} verified - All Good (Fully Received)`);
 
-      order.items.forEach(item => {
-        item.receivedQuantity = item.qty;
-        item.remainingQuantity = 0;
-        item.itemVerified = true;
-        item.itemVerifiedAt = new Date();
-        item.itemVerifiedBy = req.user._id;
-        if (!item.verificationHistory) item.verificationHistory = [];
-        item.verificationHistory.push({
-          receivedQty: item.qty,
-          verifiedAt: new Date(),
-          verifiedBy: req.user._id,
-          notes: notes || 'All items received as expected'
-        });
-      });
+      for (const item of order.items) {
+        const previouslyReceived = item.receivedQuantity || 0;
+        const receivingNow = item.qty - previouslyReceived;
+
+        if (receivingNow > 0) {
+          if (!item.verificationHistory) item.verificationHistory = [];
+          item.verificationHistory.push({
+            receivedQty: receivingNow,
+            verifiedAt: new Date(),
+            verifiedBy: req.user._id,
+            notes: notes || 'All items received as expected',
+            stockProcessed: false
+          });
+
+          item.receivedQuantity = item.qty;
+          item.remainingQuantity = 0;
+          item.itemVerified = true;
+          item.itemVerifiedAt = new Date();
+          item.itemVerifiedBy = req.user._id;
+
+          try {
+            await StockProcessor.processItemVerification(
+              order,
+              item,
+              receivingNow,
+              `${Date.now()}-allgood`,
+              req.user._id
+            );
+            const lastIdx = item.verificationHistory.length - 1;
+            item.verificationHistory[lastIdx].stockProcessed = true;
+            item.verificationHistory[lastIdx].stockProcessedAt = new Date();
+            console.log(`  ✓ Stock processed for ${item.sku}: +${receivingNow} units`);
+          } catch (stockError) {
+            console.error(`  ✗ Failed to process stock for ${item.sku}:`, stockError.message);
+          }
+        } else {
+          item.itemVerified = true;
+          item.itemVerifiedAt = item.itemVerifiedAt || new Date();
+          item.itemVerifiedBy = item.itemVerifiedBy || req.user._id;
+        }
+      }
 
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
+      order.stockProcessed = true;
+      order.stockProcessedAt = new Date();
       await order.save();
-
-      if (!order.stockProcessed) {
-        try {
-          await StockProcessor.processPurchaseOrder(order, req.user._id);
-          console.log(`✓ Stock processed for order ${order.orderNumber}`);
-        } catch (stockError) {
-          console.error(`✗ Failed to process stock for order ${order.orderNumber}:`, stockError.message);
-          return res.status(500).json({
-            success: false,
-            message: 'Order verified but stock processing failed: ' + stockError.message
-          });
-        }
-      }
 
       return res.status(200).json({
         success: true,
         message: 'Order fully received and verified - stock processed',
         data: {
           order,
-          discrepancies: []
+          discrepancies: [],
+          partiallyVerifiedItems: [],
+          fullyReceived: true
         }
       });
     }
@@ -160,7 +177,8 @@ exports.verifyOrder = async (req, res, next) => {
         receivedQty: receivingNow,
         verifiedAt: new Date(),
         verifiedBy: req.user._id,
-        notes: item.notes || notes
+        notes: item.notes || notes || `Received ${receivingNow} units`,
+        stockProcessed: false
       });
 
       orderItem.receivedQuantity = newTotalReceived;
@@ -183,45 +201,20 @@ exports.verifyOrder = async (req, res, next) => {
         console.log(`  ⚠ Item ${item.sku} partially received: ${newTotalReceived}/${expectedQuantity} (${newRemaining} remaining)`);
       }
 
-      if (newTotalReceived !== expectedQuantity) {
-        const discrepancy = await OrderDiscrepancy.createDiscrepancy({
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          sku: item.sku,
-          itemName: item.itemName,
-          expectedQuantity,
-          receivedQuantity: newTotalReceived,
-          reportedBy: req.user._id,
-          notes: item.notes || notes,
-          status: 'pending'
-        });
-        createdDiscrepancies.push(discrepancy);
-
-        try {
-          const mapping = await ModelCategory.findOne({ modelNumber: item.sku });
-          const categoryName = mapping ? mapping.categoryItemName : item.itemName;
-
-          await StockDiscrepancy.create({
-            invoiceNumber: order.orderNumber,
-            invoiceId: order._id,
-            invoiceType: isManualOrder ? 'PurchaseOrder' : 'CustomerConnectOrder',
-            itemName: item.itemName,
-            itemSku: item.sku,
-            categoryName: categoryName,
-            systemQuantity: expectedQuantity,
-            actualQuantity: newTotalReceived,
-            difference: newTotalReceived - expectedQuantity,
-            discrepancyType: newTotalReceived < expectedQuantity ? 'Shortage' : 'Overage',
-            reason: 'Order verification discrepancy',
-            notes: item.notes || notes,
-            status: 'Pending',
-            reportedBy: req.user._id
-          });
-        } catch (stockDiscError) {
-          console.error(`Failed to create StockDiscrepancy for ${item.sku}:`, stockDiscError.message);
-        }
-
-        console.log(`  ✗ Discrepancy: Expected ${expectedQuantity}, Total Received ${newTotalReceived}`);
+      try {
+        const verificationIndex = orderItem.verificationHistory.length - 1;
+        await StockProcessor.processItemVerification(
+          order,
+          orderItem,
+          receivingNow,
+          `${Date.now()}-${verificationIndex}`,
+          req.user._id
+        );
+        orderItem.verificationHistory[verificationIndex].stockProcessed = true;
+        orderItem.verificationHistory[verificationIndex].stockProcessedAt = new Date();
+        console.log(`  ✓ Stock processed for ${item.sku}: +${receivingNow} units`);
+      } catch (stockError) {
+        console.error(`  ✗ Failed to process stock for ${item.sku}:`, stockError.message);
       }
     }
 
@@ -231,30 +224,14 @@ exports.verifyOrder = async (req, res, next) => {
       order.verified = true;
       order.verifiedAt = new Date();
       order.verifiedBy = req.user._id;
+      order.stockProcessed = true;
+      order.stockProcessedAt = new Date();
     }
 
     await order.save();
 
-    if (allItemsFullyReceived && !order.stockProcessed) {
-      try {
-        await StockProcessor.processPurchaseOrder(order, req.user._id);
-        console.log(`✓ Stock processed for order ${order.orderNumber}`);
-      } catch (stockError) {
-        console.error(`✗ Failed to process stock for order ${order.orderNumber}:`, stockError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Order verified but stock processing failed: ' + stockError.message,
-          data: {
-            order,
-            discrepancies: createdDiscrepancies,
-            partiallyVerifiedItems
-          }
-        });
-      }
-    }
-
     const message = allItemsFullyReceived
-      ? `Order fully received and verified with ${createdDiscrepancies.length} discrepancy(ies)`
+      ? 'Order fully received and verified'
       : `Partial receipt recorded - ${partiallyVerifiedItems.length} item(s) still pending`;
 
     console.log(`✓ Order ${order.orderNumber}: ${message}`);
@@ -264,7 +241,7 @@ exports.verifyOrder = async (req, res, next) => {
       message,
       data: {
         order,
-        discrepancies: createdDiscrepancies,
+        discrepancies: [],
         partiallyVerifiedItems,
         fullyReceived: allItemsFullyReceived
       }
