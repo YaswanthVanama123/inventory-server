@@ -390,3 +390,24 @@ exports.getOrderDiscrepancyStats = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.deleteOrderDiscrepancy = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const discrepancy = await OrderDiscrepancy.findById(id);
+    if (!discrepancy) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order discrepancy not found'
+      });
+    }
+    await discrepancy.deleteOne();
+    res.status(200).json({
+      success: true,
+      message: 'Order discrepancy deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete order discrepancy error:', error);
+    next(error);
+  }
+};

@@ -11,4 +11,5 @@ router.get('/by-order/:orderId', authenticate, orderDiscrepancyController.getOrd
 router.post('/verify/:orderId', authenticate, orderDiscrepancyController.verifyOrder);
 router.post('/:id/approve', authenticate, requireAdmin(), orderDiscrepancyController.approveOrderDiscrepancy);
 router.post('/:id/reject', authenticate, requireAdmin(), orderDiscrepancyController.rejectOrderDiscrepancy);
+router.delete('/:id', authenticate, orderDiscrepancyController.deleteOrderDiscrepancy);
 module.exports = router;
