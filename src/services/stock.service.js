@@ -591,6 +591,13 @@ class StockService {
     const skuArray = Object.values(skuData).sort((a, b) =>
       a.sku.localeCompare(b.sku)
     );
+
+    // Calculate category-level discrepancy adjustment (discrepancies not assigned to any specific SKU)
+    const skuSet = new Set(skus.map(s => s.toUpperCase()));
+    const categoryLevelDiscrepancyAdjustment = discrepancies
+      .filter(d => d.status === 'Approved' && (!d.itemSku || !skuSet.has(d.itemSku.toUpperCase())))
+      .reduce((sum, d) => sum + (d.difference || 0), 0);
+
     console.timeEnd(`[getCategorySales] Total for ${categoryName}`);
     return {
       categoryName,
@@ -615,8 +622,8 @@ class StockService {
         totalSalesValue: categorySalesData.totalSalesValue,
         totalCheckedOut: categoryCheckoutData.totalCheckedOut,
         totalDiscrepancies: discrepancies.length,
-        totalDiscrepancyDifference: skuArray.reduce((sum, s) => sum + (s.totalDiscrepancyDifference || 0), 0),
-        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased + (s.totalDiscrepancyDifference || 0), 0) - categoryCheckoutData.totalCheckedOut
+        totalDiscrepancyDifference: skuArray.reduce((sum, s) => sum + (s.totalDiscrepancyDifference || 0), 0) + categoryLevelDiscrepancyAdjustment,
+        stockRemaining: skuArray.reduce((sum, s) => sum + s.totalPurchased + (s.totalDiscrepancyDifference || 0), 0) - categoryCheckoutData.totalCheckedOut + categoryLevelDiscrepancyAdjustment
       }
     };
   }
