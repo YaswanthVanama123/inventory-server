@@ -2,11 +2,14 @@ const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarSyncService = require('./routeStarSync.service');
+const ModelCategory = require('../models/ModelCategory');
 
 
 class RouteStarItemsService {
   async getItemStats() {
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    const mappedCategories = await ModelCategory.distinct('categoryItemName');
+    const mappedCategorySet = new Set(mappedCategories.map(name => name?.toLowerCase()).filter(Boolean));
     const allItems = await RouteStarItem.find().lean();
     const groupedByCanonical = {};
     allItems.forEach(item => {
@@ -15,7 +18,7 @@ class RouteStarItemsService {
         groupedByCanonical[canonicalName] = {
           forUse: false,
           forSell: false,
-          isMapped: !!aliasMap[item.itemName.toLowerCase()]
+          isMapped: mappedCategorySet.has(canonicalName.toLowerCase())
         };
       }
       if (item.forUse) groupedByCanonical[canonicalName].forUse = true;
@@ -70,6 +73,8 @@ class RouteStarItemsService {
       .sort({ itemName: sortOrder === 'asc' ? 1 : -1 })
       .lean();
     const aliasMap = await RouteStarItemAlias.buildLookupMap();
+    const mappedCategories = await ModelCategory.distinct('categoryItemName');
+    const mappedCategorySet = new Set(mappedCategories.map(name => name?.toLowerCase()).filter(Boolean));
     const groupedByCanonical = {};
     allItems.forEach(item => {
       const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
@@ -84,7 +89,7 @@ class RouteStarItemsService {
           forUse: item.forUse,
           forSell: item.forSell,
           type: item.type,
-          isMapped: !!aliasMap[item.itemName.toLowerCase()],
+          isMapped: mappedCategorySet.has(canonicalName.toLowerCase()),
           mergedCount: 0,
           variations: []
         };
@@ -297,12 +302,14 @@ class RouteStarItemsService {
     if (itemCategory && itemCategory !== 'all') {
       query.itemCategory = itemCategory;
     }
-    const [allItems, aliasMap, itemParents, types] = await Promise.all([
+    const [allItems, aliasMap, itemParents, types, mappedCategories] = await Promise.all([
       RouteStarItem.find(query).sort({ itemName: sortOrder === 'asc' ? 1 : -1 }).lean(),
       RouteStarItemAlias.buildLookupMap(),
       RouteStarItem.distinct('itemParent'),
-      RouteStarItem.distinct('type')
+      RouteStarItem.distinct('type'),
+      ModelCategory.distinct('categoryItemName')
     ]);
+    const mappedCategorySet = new Set(mappedCategories.map(name => name?.toLowerCase()).filter(Boolean));
     console.log(`[getItemsWithStats] Found ${allItems.length} items before merging`);
     const groupedByCanonical = {};
     allItems.forEach(item => {
@@ -318,7 +325,7 @@ class RouteStarItemsService {
           forUse: item.forUse,
           forSell: item.forSell,
           type: item.type,
-          isMapped: !!aliasMap[item.itemName.toLowerCase()],
+          isMapped: mappedCategorySet.has(canonicalName.toLowerCase()),
           mergedCount: 0,
           variations: []
         };
