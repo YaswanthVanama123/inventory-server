@@ -278,7 +278,8 @@ class RouteStarItemsService {
       type,
       itemCategory,
       forUse,
-      forSell
+      forSell,
+      mapped
     } = filters;
     const {
       page = 1,
@@ -345,6 +346,11 @@ class RouteStarItemsService {
                searchRegex.test(item.description || '') ||
                item.variations.some(variation => searchRegex.test(variation));
       });
+    }
+    if (mapped === 'mapped') {
+      mergedItems = mergedItems.filter(item => item.isMapped);
+    } else if (mapped === 'unmapped') {
+      mergedItems = mergedItems.filter(item => !item.isMapped);
     }
     const statsTotal = mergedItems.length;
     const forUseCount = mergedItems.filter(item => item.forUse).length;

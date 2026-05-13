@@ -143,7 +143,8 @@ class RouteStarItemsController {
         type: req.query.type,
         itemCategory: req.query.itemCategory,
         forUse: req.query.forUse,
-        forSell: req.query.forSell
+        forSell: req.query.forSell,
+        mapped: req.query.mapped
       };
       const pagination = {
         page: req.query.page || 1,
