@@ -99,7 +99,7 @@ class TruckCheckoutService {
     });
     console.log(`   ✓ Checkout created: ${checkout._id}`);
 
-    // Create stock discrepancy if needed
+    // Create stock discrepancy if needed (auto-approved, no pending)
     let discrepancy = null;
     if (validation.hasDiscrepancy && acceptDiscrepancy) {
       discrepancy = await this._createDiscrepancy(checkout, validation, userId);
@@ -107,7 +107,7 @@ class TruckCheckoutService {
       await checkout.save();
     }
 
-    // NEW: Create truck discrepancy if needed
+    // Create truck discrepancy if needed (auto-approved, no pending)
     let truckDiscrepancy = null;
     if (truckInventoryValidation?.hasTruckDiscrepancy && acceptTruckDiscrepancy) {
       truckDiscrepancy = await this._createTruckDiscrepancy(checkout, truckInventoryValidation, userId);
