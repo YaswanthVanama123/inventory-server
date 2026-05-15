@@ -35,16 +35,7 @@ class TruckCheckoutService {
     console.log(`   Current stock: ${validation.currentStock}`);
     console.log(`   Expected remaining: ${validation.systemCalculatedRemaining}`);
 
-    if (validation.hasDiscrepancy && !acceptDiscrepancy) {
-      return {
-        success: false,
-        requiresConfirmation: true,
-        message: 'Stock discrepancy detected. Please confirm to proceed.',
-        validation
-      };
-    }
-
-    // NEW: Validate truck inventory if provided
+    // Validate truck inventory if provided
     let truckInventoryValidation = null;
     if (actualTruckInventory !== undefined && actualTruckInventory !== null && truckNumber) {
       console.log(`\n🚛 Validating truck inventory for truck ${truckNumber}...`);
@@ -68,17 +59,26 @@ class TruckCheckoutService {
           truckDiscrepancyDifference,
           truckDiscrepancyType: truckDiscrepancyDifference > 0 ? 'Overage' : 'Shortage'
         };
-
-        if (!acceptTruckDiscrepancy) {
-          return {
-            success: false,
-            requiresTruckConfirmation: true,
-            message: 'Truck inventory discrepancy detected. Please confirm to proceed.',
-            validation,
-            truckInventoryValidation
-          };
-        }
       }
+    }
+
+    // Return both discrepancies together if any need confirmation
+    const needsStockConfirmation = validation.hasDiscrepancy && !acceptDiscrepancy;
+    const needsTruckConfirmation = truckInventoryValidation?.hasTruckDiscrepancy && !acceptTruckDiscrepancy;
+
+    if (needsStockConfirmation || needsTruckConfirmation) {
+      return {
+        success: false,
+        requiresConfirmation: needsStockConfirmation,
+        requiresTruckConfirmation: needsTruckConfirmation,
+        message: needsStockConfirmation && needsTruckConfirmation
+          ? 'Both stock and truck inventory discrepancies detected. Please confirm to proceed.'
+          : needsStockConfirmation
+          ? 'Stock discrepancy detected. Please confirm to proceed.'
+          : 'Truck inventory discrepancy detected. Please confirm to proceed.',
+        validation,
+        truckInventoryValidation
+      };
     }
 
     const checkout = await TruckCheckout.create({
