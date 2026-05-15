@@ -79,7 +79,7 @@ jobs:
             pm2 logs inventory-backend --lines 20 --nostream || true
 
             echo "🔍 Local health check:"
-            curl -f http://localhost:3001/api/health || curl -f http://localhost:3001/ || exit 1
+            curl -f http://localhost:3001/health || curl -f http://localhost:3001/ || exit 1
 
       - name: Notify success
         if: success()
