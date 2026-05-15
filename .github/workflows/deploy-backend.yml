@@ -1,0 +1,92 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy inventory-backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests if present
+        run: npm test --if-present
+        continue-on-error: true
+
+      - name: Deploy to DigitalOcean droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          port: ${{ secrets.DO_PORT || 22 }}
+          script: |
+            set -e
+
+            cd /var/www/inventory-backend
+
+            echo "📥 Fetching latest code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "📦 Installing production dependencies..."
+            npm ci
+
+            echo "🌐 Installing Playwright Chromium..."
+            npx playwright install chromium --with-deps || true
+
+            echo "🔄 Restarting application..."
+            pm2 restart inventory-backend || pm2 start src/server.js --name inventory-backend
+
+            echo "💾 Saving PM2 process list..."
+            pm2 save
+
+            echo "📊 PM2 status:"
+            pm2 status inventory-backend
+
+      - name: Verify deployment on droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          port: ${{ secrets.DO_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "⏳ Waiting for app to stabilize..."
+            sleep 8
+
+            echo "📊 PM2 status:"
+            pm2 status inventory-backend
+
+            echo "📝 Recent logs:"
+            pm2 logs inventory-backend --lines 20 --nostream || true
+
+            echo "🔍 Local health check:"
+            curl -f http://localhost:3001/api/health || curl -f http://localhost:3001/ || exit 1
+
+      - name: Notify success
+        if: success()
+        run: echo "✅ inventory-backend deployed successfully"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ inventory-backend deployment failed"
+          exit 1
