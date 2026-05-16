@@ -1856,17 +1856,24 @@ class StockService {
     });
 
     // Add sales for use items
+    const useLowercaseMap = new Map();
+    useAllowedSet.forEach(category => {
+      useLowercaseMap.set(category.toLowerCase(), category);
+    });
+
     allInvoices.forEach(s => {
       const itemNameLower = s.itemName.toLowerCase();
-      let targetCategory = null;
+      let targetCategory = useLowercaseMap.get(itemNameLower);
 
-      // Check if this item name matches a use category
-      if (useAllowedSet.has(s.itemName)) {
-        targetCategory = s.itemName;
-      } else {
+      if (!targetCategory) {
         const canonical = aliasToCanonicalMap.get(itemNameLower) || s.itemName;
         if (useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
           targetCategory = canonical;
+        } else {
+          const canonicalFromMap = useLowercaseMap.get(canonical.toLowerCase());
+          if (canonicalFromMap) {
+            targetCategory = canonicalFromMap;
+          }
         }
       }
 
@@ -1892,20 +1899,17 @@ class StockService {
     // Add checkouts for use items
     allCheckoutsData.forEach(c => {
       const itemNameLower = c.itemName ? c.itemName.toLowerCase() : '';
-      let targetCategory = null;
-
-      // Direct match
-      for (const useCat of useAllowedSet) {
-        if (useCat.toLowerCase() === itemNameLower) {
-          targetCategory = useCat;
-          break;
-        }
-      }
+      let targetCategory = useLowercaseMap.get(itemNameLower);
 
       if (!targetCategory) {
         const canonical = aliasToCanonicalMap.get(itemNameLower) || c.itemName;
         if (useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
           targetCategory = canonical;
+        } else {
+          const canonicalFromMap = useLowercaseMap.get(canonical.toLowerCase());
+          if (canonicalFromMap) {
+            targetCategory = canonicalFromMap;
+          }
         }
       }
 
@@ -1936,9 +1940,15 @@ class StockService {
       }
       if (!targetCategory) {
         const rawCat = disc.categoryName || disc.itemName || '';
-        const canonical = aliasToCanonicalMap.get(rawCat.toLowerCase()) || rawCat;
+        const rawCatLower = rawCat.toLowerCase();
+        const canonical = aliasToCanonicalMap.get(rawCatLower) || rawCat;
         if (useAllowedSet.has(rawCat) || useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
           targetCategory = canonical;
+        } else {
+          const fromMap = useLowercaseMap.get(rawCatLower) || useLowercaseMap.get(canonical.toLowerCase());
+          if (fromMap) {
+            targetCategory = fromMap;
+          }
         }
       }
 
