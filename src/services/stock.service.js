@@ -602,6 +602,8 @@ class StockService {
     return {
       categoryName,
       skus: skuArray,
+      categorySalesHistory: categorySalesData.salesHistory || [],
+      categoryCheckoutHistory: categoryCheckoutData.checkoutHistory || [],
       categoryDiscrepancies: discrepancies.map(d => ({
         invoiceNumber: d.invoiceNumber,
         reportedAt: d.reportedAt,
@@ -1179,6 +1181,41 @@ class StockService {
       }
     });
     const sellVariationsArray = Array.from(sellVariationsSet);
+
+    // Build use variations similar to sell variations
+    const useVariationsSet = new Set();
+    const canonicalNamesForUse = new Set();
+
+    aliasData.forEach(mapping => {
+      const hasAllowedAlias = mapping.aliases.some(alias =>
+        useAllowedSet.has(alias.name)
+      );
+      if (hasAllowedAlias) {
+        canonicalNamesForUse.add(mapping.canonicalName);
+        useVariationsSet.add(mapping.canonicalName);
+        useVariationsSet.add(mapping.canonicalName.toLowerCase());
+        mapping.aliases.forEach(alias => {
+          const aliasLower = alias.name.toLowerCase();
+          if (!aliasToCanonicalMap.has(aliasLower)) {
+            aliasToCanonicalMap.set(aliasLower, mapping.canonicalName);
+          }
+          useVariationsSet.add(alias.name);
+          useVariationsSet.add(aliasLower);
+        });
+      }
+    });
+
+    // Add direct useAllowedSet items
+    useAllowedSet.forEach(c => {
+      useVariationsSet.add(c);
+      useVariationsSet.add(c.toLowerCase());
+    });
+
+    const useVariationsArray = Array.from(useVariationsSet);
+
+    // Create expanded use allowed set that includes canonical names
+    const expandedUseAllowedSet = new Set([...useAllowedSet, ...canonicalNamesForUse]);
+
     console.timeEnd('[StockSummary] Step 1.5: Build SKU maps');
     console.log(`[StockSummary] Use: ${useAllowedSet.size} cats, ${useSKUs.length} SKUs | Sell: ${sellAllowedSet.size} cats, ${sellSKUs.length} SKUs, ${sellVariationsArray.length} variations`);
     console.time('[StockSummary] Step 1.6: Extract sales keywords from purchases');
@@ -1285,6 +1322,7 @@ class StockService {
     const { skuToItemNameMap, salesKeywordsSet } = keywordData;
     salesKeywordsSet.forEach(kw => sellVariationsSet.add(kw));
     const finalSellVariationsArray = Array.from(sellVariationsSet);
+    const allVariationsArray = [...new Set([...finalSellVariationsArray, ...useVariationsArray])];
     console.timeEnd('[StockSummary] Step 1.6: Extract sales keywords from purchases');
     console.log(`[StockSummary] Extracted ${salesKeywordsSet.size} sales keywords from item names`);
     console.log(`[StockSummary] Total variations for checkout matching: ${finalSellVariationsArray.length}`);
@@ -1427,18 +1465,18 @@ class StockService {
           }
         }
       ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
-      finalSellVariationsArray.length > 0 ? RouteStarInvoice.aggregate([
+      allVariationsArray.length > 0 ? RouteStarInvoice.aggregate([
         {
           $match: {
             status: { $in: ['Completed', 'Closed', 'Pending'] },
             'lineItems.0': { $exists: true },
-            'lineItems.name': { $in: finalSellVariationsArray }
+            'lineItems.name': { $in: allVariationsArray }
           }
         },
         { $unwind: '$lineItems' },
         {
           $match: {
-            'lineItems.name': { $in: finalSellVariationsArray }
+            'lineItems.name': { $in: allVariationsArray }
           }
         },
         {
@@ -1499,7 +1537,7 @@ class StockService {
           }
         }
       ]) : Promise.resolve([{ allInvoices: [], invoicesBeforeCutoff: [] }]),
-      finalSellVariationsArray.length > 0 ? TruckCheckout.aggregate([
+      allVariationsArray.length > 0 ? TruckCheckout.aggregate([
         {
           $match: {
             status: 'checked_out',
@@ -1516,7 +1554,7 @@ class StockService {
               { $unwind: '$itemsTaken' },
               {
                 $match: {
-                  'itemsTaken.name': { $in: finalSellVariationsArray }
+                  'itemsTaken.name': { $in: allVariationsArray }
                 }
               },
               {
@@ -1527,7 +1565,7 @@ class StockService {
               }
             ],
             allCheckoutsNew: [
-              { $match: { 'itemName': { $exists: true, $in: finalSellVariationsArray } } },
+              { $match: { 'itemName': { $exists: true, $in: allVariationsArray } } },
               {
                 $group: {
                   _id: { $toLower: '$itemName' },
@@ -1545,7 +1583,7 @@ class StockService {
               { $unwind: '$itemsTaken' },
               {
                 $match: {
-                  'itemsTaken.name': { $in: finalSellVariationsArray }
+                  'itemsTaken.name': { $in: allVariationsArray }
                 }
               },
               {
@@ -1559,7 +1597,7 @@ class StockService {
               {
                 $match: {
                   checkoutDate: { $gte: cutoffDate },
-                  'itemName': { $exists: true, $in: finalSellVariationsArray }
+                  'itemName': { $exists: true, $in: allVariationsArray }
                 }
               },
               {
@@ -1572,11 +1610,11 @@ class StockService {
           }
         }
       ]) : Promise.resolve([{ allCheckoutsOld: [], allCheckoutsNew: [], checkoutsAfterCutoffOld: [], checkoutsAfterCutoffNew: [] }]),
-      (finalSellVariationsArray.length > 0 || sellSKUs.length > 0) ? StockDiscrepancy.find({
+      (allVariationsArray.length > 0 || sellSKUs.length > 0 || useSKUs.length > 0) ? StockDiscrepancy.find({
         $or: [
-          { categoryName: { $in: finalSellVariationsArray } },
-          { itemName: { $in: finalSellVariationsArray } },
-          { itemSku: { $in: sellSKUs } }
+          { categoryName: { $in: allVariationsArray } },
+          { itemName: { $in: allVariationsArray } },
+          { itemSku: { $in: [...sellSKUs, ...useSKUs] } }
         ]
       }).lean() : Promise.resolve([])
     ]);
@@ -1783,32 +1821,164 @@ class StockService {
       }
     });
     const useStockMap = new Map();
+
+    // Add purchases from usePurchases
     usePurchases.forEach(p => {
-      const category = skuToCategoryMap.get(p._id);
-      if (category && useAllowedSet.has(category)) {
-        if (!useStockMap.has(category)) {
-          useStockMap.set(category, {
-            categoryName: category,
-            totalQuantity: 0,
-            itemCount: 0,
-            totalValue: 0
-          });
-        }
-        const stock = useStockMap.get(category);
-        stock.totalQuantity += p.totalQuantity || 0;
-        stock.totalValue += p.totalValue || 0;
-        stock.itemCount += p.itemCount || 0;
-      }
-    });
-    forUseItems.forEach(item => {
-      if (!useStockMap.has(item.itemName)) {
-        useStockMap.set(item.itemName, {
-          categoryName: item.itemName,
-          totalQuantity: 0,
+      const originalCategory = skuToCategoryMap.get(p._id);
+      if (!originalCategory) return;
+
+      const categoryLower = originalCategory.toLowerCase();
+      const category = aliasToCanonicalMap.get(categoryLower) || originalCategory;
+      const isAllowed = useAllowedSet.has(originalCategory) || expandedUseAllowedSet.has(category);
+      if (!isAllowed) return;
+
+      if (!useStockMap.has(category)) {
+        useStockMap.set(category, {
+          categoryName: category,
+          totalPurchased: 0,
+          totalPurchaseValue: 0,
+          totalSold: 0,
+          totalSoldBeforeCutoff: 0,
+          totalSalesValue: 0,
+          totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0,
+          totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0,
           itemCount: 0,
-          totalValue: 0
+          invoiceCount: 0,
+          stockRemaining: 0
         });
       }
+      const stock = useStockMap.get(category);
+      stock.totalPurchased += p.totalQuantity || 0;
+      stock.totalPurchaseValue += p.totalValue || 0;
+      stock.itemCount += p.itemCount || 0;
+    });
+
+    // Add sales for use items
+    allInvoices.forEach(s => {
+      const itemNameLower = s.itemName.toLowerCase();
+      let targetCategory = null;
+
+      // Check if this item name matches a use category
+      if (useAllowedSet.has(s.itemName)) {
+        targetCategory = s.itemName;
+      } else {
+        const canonical = aliasToCanonicalMap.get(itemNameLower) || s.itemName;
+        if (useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
+          targetCategory = canonical;
+        }
+      }
+
+      if (targetCategory) {
+        const canonical = aliasToCanonicalMap.get(targetCategory.toLowerCase()) || targetCategory;
+        if (!useStockMap.has(canonical)) {
+          useStockMap.set(canonical, {
+            categoryName: canonical,
+            totalPurchased: 0, totalPurchaseValue: 0, totalSold: 0,
+            totalSoldBeforeCutoff: 0, totalSalesValue: 0, totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0, totalDiscrepancies: 0,
+            totalDiscrepancyDifference: 0, itemCount: 0, invoiceCount: 0,
+            stockRemaining: 0
+          });
+        }
+        const stock = useStockMap.get(canonical);
+        stock.totalSold += s.totalSold || 0;
+        stock.totalSalesValue += s.totalSalesValue || 0;
+        stock.invoiceCount += s.invoiceCount || 0;
+      }
+    });
+
+    // Add checkouts for use items
+    allCheckoutsData.forEach(c => {
+      const itemNameLower = c.itemName ? c.itemName.toLowerCase() : '';
+      let targetCategory = null;
+
+      // Direct match
+      for (const useCat of useAllowedSet) {
+        if (useCat.toLowerCase() === itemNameLower) {
+          targetCategory = useCat;
+          break;
+        }
+      }
+
+      if (!targetCategory) {
+        const canonical = aliasToCanonicalMap.get(itemNameLower) || c.itemName;
+        if (useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
+          targetCategory = canonical;
+        }
+      }
+
+      if (targetCategory) {
+        const canonical = aliasToCanonicalMap.get(targetCategory.toLowerCase()) || targetCategory;
+        if (!useStockMap.has(canonical)) {
+          useStockMap.set(canonical, {
+            categoryName: canonical,
+            totalPurchased: 0, totalPurchaseValue: 0, totalSold: 0,
+            totalSoldBeforeCutoff: 0, totalSalesValue: 0, totalCheckedOut: 0,
+            totalCheckedOutAfterCutoff: 0, totalDiscrepancies: 0,
+            totalDiscrepancyDifference: 0, itemCount: 0, invoiceCount: 0,
+            stockRemaining: 0
+          });
+        }
+        useStockMap.get(canonical).totalCheckedOut += c.totalCheckedOut || 0;
+      }
+    });
+
+    // Add discrepancies for use items
+    rawDiscrepancies.forEach(disc => {
+      let targetCategory = null;
+      if (disc.itemSku && skuToCategoryMap.has(disc.itemSku)) {
+        const cat = skuToCategoryMap.get(disc.itemSku);
+        if (useAllowedSet.has(cat) || expandedUseAllowedSet.has(cat)) {
+          targetCategory = aliasToCanonicalMap.get(cat.toLowerCase()) || cat;
+        }
+      }
+      if (!targetCategory) {
+        const rawCat = disc.categoryName || disc.itemName || '';
+        const canonical = aliasToCanonicalMap.get(rawCat.toLowerCase()) || rawCat;
+        if (useAllowedSet.has(rawCat) || useAllowedSet.has(canonical) || expandedUseAllowedSet.has(canonical)) {
+          targetCategory = canonical;
+        }
+      }
+
+      if (targetCategory && useStockMap.has(targetCategory)) {
+        const stock = useStockMap.get(targetCategory);
+        stock.totalDiscrepancies += 1;
+        stock.totalDiscrepancyDifference += disc.difference || 0;
+      }
+    });
+
+    // Ensure all forUse items appear even without data
+    forUseItems.forEach(item => {
+      const itemName = item.itemName;
+      const canonical = aliasToCanonicalMap.get(itemName.toLowerCase()) || itemName;
+      if (!useStockMap.has(canonical)) {
+        useStockMap.set(canonical, {
+          categoryName: canonical,
+          totalPurchased: 0, totalPurchaseValue: 0, totalSold: 0,
+          totalSoldBeforeCutoff: 0, totalSalesValue: 0, totalCheckedOut: 0,
+          totalCheckedOutAfterCutoff: 0, totalDiscrepancies: 0,
+          totalDiscrepancyDifference: 0, itemCount: 0, invoiceCount: 0,
+          stockRemaining: 0
+        });
+      }
+    });
+
+    // Calculate stockRemaining and add aliases for use items
+    useStockMap.forEach(item => {
+      item.stockRemaining = item.totalPurchased - item.totalCheckedOut + item.totalDiscrepancyDifference;
+      // Add aliases from aliasData
+      item.aliases = [];
+      aliasData.forEach(mapping => {
+        if (mapping.canonicalName === item.categoryName) {
+          mapping.aliases.forEach(alias => {
+            if (alias.name !== item.categoryName && !item.aliases.includes(alias.name)) {
+              item.aliases.push(alias.name);
+            }
+          });
+        }
+      });
     });
 
     const sellStockMap = new Map();
@@ -2112,10 +2282,26 @@ class StockService {
       a.categoryName.localeCompare(b.categoryName)
     );
     const useTotals = useStock.reduce((acc, item) => ({
-      totalQuantity: acc.totalQuantity + item.totalQuantity,
-      totalValue: acc.totalValue + item.totalValue,
+      totalPurchased: acc.totalPurchased + (item.totalPurchased || 0),
+      totalPurchaseValue: acc.totalPurchaseValue + (item.totalPurchaseValue || 0),
+      totalSold: acc.totalSold + (item.totalSold || 0),
+      totalSalesValue: acc.totalSalesValue + (item.totalSalesValue || 0),
+      totalCheckedOut: acc.totalCheckedOut + (item.totalCheckedOut || 0),
+      stockRemaining: acc.stockRemaining + (item.stockRemaining || 0),
+      totalDiscrepancies: acc.totalDiscrepancies + (item.totalDiscrepancies || 0),
+      totalDiscrepancyDifference: acc.totalDiscrepancyDifference + (item.totalDiscrepancyDifference || 0),
       categoryCount: acc.categoryCount + 1
-    }), { totalQuantity: 0, totalValue: 0, categoryCount: 0 });
+    }), {
+      totalPurchased: 0,
+      totalPurchaseValue: 0,
+      totalSold: 0,
+      totalSalesValue: 0,
+      totalCheckedOut: 0,
+      stockRemaining: 0,
+      totalDiscrepancies: 0,
+      totalDiscrepancyDifference: 0,
+      categoryCount: 0
+    });
     const sellTotals = sellStock.reduce((acc, item) => ({
       totalPurchased: acc.totalPurchased + item.totalPurchased,
       totalPurchaseValue: acc.totalPurchaseValue + item.totalPurchaseValue,
