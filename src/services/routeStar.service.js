@@ -525,6 +525,7 @@ class RouteStarService {
         search,
         startDate,
         endDate,
+        dateField = 'invoiceDate',
         stockProcessed
       } = { ...filters, ...options };
       const query = {};
@@ -541,14 +542,16 @@ class RouteStarService {
       }
       if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
       if (startDate || endDate) {
-        query.invoiceDate = {};
-        if (startDate) query.invoiceDate.$gte = new Date(startDate);
-        if (endDate) query.invoiceDate.$lte = new Date(endDate);
+        const allowedDateFields = ['invoiceDate', 'dateCompleted', 'createdAt'];
+        const filterField = allowedDateFields.includes(dateField) ? dateField : 'invoiceDate';
+        query[filterField] = {};
+        if (startDate) query[filterField].$gte = new Date(startDate);
+        if (endDate) query[filterField].$lte = new Date(endDate);
       }
       const skip = (page - 1) * limit;
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
-          .select('_id invoiceNumber invoiceDate customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
+          .select('_id invoiceNumber invoiceDate dateCompleted customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
           .sort({ invoiceDate: -1 })
           .skip(skip)
           .limit(parseInt(limit))
@@ -559,6 +562,7 @@ class RouteStarService {
         _id: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
         invoiceDate: invoice.invoiceDate,
+        dateCompleted: invoice.dateCompleted,
         customer: {
           name: invoice.customer?.name || 'Unknown',
           email: invoice.customer?.email || null

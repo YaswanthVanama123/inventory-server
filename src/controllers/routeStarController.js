@@ -223,6 +223,7 @@ class RouteStarController {
         search: req.query.search,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
+        dateField: req.query.dateField,
         stockProcessed: req.query.stockProcessed
       };
       const options = {
