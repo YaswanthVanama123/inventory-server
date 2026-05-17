@@ -220,6 +220,7 @@ class RouteStarController {
         invoiceType: req.query.invoiceType,
         status: req.query.status,
         customer: req.query.customer,
+        search: req.query.search,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
         stockProcessed: req.query.stockProcessed

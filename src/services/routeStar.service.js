@@ -522,6 +522,7 @@ class RouteStarService {
         invoiceType,
         status,
         customer,
+        search,
         startDate,
         endDate,
         stockProcessed
@@ -529,7 +530,15 @@ class RouteStarService {
       const query = {};
       if (invoiceType) query.invoiceType = invoiceType;
       if (status) query.status = status;
-      if (customer) query['customer.name'] = new RegExp(customer, 'i');
+      if (search) {
+        const regex = new RegExp(search, 'i');
+        query.$or = [
+          { 'customer.name': regex },
+          { invoiceNumber: regex }
+        ];
+      } else if (customer) {
+        query['customer.name'] = new RegExp(customer, 'i');
+      }
       if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
       if (startDate || endDate) {
         query.invoiceDate = {};
