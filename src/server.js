@@ -184,7 +184,7 @@ const server = app.listen(PORT, HOST, () => {
         ? Infinity
         : parseInt(process.env.INVOICES_SYNC_LIMIT);
       scheduler.start({
-        cronExpression: process.env.SYNC_CRON_EXPRESSION || '0 3 * * *', 
+        cronExpression: process.env.SYNC_CRON_EXPRESSION || '0 3 * * *',
         ordersLimit,
         invoicesLimit,
         processStock: true,
@@ -193,6 +193,22 @@ const server = app.listen(PORT, HOST, () => {
       console.log('✅ Inventory scheduler started - Daily sync at 3:00 AM (fetching ALL data)');
     } catch (error) {
       console.error('Failed to start inventory scheduler:', error.message);
+    }
+
+    // Also start the SyncScheduler for granular per-source daily fetches
+    // (Pending Invoices at 1 AM, Orders at 2 AM, Closed Invoices at 3 AM, Items at 4 AM, Cleanup at 4:30 AM)
+    try {
+      const { getScheduler } = require('./services/scheduler');
+      const syncScheduler = getScheduler();
+      syncScheduler.start({
+        intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
+        limit: 50,
+        processStock: true,
+        systemUserId: 'system'
+      });
+      console.log('✅ Sync scheduler started - Daily fetches at 1/2/3/4 AM');
+    } catch (error) {
+      console.error('Failed to start sync scheduler:', error.message);
     }
   }
 });
