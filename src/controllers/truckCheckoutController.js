@@ -85,60 +85,65 @@ class TruckCheckoutController {
   async searchItems(req, res, next) {
     try {
       const searchQuery = req.query.q || '';
-      const forSell = req.query.forSell !== 'false'; // Default to true
 
-      console.log(`[TruckCheckout searchItems] Query: "${searchQuery}", forSell: ${forSell}`);
-
-      // Use the EXACT SAME service as Stock page
       const stockResult = await stockService.getStockSummary();
-      const sellStock = stockResult.sellStock; // { items: [...], totals: {...} }
+      const sellStock = stockResult.sellStock;
+      const useStock = stockResult.useStock;
 
-      console.log(`[TruckCheckout] Loaded ${sellStock.items.length} items from stock service`);
+      console.log(`[TruckCheckout] Loaded ${sellStock.items.length} sell + ${useStock.items.length} use items`);
 
-      // Expand each stock item to include canonical name + all aliases as separate entries
       const expandedItems = [];
+      const seenNames = new Set();
 
-      sellStock.items.forEach(item => {
-        // Stock remaining formula (same as stock page):
-        // stockRemaining = totalPurchased - totalSoldBeforeCutoff - totalCheckedOut + totalDiscrepancyDifference
+      const addItem = (item, itemType) => {
         const stockRemaining = item.stockRemaining || 0;
 
-        // Add the canonical name
-        expandedItems.push({
-          itemName: item.categoryName,
-          sku: item.categoryName,
-          currentStock: stockRemaining,
-          totalPurchased: item.totalPurchased || 0,
-          totalSold: item.totalSold || 0, // Use totalSold for display
-          totalCheckedOut: item.totalCheckedOut || 0, // ALL checkouts
-          totalDiscrepancies: item.totalDiscrepancies || 0, // Discrepancy count
-          totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0, // Discrepancy adjustment
-          unit: 'pieces',
-          category: item.categoryName,
-          department: item.categoryName
-        });
-
-        // Add each alias as a separate entry with the SAME stock data
-        if (item.aliases && Array.isArray(item.aliases)) {
-          item.aliases.forEach(aliasName => {
-            expandedItems.push({
-              itemName: aliasName,
-              sku: aliasName,
-              currentStock: stockRemaining,
-              totalPurchased: item.totalPurchased || 0,
-              totalSold: item.totalSold || 0,
-              totalCheckedOut: item.totalCheckedOut || 0,
-              totalDiscrepancies: item.totalDiscrepancies || 0,
-              totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
-              unit: 'pieces',
-              category: item.categoryName,
-              department: item.categoryName
-            });
+        const canonicalKey = item.categoryName.toLowerCase();
+        if (!seenNames.has(canonicalKey)) {
+          seenNames.add(canonicalKey);
+          expandedItems.push({
+            itemName: item.categoryName,
+            sku: item.categoryName,
+            currentStock: stockRemaining,
+            totalPurchased: item.totalPurchased || 0,
+            totalSold: item.totalSold || 0,
+            totalCheckedOut: item.totalCheckedOut || 0,
+            totalDiscrepancies: item.totalDiscrepancies || 0,
+            totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
+            unit: 'pieces',
+            category: item.categoryName,
+            department: item.categoryName,
+            itemType
           });
         }
-      });
 
-      // Filter by search query
+        if (item.aliases && Array.isArray(item.aliases)) {
+          item.aliases.forEach(aliasName => {
+            const aliasKey = aliasName.toLowerCase();
+            if (!seenNames.has(aliasKey)) {
+              seenNames.add(aliasKey);
+              expandedItems.push({
+                itemName: aliasName,
+                sku: aliasName,
+                currentStock: stockRemaining,
+                totalPurchased: item.totalPurchased || 0,
+                totalSold: item.totalSold || 0,
+                totalCheckedOut: item.totalCheckedOut || 0,
+                totalDiscrepancies: item.totalDiscrepancies || 0,
+                totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
+                unit: 'pieces',
+                category: item.categoryName,
+                department: item.categoryName,
+                itemType
+              });
+            }
+          });
+        }
+      };
+
+      sellStock.items.forEach(item => addItem(item, 'sell'));
+      useStock.items.forEach(item => addItem(item, 'use'));
+
       let filteredItems = expandedItems;
       if (searchQuery) {
         const queryLower = searchQuery.toLowerCase();
@@ -147,7 +152,6 @@ class TruckCheckoutController {
         );
       }
 
-      // Sort by item name
       filteredItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
 
       console.log(`[TruckCheckout] Returning ${filteredItems.length} items`);
