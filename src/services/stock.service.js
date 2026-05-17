@@ -72,7 +72,23 @@ class StockService {
               ]
             }
           },
-          totalValue: { $sum: '$items.lineTotal' },
+          totalValue: {
+            $sum: {
+              $multiply: [
+                {
+                  $cond: [
+                    { $and: [
+                      { $ifNull: ['$items.receivedQuantity', false] },
+                      { $gt: ['$items.receivedQuantity', 0] }
+                    ]},
+                    '$items.receivedQuantity',
+                    { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                  ]
+                },
+                { $ifNull: ['$items.unitPrice', 0] }
+              ]
+            }
+          },
           purchaseHistory: {
             $push: {
               orderNumber: '$orderNumber',
@@ -88,7 +104,21 @@ class StockService {
                 ]
               },
               unitPrice: '$items.unitPrice',
-              lineTotal: '$items.lineTotal',
+              lineTotal: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $and: [
+                        { $ifNull: ['$items.receivedQuantity', false] },
+                        { $gt: ['$items.receivedQuantity', 0] }
+                      ]},
+                      '$items.receivedQuantity',
+                      { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                    ]
+                  },
+                  { $ifNull: ['$items.unitPrice', 0] }
+                ]
+              },
               vendor: '$vendor.name',
               status: '$status'
             }
@@ -268,7 +298,23 @@ class StockService {
                 ]
               }
             },
-            totalPurchaseValue: { $sum: '$items.lineTotal' },
+            totalPurchaseValue: {
+              $sum: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $and: [
+                        { $ifNull: ['$items.receivedQuantity', false] },
+                        { $gt: ['$items.receivedQuantity', 0] }
+                      ]},
+                      '$items.receivedQuantity',
+                      { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                    ]
+                  },
+                  { $ifNull: ['$items.unitPrice', 0] }
+                ]
+              }
+            },
             purchaseHistory: {
               $push: {
                 orderNumber: '$orderNumber',
@@ -284,7 +330,21 @@ class StockService {
                   ]
                 },
                 unitPrice: '$items.unitPrice',
-                lineTotal: '$items.lineTotal',
+                lineTotal: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $and: [
+                        { $ifNull: ['$items.receivedQuantity', false] },
+                        { $gt: ['$items.receivedQuantity', 0] }
+                      ]},
+                      '$items.receivedQuantity',
+                      { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                    ]
+                  },
+                  { $ifNull: ['$items.unitPrice', 0] }
+                ]
+              },
                 vendor: '$vendor.name',
                 status: '$status',
                 source: 'customerconnect'
@@ -324,7 +384,23 @@ class StockService {
                 ]
               }
             },
-            totalPurchaseValue: { $sum: '$items.lineTotal' },
+            totalPurchaseValue: {
+              $sum: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $and: [
+                        { $ifNull: ['$items.receivedQuantity', false] },
+                        { $gt: ['$items.receivedQuantity', 0] }
+                      ]},
+                      '$items.receivedQuantity',
+                      { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                    ]
+                  },
+                  { $ifNull: ['$items.unitPrice', 0] }
+                ]
+              }
+            },
             purchaseHistory: {
               $push: {
                 orderNumber: '$orderNumber',
@@ -340,7 +416,21 @@ class StockService {
                   ]
                 },
                 unitPrice: '$items.unitPrice',
-                lineTotal: '$items.lineTotal',
+                lineTotal: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $and: [
+                        { $ifNull: ['$items.receivedQuantity', false] },
+                        { $gt: ['$items.receivedQuantity', 0] }
+                      ]},
+                      '$items.receivedQuantity',
+                      { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                    ]
+                  },
+                  { $ifNull: ['$items.unitPrice', 0] }
+                ]
+              },
                 vendor: '$vendor.name',
                 status: '$status',
                 source: 'manual'
@@ -1366,7 +1456,23 @@ class StockService {
                       ]
                     }
                   },
-                  totalValue: { $sum: '$items.lineTotal' },
+                  totalValue: {
+                    $sum: {
+                      $multiply: [
+                        {
+                          $cond: [
+                            { $and: [
+                              { $ifNull: ['$items.receivedQuantity', false] },
+                              { $gt: ['$items.receivedQuantity', 0] }
+                            ]},
+                            '$items.receivedQuantity',
+                            { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                          ]
+                        },
+                        { $ifNull: ['$items.unitPrice', 0] }
+                      ]
+                    }
+                  },
                   itemCount: { $sum: 1 }
                 }
               }
@@ -1388,7 +1494,23 @@ class StockService {
                       ]
                     }
                   },
-                  totalPurchaseValue: { $sum: '$items.lineTotal' },
+                  totalPurchaseValue: {
+                    $sum: {
+                      $multiply: [
+                        {
+                          $cond: [
+                            { $and: [
+                              { $ifNull: ['$items.receivedQuantity', false] },
+                              { $gt: ['$items.receivedQuantity', 0] }
+                            ]},
+                            '$items.receivedQuantity',
+                            { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                          ]
+                        },
+                        { $ifNull: ['$items.unitPrice', 0] }
+                      ]
+                    }
+                  },
                   itemCount: { $sum: 1 }
                 }
               }
@@ -1435,7 +1557,23 @@ class StockService {
                       ]
                     }
                   },
-                  totalValue: { $sum: '$items.lineTotal' },
+                  totalValue: {
+                    $sum: {
+                      $multiply: [
+                        {
+                          $cond: [
+                            { $and: [
+                              { $ifNull: ['$items.receivedQuantity', false] },
+                              { $gt: ['$items.receivedQuantity', 0] }
+                            ]},
+                            '$items.receivedQuantity',
+                            { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                          ]
+                        },
+                        { $ifNull: ['$items.unitPrice', 0] }
+                      ]
+                    }
+                  },
                   itemCount: { $sum: 1 }
                 }
               }
@@ -1457,7 +1595,23 @@ class StockService {
                       ]
                     }
                   },
-                  totalPurchaseValue: { $sum: '$items.lineTotal' },
+                  totalPurchaseValue: {
+                    $sum: {
+                      $multiply: [
+                        {
+                          $cond: [
+                            { $and: [
+                              { $ifNull: ['$items.receivedQuantity', false] },
+                              { $gt: ['$items.receivedQuantity', 0] }
+                            ]},
+                            '$items.receivedQuantity',
+                            { $cond: [{ $eq: ['$items.itemVerified', true] }, '$items.qty', 0] }
+                          ]
+                        },
+                        { $ifNull: ['$items.unitPrice', 0] }
+                      ]
+                    }
+                  },
                   itemCount: { $sum: 1 }
                 }
               }
