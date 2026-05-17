@@ -14,6 +14,7 @@ class SyncScheduler {
     this.ordersTask = null;
     this.closedInvoicesTask = null;
     this.cleanupTask = null;
+    this.quickBooksSyncTask = null;
     this.isRunning = false;
     this.lastRun = {
       customerConnect: null,
@@ -30,7 +31,7 @@ class SyncScheduler {
       intervalMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
       limit = 50,
       processStock = true,
-      systemUserId = 'system'
+      systemUserId = null
     } = options;
     if (this.isRunning) {
       console.log('Scheduler is already running');
@@ -211,6 +212,25 @@ class SyncScheduler {
       { scheduled: true, timezone }
     );
     console.log('Fetch history cleanup scheduled: Daily at 4:30 AM (keeps last 15 days)');
+
+    // QuickBooks sync - hourly at minute 0
+    this.quickBooksSyncTask = cron.schedule(
+      '0 * * * *',
+      async () => {
+        try {
+          const quickBooksSyncService = require('./quickBooksSync.service');
+          const [snap, disc] = await Promise.all([
+            quickBooksSyncService.enqueueHourlySnapshot(),
+            quickBooksSyncService.enqueueRecentDiscrepancies()
+          ]);
+          console.log(`[QBSync cron] snapshot enqueued=${snap.enqueued} skipped=${snap.skipped}, discrepancies enqueued=${disc.enqueued} skipped=${disc.skipped}`);
+        } catch (error) {
+          console.error('[QBSync cron] failed:', error.message);
+        }
+      },
+      { scheduled: true, timezone }
+    );
+    console.log('QuickBooks sync scheduled: Hourly (enqueues stock snapshot + new discrepancies for QBWC pickup)');
   }
   stop() {
     if (!this.isRunning) {
@@ -245,6 +265,10 @@ class SyncScheduler {
       this.cleanupTask.stop();
       this.cleanupTask = null;
     }
+    if (this.quickBooksSyncTask) {
+      this.quickBooksSyncTask.stop();
+      this.quickBooksSyncTask = null;
+    }
     this.isRunning = false;
     console.log('Sync scheduler stopped');
   }
@@ -259,7 +283,8 @@ class SyncScheduler {
         pendingInvoices: this.pendingInvoicesTask ? 'scheduled (daily 1:00 AM)' : 'not scheduled',
         orders: this.ordersTask ? 'scheduled (daily 2:00 AM)' : 'not scheduled',
         closedInvoices: this.closedInvoicesTask ? 'scheduled (daily 3:00 AM)' : 'not scheduled',
-        cleanup: this.cleanupTask ? 'scheduled (daily 4:30 AM, keeps 15 days)' : 'not scheduled'
+        cleanup: this.cleanupTask ? 'scheduled (daily 4:30 AM, keeps 15 days)' : 'not scheduled',
+        quickBooksSync: this.quickBooksSyncTask ? 'scheduled (hourly)' : 'not scheduled'
       }
     };
   }
@@ -267,7 +292,7 @@ class SyncScheduler {
     const {
       limit = 50,
       processStock = true,
-      userId = 'system'
+      userId = null
     } = options;
     const results = {};
     try {

@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<QBWCXML>
+  <AppName>Inventory Stock Sync</AppName>
+  <AppID></AppID>
+  <AppURL>https://inventory.enviromasternva.com/qbwc</AppURL>
+  <AppDescription>Hourly stock + discrepancy sync from inventory management webapp to QuickBooks Desktop.</AppDescription>
+  <AppSupport>https://inventory.enviromasternva.com/qbwc</AppSupport>
+  <UserName>qbsync</UserName>
+  <OwnerID>{2A6B7C13-1F44-4F4C-9D11-9C8C9E5F3A22}</OwnerID>
+  <FileID>{D8B5C9E4-7E2F-4A6B-9C8D-1E2F3A4B5C6D}</FileID>
+  <QBType>QBFS</QBType>
+  <Scheduler>
+    <RunEveryNMinutes>60</RunEveryNMinutes>
+  </Scheduler>
+  <IsReadOnly>false</IsReadOnly>
+</QBWCXML>
