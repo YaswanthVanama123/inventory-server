@@ -1,5 +1,10 @@
+// Force headless when no X display is available (cloud servers).
+// Even if HEADLESS=false is set, we cannot run a headed browser without DISPLAY.
+const hasDisplay = !!process.env.DISPLAY;
+const headless = process.env.HEADLESS === 'false' && hasDisplay ? false : true;
+
 module.exports = {
-  headless: process.env.HEADLESS !== 'false',
+  headless,
   viewport: {
     width: parseInt(process.env.VIEWPORT_WIDTH) || 1920,
     height: parseInt(process.env.VIEWPORT_HEIGHT) || 1080

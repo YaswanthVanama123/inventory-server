@@ -24,7 +24,12 @@ class GoAuditsBrowserService {
       console.log('🌐 Launching browser for GoAudits automation...');
 
       this.browser = await chromium.launch({
-        headless: process.env.HEADLESS === 'true',
+        headless: (process.env.HEADLESS === 'false' && !!process.env.DISPLAY) ? false : true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage'
+        ],
         timeout: parseInt(process.env.BROWSER_TIMEOUT) || 60000
       });
 

@@ -3,11 +3,12 @@ const ExternalInvoice = require('../../models/ExternalInvoice');
 const SyncLog = require('../../models/SyncLog');
 const SKUMapper = require('../skuMapper');
 const StockProcessor = require('../stockProcessor');
+const mongoose = require('mongoose');
 
 
 class SyncRouteStar {
   constructor(userId = null) {
-    this.userId = userId;
+    this.userId = mongoose.isValidObjectId(userId) ? userId : null;
     this.automation = null;
     this.syncLog = null;
   }

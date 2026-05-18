@@ -22,8 +22,8 @@ class BaseAutomation {
       const browserTimeout = parseInt(process.env.BROWSER_TIMEOUT) || 60000;
       console.log(`Browser timeout set to: ${browserTimeout}ms`);
       this.browser = await chromium.launch({
-        headless: process.env.HEADLESS !== 'false',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        headless: (process.env.HEADLESS === 'false' && !!process.env.DISPLAY) ? false : true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         timeout: browserTimeout
       });
       this.context = await this.browser.newContext({

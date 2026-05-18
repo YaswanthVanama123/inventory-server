@@ -3,11 +3,12 @@ const PurchaseOrder = require('../../models/PurchaseOrder');
 const SyncLog = require('../../models/SyncLog');
 const SKUMapper = require('../skuMapper');
 const StockProcessor = require('../stockProcessor');
+const mongoose = require('mongoose');
 
 
 class SyncCustomerConnect {
   constructor(userId = null) {
-    this.userId = userId;
+    this.userId = mongoose.isValidObjectId(userId) ? userId : null;
     this.automation = null;
     this.syncLog = null;
   }
