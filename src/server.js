@@ -104,6 +104,8 @@ const syncRoutes = require('./routes/syncRoutes');
 const warehouseRoutes = require('./routes/warehouseRoutes');
 const schedulerRoutes = require('./routes/schedulerRoutes');
 const inventorySchedulerRoutes = require('./routes/inventoryScheduler.routes');
+const quickBooksSyncRoutes = require('./routes/quickBooksSync.routes');
+const qbwcRoutes = require('./routes/qbwc.routes');
 const customerconnectRoutes = require('./routes/customerconnect.routes');
 const routestarRoutes = require('./routes/routestar.routes');
 const routeStarCustomerRoutes = require('./routes/routeStarCustomer.routes');
@@ -146,6 +148,9 @@ app.use('/api', syncRoutes);
 app.use('/api', warehouseRoutes);
 app.use('/api', schedulerRoutes);
 app.use('/api/inventory-scheduler', inventorySchedulerRoutes);
+app.use('/api/qb-sync', quickBooksSyncRoutes);
+// QBWC SOAP endpoint: NO /api prefix, uses raw XML body
+app.use('/qbwc', qbwcRoutes);
 app.use('/api/customerconnect', customerconnectRoutes);
 app.use('/api/routestar', routestarRoutes);
 app.use('/api/routestar-customers', routeStarCustomerRoutes);
@@ -204,7 +209,7 @@ const server = app.listen(PORT, HOST, () => {
         intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
         limit: 50,
         processStock: true,
-        systemUserId: 'system'
+        systemUserId: null
       });
       console.log('✅ Sync scheduler started - Daily fetches at 1/2/3/4 AM');
     } catch (error) {
