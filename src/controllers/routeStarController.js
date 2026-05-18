@@ -418,5 +418,138 @@ class RouteStarController {
       next(error);
     }
   }
+
+  async createManualInvoice(req, res, next) {
+    try {
+      const RouteStarInvoice = require('../models/RouteStarInvoice');
+      const user = req.user;
+
+      const {
+        customer = {},
+        invoiceDate,
+        dateCompleted,
+        lineItems = [],
+        serviceNotes = '',
+        paymentMethod = '',
+        invoiceMemo = '',
+        stop,
+        status: requestedStatus
+      } = req.body || {};
+
+      if (!customer.name || !customer.name.trim()) {
+        return res.status(400).json({ success: false, message: 'Customer name is required' });
+      }
+      if (!Array.isArray(lineItems) || lineItems.length === 0) {
+        return res.status(400).json({ success: false, message: 'At least one line item is required' });
+      }
+
+      const normalizedItems = lineItems.map(item => {
+        const quantity = Number(item.quantity || 0);
+        const rate = Number(item.rate || 0);
+        return {
+          name: String(item.name || '').trim(),
+          description: item.description || '',
+          quantity,
+          rate,
+          amount: Number((quantity * rate).toFixed(2)),
+          sku: item.sku || ''
+        };
+      });
+
+      const subtotal = normalizedItems.reduce((sum, it) => sum + it.amount, 0);
+      const total = Number(subtotal.toFixed(2));
+
+      const status = requestedStatus === 'Pending' ? 'Pending' : 'Closed';
+      const syncSource = status === 'Pending' ? 'pending' : 'closed';
+
+      const today = new Date();
+      const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const truckPart = (user.truckNumber || 'NRV').toUpperCase();
+      const baseSeq = await RouteStarInvoice.countDocuments({ source: 'manual' });
+      const invoiceNumber = `MANUAL-${truckPart}-${yyyymmdd}-${String(baseSeq + 1).padStart(4, '0')}`;
+
+      const invoice = await RouteStarInvoice.create({
+        invoiceNumber,
+        invoiceType: syncSource,
+        status,
+        invoiceDate: invoiceDate ? new Date(invoiceDate) : today,
+        dateCompleted: dateCompleted ? new Date(dateCompleted) : (status === 'Closed' ? today : undefined),
+        customer: {
+          name: customer.name.trim(),
+          email: customer.email || '',
+          phone: customer.phone || ''
+        },
+        enteredBy: user.fullName || user.username || 'System',
+        assignedTo: user.truckNumber || '',
+        stop: stop ? Number(stop) : undefined,
+        serviceNotes,
+        isComplete: status === 'Closed',
+        subtotal: Number(subtotal.toFixed(2)),
+        tax: 0,
+        total,
+        paymentMethod,
+        lineItems: normalizedItems,
+        invoiceDetails: {
+          signedBy: '',
+          invoiceMemo,
+          serviceNotes,
+          salesTaxRate: '0'
+        },
+        syncSource,
+        source: 'manual',
+        createdBy: user._id,
+        lastUpdatedBy: user._id,
+        lastSyncedAt: today
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Manual invoice created successfully',
+        data: invoice
+      });
+    } catch (error) {
+      console.error('Create manual invoice error:', error);
+      if (error.code === 11000) {
+        return res.status(409).json({ success: false, message: 'Duplicate invoice number — please retry' });
+      }
+      next(error);
+    }
+  }
+
+  async deleteManualInvoice(req, res, next) {
+    try {
+      const RouteStarInvoice = require('../models/RouteStarInvoice');
+      const { invoiceNumber } = req.params;
+
+      if (!invoiceNumber) {
+        return res.status(400).json({ success: false, message: 'Invoice number is required' });
+      }
+
+      const invoice = await RouteStarInvoice.findOne({ invoiceNumber });
+      if (!invoice) {
+        return res.status(404).json({ success: false, message: 'Invoice not found' });
+      }
+
+      // Hard refuse to delete a synced RouteStar invoice via this endpoint
+      if (invoice.source !== 'manual') {
+        return res.status(403).json({
+          success: false,
+          message: 'This endpoint can only delete manually-created invoices. Use bulk-delete for synced RouteStar invoices.'
+        });
+      }
+
+      await RouteStarInvoice.deleteOne({ _id: invoice._id });
+      console.log(`[Manual Invoice] Deleted ${invoiceNumber} by ${req.user.username}`);
+
+      res.json({
+        success: true,
+        message: `Manual invoice ${invoiceNumber} deleted`,
+        data: { invoiceNumber }
+      });
+    } catch (error) {
+      console.error('Delete manual invoice error:', error);
+      next(error);
+    }
+  }
 }
 module.exports = new RouteStarController();

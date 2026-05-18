@@ -8,6 +8,7 @@ const { setActivityMeta } = require('../middleware/activityLogger');
 router.get('/items/search', authenticate, setActivityMeta('SEARCH', 'TRUCK_CHECKOUT_ITEMS'), truckCheckoutController.searchItems);
 router.get('/stock/:itemName', authenticate, setActivityMeta('VIEW', 'ITEM_STOCK'), truckCheckoutController.getItemStock);
 router.get('/truck-inventory/:truckNumber/:itemName', authenticate, setActivityMeta('VIEW', 'TRUCK_INVENTORY'), truckCheckoutController.getTruckInventory);
+router.get('/my-truck-inventory', authenticate, setActivityMeta('VIEW', 'TRUCK_INVENTORY'), truckCheckoutController.getMyTruckInventory);
 router.get('/active', authenticate, setActivityMeta('VIEW', 'ACTIVE_CHECKOUTS'), truckCheckoutController.getActiveCheckouts);
 router.get('/employee/:employeeName', authenticate, setActivityMeta('VIEW', 'EMPLOYEE_CHECKOUTS'), truckCheckoutController.getCheckoutsByEmployee);
 router.get('/stats/employee/:employeeName', authenticate, setActivityMeta('VIEW', 'EMPLOYEE_STATS'), truckCheckoutController.getEmployeeStats);

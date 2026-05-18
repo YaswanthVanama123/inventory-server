@@ -551,7 +551,7 @@ class RouteStarService {
       const skip = (page - 1) * limit;
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
-          .select('_id invoiceNumber invoiceDate dateCompleted customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete createdAt updatedAt lastSyncedAt lineItems')
+          .select('_id invoiceNumber invoiceDate dateCompleted customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete source createdAt updatedAt lastSyncedAt lineItems')
           .sort({ invoiceDate: -1 })
           .skip(skip)
           .limit(parseInt(limit))
@@ -563,6 +563,7 @@ class RouteStarService {
         invoiceNumber: invoice.invoiceNumber,
         invoiceDate: invoice.invoiceDate,
         dateCompleted: invoice.dateCompleted,
+        source: invoice.source || 'routestar',
         customer: {
           name: invoice.customer?.name || 'Unknown',
           email: invoice.customer?.email || null

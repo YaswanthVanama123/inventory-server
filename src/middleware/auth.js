@@ -43,7 +43,7 @@ const authenticate = async (req, res, next) => {
       let cacheHit = !!user;
       if (!user) {
         user = await User.findById(decoded.id)
-          .select('name email role isActive passwordChangedAt')
+          .select('username email role isActive passwordChangedAt fullName truckNumber')
           .lean();
         if (user) {
           setCachedUser(decoded.id, user);
@@ -87,7 +87,8 @@ const authenticate = async (req, res, next) => {
         username: user.username,
         email: user.email,
         fullName: user.fullName,
-        role: user.role
+        role: user.role,
+        truckNumber: user.truckNumber
       };
       next();
     } catch (error) {

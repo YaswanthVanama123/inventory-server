@@ -18,7 +18,6 @@ const { setActivityMeta } = require('../middleware/activityLogger');
 
 
 router.use(authenticate);
-router.use(requireAdmin());
 router.get('/items/grouped', setActivityMeta('VIEW', 'INVOICE_ITEMS_GROUPED'), getGroupedInvoiceItems);
 router.get('/stats', setActivityMeta('VIEW', 'INVOICE_STATS'), getInvoiceStats);
 router.get('/', setActivityMeta('VIEW', 'INVOICE'), getAllInvoices);
@@ -38,6 +37,7 @@ router.post(
 );
 router.put(
   '/:id',
+  requireAdmin(),
   invoiceValidation.update,
   validate,
   setActivityMeta('UPDATE', 'INVOICE'),
@@ -45,6 +45,7 @@ router.put(
 );
 router.delete(
   '/:id',
+  requireAdmin(),
   param('id').isMongoId().withMessage('Invalid invoice ID'),
   validate,
   setActivityMeta('DELETE', 'INVOICE'),
@@ -59,6 +60,7 @@ router.get(
 );
 router.post(
   '/:id/send-email',
+  requireAdmin(),
   invoiceValidation.sendEmail,
   validate,
   setActivityMeta('SEND', 'INVOICE_EMAIL'),

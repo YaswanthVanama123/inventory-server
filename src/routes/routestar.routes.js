@@ -19,6 +19,8 @@ router.get('/check-pending', authenticate, requireAdmin(), setActivityMeta('VERI
 router.post('/sync/stock', authenticate, requireAdmin(), setActivityMeta('SYNC', 'STOCK'), routeStarController.syncStock);
 router.post('/sync/full', authenticate, requireAdmin(), setActivityMeta('SYNC', 'ROUTESTAR_INVOICE'), routeStarController.fullSync);
 router.get('/invoices', authenticate, setActivityMeta('VIEW', 'ROUTESTAR_INVOICE'), routeStarController.getInvoices);
+router.post('/invoices/manual', authenticate, setActivityMeta('CREATE', 'ROUTESTAR_INVOICE'), routeStarController.createManualInvoice);
+router.delete('/invoices/manual/:invoiceNumber', authenticate, requireAdmin(), setActivityMeta('DELETE', 'ROUTESTAR_INVOICE'), routeStarController.deleteManualInvoice);
 router.get('/invoices/:invoiceNumber', authenticate, setActivityMeta('VIEW', 'ROUTESTAR_INVOICE'), routeStarController.getInvoiceByNumber);
 router.get('/stats', authenticate, setActivityMeta('VIEW', 'ROUTESTAR_INVOICE'), routeStarController.getStats);
 router.delete('/invoices/pending/all', authenticate, requireAdmin(), setActivityMeta('DELETE', 'ROUTESTAR_INVOICE'), routeStarController.deleteAllPending);

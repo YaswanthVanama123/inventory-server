@@ -294,5 +294,112 @@ class TruckCheckoutController {
       next(error);
     }
   }
+
+  async getMyTruckInventory(req, res, next) {
+    try {
+      const TruckCheckout = require('../models/TruckCheckout');
+      const TruckDiscrepancy = require('../models/TruckDiscrepancy');
+      const RouteStarInvoice = require('../models/RouteStarInvoice');
+
+      const user = req.user;
+      const employeeName = user.fullName || user.username;
+      const truckNumber = user.truckNumber;
+
+      if (!truckNumber) {
+        return res.json({
+          success: true,
+          data: { truckNumber: null, employeeName, items: [] },
+          message: 'No truck number assigned to your account'
+        });
+      }
+
+      // 1. All my checkouts on my truck — sum quantityTaking per itemName
+      const checkouts = await TruckCheckout.find({
+        employeeName,
+        truckNumber,
+        status: { $ne: 'cancelled' }
+      }).lean();
+
+      const byItem = new Map();
+      const addToItem = (key, field, qty) => {
+        const k = (key || '').trim();
+        if (!k) return;
+        if (!byItem.has(k)) {
+          byItem.set(k, {
+            itemName: k,
+            totalCheckedOut: 0,
+            totalSold: 0,
+            discrepancyAdjustment: 0,
+            remainingInTruck: 0
+          });
+        }
+        byItem.get(k)[field] += Number(qty) || 0;
+      };
+
+      for (const co of checkouts) {
+        if (co.itemName) {
+          addToItem(co.itemName, 'totalCheckedOut', co.quantityTaking);
+        }
+        if (Array.isArray(co.itemsTaken)) {
+          for (const it of co.itemsTaken) {
+            addToItem(it.name, 'totalCheckedOut', it.quantity);
+          }
+        }
+      }
+
+      // 2. All approved truck discrepancies on my truck — sum signed difference
+      const discrepancies = await TruckDiscrepancy.find({
+        truckNumber,
+        employeeName,
+        status: 'Approved'
+      }).lean();
+
+      for (const d of discrepancies) {
+        addToItem(d.itemName, 'discrepancyAdjustment', d.difference);
+      }
+
+      // 3. All invoices assigned to my truck — count lineItem quantities as sales
+      const invoices = await RouteStarInvoice.find({
+        assignedTo: new RegExp(`^${truckNumber}$`, 'i'),
+        'lineItems.0': { $exists: true }
+      })
+        .select('lineItems')
+        .lean();
+
+      for (const inv of invoices) {
+        for (const li of inv.lineItems || []) {
+          addToItem(li.name, 'totalSold', li.quantity);
+        }
+      }
+
+      // 4. Compute remaining for every item
+      const items = Array.from(byItem.values())
+        .map(it => ({
+          ...it,
+          remainingInTruck: (it.totalCheckedOut || 0) - (it.totalSold || 0) + (it.discrepancyAdjustment || 0)
+        }))
+        // Only include items the user actually checked out (skip pure sales of items they never loaded)
+        .filter(it => it.totalCheckedOut > 0)
+        .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+      res.json({
+        success: true,
+        data: {
+          truckNumber,
+          employeeName,
+          items,
+          totals: {
+            totalCheckedOut: items.reduce((s, i) => s + i.totalCheckedOut, 0),
+            totalSold: items.reduce((s, i) => s + i.totalSold, 0),
+            discrepancyAdjustment: items.reduce((s, i) => s + i.discrepancyAdjustment, 0),
+            remainingInTruck: items.reduce((s, i) => s + i.remainingInTruck, 0)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('getMyTruckInventory error:', error);
+      next(error);
+    }
+  }
 }
 module.exports = new TruckCheckoutController();

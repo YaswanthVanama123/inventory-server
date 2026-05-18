@@ -143,6 +143,12 @@ const routeStarInvoiceSchema = new mongoose.Schema({
     enum: ['pending', 'closed'],
     required: true
   },
+  source: {
+    type: String,
+    enum: ['routestar', 'manual'],
+    default: 'routestar',
+    index: true
+  },
   rawData: {
     type: mongoose.Schema.Types.Mixed
   },
