@@ -272,23 +272,47 @@ class BaseAutomation {
     }
   }
   async close() {
-    try {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
+    // Close each handle independently and force-kill the browser process as a
+    // last resort. A single try/catch around all three steps used to skip
+    // context/browser cleanup when page.close() threw on a crashed Playwright
+    // target, leaving orphan Chromium processes that eventually exhausted RAM
+    // on the droplet and brought down the whole server.
+    const withTimeout = async (label, fn, ms = 10000) => {
+      try {
+        await Promise.race([
+          fn(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+          ),
+        ]);
+      } catch (error) {
+        console.error(`Error during ${label}:`, error.message);
       }
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
-      this.isInitialized = false;
-    } catch (error) {
-      console.error('Error closing automation:', error.message);
+    };
+    if (this.page) {
+      await withTimeout('page.close', () => this.page.close());
+      this.page = null;
     }
+    if (this.context) {
+      await withTimeout('context.close', () => this.context.close());
+      this.context = null;
+    }
+    if (this.browser) {
+      await withTimeout('browser.close', () => this.browser.close());
+      // Force-kill the underlying Chromium process if .close() didn't (e.g.
+      // when the browser was already crashed and close() rejected/timed out).
+      try {
+        const proc = typeof this.browser.process === 'function' ? this.browser.process() : null;
+        if (proc && !proc.killed) {
+          proc.kill('SIGKILL');
+        }
+      } catch (error) {
+        console.error('Error force-killing browser process:', error.message);
+      }
+      this.browser = null;
+    }
+    this.isInitialized = false;
+    this.isLoggedIn = false;
   }
   ensureInitialized() {
     if (!this.isInitialized) {

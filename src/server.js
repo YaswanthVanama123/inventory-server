@@ -217,19 +217,33 @@ const server = app.listen(PORT, HOST, () => {
     }
   }
 });
-process.on('unhandledRejection', (err) => {
-  console.error(`Unhandled Rejection: ${err.message}`);
-  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
-  getInventoryScheduler().stop();
-  server.close(() => process.exit(1));
+// Unhandled rejections shouldn't take the server down. Most leaks here come
+// from Playwright targets crashing during scheduled syncs — exiting on those
+// killed the API for everyone and required a manual restart. Log loudly and
+// keep running; truly fatal conditions (DB disconnect, OOM) will surface
+// through their own paths.
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error('Unhandled Rejection (continuing):', err.message);
+  if (err.stack) console.error(err.stack);
 });
+// Uncaught exceptions indicate a corrupted JS state — log full context and
+// exit so pm2 can restart us cleanly. Keep the graceful-shutdown attempt but
+// guard it with a hard timeout in case server.close() hangs on open sockets.
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
-  console.error('Full error:', err);
   console.error('Stack trace:', err.stack);
-  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
-  getInventoryScheduler().stop();
-  server.close(() => process.exit(1));
+  try {
+    const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+    getInventoryScheduler().stop();
+  } catch (e) {
+    console.error('Failed to stop scheduler during shutdown:', e.message);
+  }
+  const forceExit = setTimeout(() => process.exit(1), 5000).unref();
+  server.close(() => {
+    clearTimeout(forceExit);
+    process.exit(1);
+  });
 });
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
