@@ -50,7 +50,20 @@ class ManualPurchaseOrderItemService {
         throw new Error('Item name is required');
       }
 
-      const sku = await this.generateUniqueSku();
+      // SKU is optional. If user supplied one, normalize and check uniqueness;
+      // otherwise auto-generate the next CUSTOM-NNN.
+      let sku;
+      if (itemData.sku && itemData.sku.trim()) {
+        sku = itemData.sku.trim().toUpperCase();
+        const existing = await ManualPurchaseOrderItem.findOne({ sku }).lean();
+        if (existing) {
+          const err = new Error(`SKU "${sku}" already exists`);
+          err.code = 'DUPLICATE_SKU';
+          throw err;
+        }
+      } else {
+        sku = await this.generateUniqueSku();
+      }
 
       const item = new ManualPurchaseOrderItem({
         sku,
@@ -71,8 +84,9 @@ class ManualPurchaseOrderItemService {
 
       return savedItem;
     } catch (error) {
-      // Handle duplicate SKU error with retry
-      if (error.code === 11000 && error.keyPattern?.sku) {
+      // Handle duplicate SKU error with retry — only if SKU was auto-generated.
+      // If user supplied an SKU and it collided, surface the error directly.
+      if (error.code === 11000 && error.keyPattern?.sku && !itemData.sku) {
         const randomNum = Math.floor(Math.random() * 1000000);
         const newSku = `CUSTOM-${String(randomNum).padStart(6, '0')}`;
 
@@ -167,7 +181,35 @@ class ManualPurchaseOrderItemService {
       throw new Error('Item not found');
     }
 
-    // Update fields
+    // SKU change: validate uniqueness, then cascade rename across linked
+    // manual PurchaseOrder line items so existing orders keep referencing
+    // the same logical product. The Mongo _id remains the stable internal
+    // identifier — SKU is just the user-facing label.
+    let skuRenamedFrom = null;
+    let skuRenamedTo = null;
+    if (
+      updateData.sku !== undefined &&
+      updateData.sku !== null &&
+      String(updateData.sku).trim() !== ''
+    ) {
+      const newSku = String(updateData.sku).trim().toUpperCase();
+      if (newSku !== item.sku) {
+        const conflict = await ManualPurchaseOrderItem.findOne({
+          sku: newSku,
+          _id: { $ne: item._id }
+        }).lean();
+        if (conflict) {
+          const err = new Error(`SKU "${newSku}" already exists`);
+          err.code = 'DUPLICATE_SKU';
+          throw err;
+        }
+        skuRenamedFrom = item.sku;
+        skuRenamedTo = newSku;
+        item.sku = newSku;
+      }
+    }
+
+    // Update other fields
     if (updateData.name) item.name = updateData.name.trim();
     if (updateData.description !== undefined) item.description = updateData.description?.trim() || null;
     if (updateData.mappedCategoryItemId !== undefined) {
@@ -188,10 +230,94 @@ class ManualPurchaseOrderItemService {
 
     const updated = await item.save();
 
+    // Cascade SKU rename across every collection that stores the SKU as a
+    // foreign key. Done after save() so the master record is updated first;
+    // if the cascade fails we surface the error but the item record reflects
+    // the new SKU. The Mongo _id is the stable internal identifier — SKU is
+    // just the user-facing label and should be safe to rename.
+    if (skuRenamedFrom && skuRenamedTo) {
+      await this.cascadeSkuRename(skuRenamedFrom, skuRenamedTo);
+    }
+
     // Invalidate cache after update
     this.invalidateCache();
 
     return updated;
+  }
+
+  /**
+   * Rename a SKU everywhere it's referenced. Manual PO items are only ever
+   * referenced from manual purchase orders (source: 'manual'), but the rest
+   * of the inventory pipeline stores the SKU directly on stock summaries,
+   * stock movements, model-category mappings, discrepancies, and truck
+   * checkouts. All of those need to follow the rename or the Stock page,
+   * dashboards, and history views will keep showing the old SKU.
+   */
+  async cascadeSkuRename(oldSku, newSku) {
+    const PurchaseOrder = require('../models/PurchaseOrder');
+    const StockSummary = require('../models/StockSummary');
+    const StockMovement = require('../models/StockMovement');
+    const ModelCategory = require('../models/ModelCategory');
+    const OrderDiscrepancy = require('../models/OrderDiscrepancy');
+    const TruckCheckout = require('../models/TruckCheckout');
+
+    const tasks = [
+      // Manual purchase orders: rename the SKU inside line items.
+      PurchaseOrder.updateMany(
+        { source: 'manual', 'items.sku': oldSku },
+        { $set: { 'items.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+      // Stock summary keyed by SKU.
+      StockSummary.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
+      // Stock movement history.
+      StockMovement.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
+      // ModelCategory uses `modelNumber` for the SKU-to-category mapping.
+      // This is what drives the Stock Management category folders — without
+      // updating it, the renamed item shows up under the old SKU label.
+      ModelCategory.updateMany({ modelNumber: oldSku }, { $set: { modelNumber: newSku } }),
+      // Order discrepancy records.
+      OrderDiscrepancy.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
+      // Truck checkouts: SKU appears in several nested arrays.
+      TruckCheckout.updateMany(
+        { 'itemsTaken.sku': oldSku },
+        { $set: { 'itemsTaken.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+      TruckCheckout.updateMany(
+        { 'fetchedInvoices.items.sku': oldSku },
+        { $set: { 'fetchedInvoices.$[].items.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+      TruckCheckout.updateMany(
+        { 'tallyResults.itemsTaken.sku': oldSku },
+        { $set: { 'tallyResults.itemsTaken.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+      TruckCheckout.updateMany(
+        { 'tallyResults.itemsSold.sku': oldSku },
+        { $set: { 'tallyResults.itemsSold.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+      TruckCheckout.updateMany(
+        { 'tallyResults.discrepancies.sku': oldSku },
+        { $set: { 'tallyResults.discrepancies.$[item].sku': newSku } },
+        { arrayFilters: [{ 'item.sku': oldSku }] }
+      ),
+    ];
+
+    // Run them concurrently; a failure in one shouldn't roll back the others
+    // (those still represent valid state). Surface errors so the caller can log.
+    const results = await Promise.allSettled(tasks);
+    const failures = results
+      .map((r, i) => (r.status === 'rejected' ? `${i}: ${r.reason?.message || r.reason}` : null))
+      .filter(Boolean);
+    if (failures.length) {
+      console.error(
+        `[cascadeSkuRename] ${failures.length} cascade target(s) failed for ${oldSku} -> ${newSku}:`,
+        failures
+      );
+    }
   }
 
   async deleteItem(sku) {
