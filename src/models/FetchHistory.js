@@ -76,6 +76,15 @@ fetchHistorySchema.virtual('calculatedDuration').get(function() {
   return null;
 });
 fetchHistorySchema.methods.markCompleted = function(results) {
+  // If the user cancelled this run, preserve that. The sync may still be
+  // mid-flight when the cancel button is hit; we don't want a delayed
+  // completion to overwrite the cancelled state.
+  if (this.status === 'cancelled') {
+    if (results) {
+      this.results = { ...this.results, ...results };
+    }
+    return this.save();
+  }
   this.status = 'completed';
   this.completedAt = new Date();
   this.duration = this.completedAt - this.startedAt;
@@ -85,6 +94,11 @@ fetchHistorySchema.methods.markCompleted = function(results) {
   return this.save();
 };
 fetchHistorySchema.methods.markFailed = function(errorMessage, errorDetails) {
+  if (this.status === 'cancelled') {
+    if (errorMessage) this.errorMessage = errorMessage;
+    if (errorDetails) this.errorDetails = errorDetails;
+    return this.save();
+  }
   this.status = 'failed';
   this.completedAt = new Date();
   this.duration = this.completedAt - this.startedAt;
