@@ -3,6 +3,7 @@ const StockMovement = require('../models/StockMovement');
 const AuditLog = require('../models/AuditLog');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const PurchaseOrder = require('../models/PurchaseOrder');
 const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
@@ -321,7 +322,55 @@ const getInventoryItems = async (req, res, next) => {
         });
       }
     });
-    const allAutomatedSkus = [...ccItemsMap.keys(), ...rsItemsMap.keys()];
+    // Aggregate manual purchase orders (PurchaseOrder with source: 'manual').
+    // Without this, items only present in manual orders never show up in the
+    // inventory list, even though the per-SKU expand endpoint includes them.
+    const manualOrders = await PurchaseOrder.find({ source: 'manual' }).lean();
+    const manualItemsMap = new Map();
+    manualOrders.forEach(order => {
+      if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+          if (!item.sku) return;
+          const sku = item.sku.toUpperCase();
+          if (search) {
+            const searchRegex = new RegExp(search, 'i');
+            if (!searchRegex.test(item.name) && !searchRegex.test(sku)) {
+              return;
+            }
+          }
+          if (manualItemsMap.has(sku)) {
+            const existing = manualItemsMap.get(sku);
+            existing.totalQuantity += item.qty || 0;
+            existing.totalValue += item.lineTotal || 0;
+            existing.orderCount += 1;
+            const orderTime = new Date(order.orderDate || order.createdAt || 0).getTime();
+            if (orderTime > existing.lastSyncedAt.getTime()) {
+              existing.lastSyncedAt = new Date(orderTime);
+              existing.latestUnitPrice = item.unitPrice || 0;
+            }
+          } else {
+            manualItemsMap.set(sku, {
+              skuCode: sku,
+              itemName: item.name,
+              name: item.name,
+              description: `Purchased from ${order.vendor?.name || 'Manual Order'}`,
+              totalQuantity: item.qty || 0,
+              totalValue: item.lineTotal || 0,
+              latestUnitPrice: item.unitPrice || 0,
+              orderCount: 1,
+              category: category || 'Manual',
+              lastSyncedAt: new Date(order.orderDate || order.createdAt || Date.now()),
+              source: 'manual',
+              isAutomated: false,
+              vendorName: order.vendor?.name || '',
+              orderNumber: order.orderNumber,
+              poNumber: null
+            });
+          }
+        });
+      }
+    });
+    const allAutomatedSkus = [...ccItemsMap.keys(), ...rsItemsMap.keys(), ...manualItemsMap.keys()];
     const stockSummaries = await StockSummary.find({
       sku: { $in: allAutomatedSkus }
     }).lean();
@@ -453,6 +502,62 @@ const getInventoryItems = async (req, res, next) => {
       }
     });
     let mergedItems = Array.from(mergedItemsMap.values());
+    // Merge in manual-order items. If an SKU already exists from CC/RS, fold
+    // the manual order data into it (add quantities, bump orderCount); else
+    // emit a fresh inventory row sourced from the manual order.
+    manualItemsMap.forEach((manualItem, sku) => {
+      const stockSummary = stockSummaryMap.get(sku);
+      if (mergedItemsMap.has(sku)) {
+        const existing = mergedItemsMap.get(sku);
+        const existingSources = (existing.sync?.syncSource || '').split(',').map(s => s.trim()).filter(Boolean);
+        existing.totalPurchased = (existing.totalPurchased || 0) + manualItem.totalQuantity;
+        existing.orderCount = (existing.orderCount || 0) + manualItem.orderCount;
+        existing.sync = {
+          ...(existing.sync || {}),
+          syncSource: [...new Set([...existingSources, 'manual'])].join(', '),
+        };
+      } else {
+        mergedItemsMap.set(sku, {
+          _id: `man_${sku}`,
+          skuCode: manualItem.skuCode,
+          itemName: manualItem.itemName,
+          name: manualItem.name,
+          description: manualItem.description,
+          category: manualItem.category,
+          tags: [],
+          quantity: {
+            current: stockSummary ? stockSummary.availableQty : manualItem.totalQuantity,
+            minimum: stockSummary?.lowStockThreshold || 10,
+            unit: 'pieces',
+          },
+          pricing: {
+            purchasePrice: manualItem.latestUnitPrice,
+            sellingPrice: manualItem.latestUnitPrice * 1.2,
+            currency: 'USD',
+          },
+          images: [],
+          primaryImage: 0,
+          isActive: true,
+          isLowStock: stockSummary ? stockSummary.availableQty <= (stockSummary.lowStockThreshold || 10) : false,
+          vendorName: manualItem.vendorName,
+          orderNumber: manualItem.orderNumber,
+          poNumber: manualItem.poNumber,
+          orderCount: manualItem.orderCount,
+          totalPurchased: manualItem.totalQuantity,
+          sync: {
+            syncSource: 'manual',
+            hasSyncedData: false,
+            lastSyncedAt: manualItem.lastSyncedAt,
+            stockProcessed: stockSummary ? true : false,
+            availableQty: stockSummary?.availableQty || 0,
+            reservedQty: stockSummary?.reservedQty || 0,
+            totalInQty: stockSummary?.totalInQty || 0,
+            totalOutQty: stockSummary?.totalOutQty || 0,
+          },
+        });
+      }
+    });
+    mergedItems = Array.from(mergedItemsMap.values());
     if (category) {
       mergedItems = mergedItems.filter(item => {
         const itemCategory = item.category || '';
@@ -492,6 +597,7 @@ const getInventoryItems = async (req, res, next) => {
         summary: {
           customerConnectItems: ccItemsMap.size,
           routeStarItems: rsItemsMap.size,
+          manualItems: manualItemsMap.size,
           totalMerged: total
         }
       }

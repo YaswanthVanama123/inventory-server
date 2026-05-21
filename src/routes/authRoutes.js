@@ -13,10 +13,14 @@ const { authValidation, validate } = require('../middleware/validation');
 const { setActivityMeta } = require('../middleware/activityLogger');
 
 
-router.post('/setup/admin', setActivityMeta('SETUP', 'INITIAL_ADMIN'), createInitialAdmin);
-router.post('/admin/login', authValidation.login, validate, setActivityMeta('LOGIN', 'ADMIN'), adminLogin);
-router.post('/login', authValidation.login, validate, setActivityMeta('LOGIN', 'USER'), login);
-router.get('/me', authenticate, setActivityMeta('VIEW', 'PROFILE'), getMe);
-router.put('/change-password', authenticate, authValidation.changePassword, validate, setActivityMeta('CHANGE', 'PASSWORD'), changePassword);
+// Note: setup/admin, admin/login and login intentionally skip setActivityMeta
+// because the controllers already call AuditLog.create with the proper
+// performedBy (which the middleware can't supply — it runs before
+// authentication, so req.user is undefined).
+router.post('/setup/admin', createInitialAdmin);
+router.post('/admin/login', authValidation.login, validate, adminLogin);
+router.post('/login', authValidation.login, validate, login);
+router.get('/me', authenticate, setActivityMeta('VIEW', 'USER'), getMe);
+router.put('/change-password', authenticate, authValidation.changePassword, validate, setActivityMeta('PASSWORD_CHANGE', 'USER'), changePassword);
 router.post('/logout', authenticate, setActivityMeta('LOGOUT', 'USER'), logout);
 module.exports = router;

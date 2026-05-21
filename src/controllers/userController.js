@@ -107,6 +107,7 @@ const createUser = async (req, res, next) => {
       success: true,
       data: {
         user: {
+          _id: user._id,
           id: user._id,
           username: user.username,
           email: user.email,
