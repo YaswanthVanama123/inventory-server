@@ -319,6 +319,46 @@ const updateOwnTruckNumber = async (req, res, next) => {
     next(error);
   }
 };
+// Self-service account deactivation. Available to any authenticated user
+// (admin or employee) so they can disable their own account from the app.
+// We deactivate (isActive = false) rather than hard-delete so audit history
+// and any owned records stay intact and an admin can reactivate later if
+// requested.
+const deactivateOwnAccount = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ _id: req.user.id, isDeleted: false });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'User not found', code: 'USER_NOT_FOUND' }
+      });
+    }
+    if (!user.isActive) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Account is already deactivated', code: 'ALREADY_INACTIVE' }
+      });
+    }
+    user.isActive = false;
+    await user.save();
+    await AuditLog.create({
+      action: 'UPDATE',
+      resource: 'USER',
+      resourceId: user._id,
+      performedBy: req.user.id,
+      details: { selfDeactivated: true, role: user.role },
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+    res.status(200).json({
+      success: true,
+      message: 'Account deactivated successfully. You will be signed out.'
+    });
+  } catch (error) {
+    console.error('Self-deactivate error:', error);
+    next(error);
+  }
+};
 module.exports = {
   getUsers,
   getUser,
@@ -326,5 +366,6 @@ module.exports = {
   updateUser,
   deleteUser,
   resetPassword,
-  updateOwnTruckNumber
+  updateOwnTruckNumber,
+  deactivateOwnAccount
 };
