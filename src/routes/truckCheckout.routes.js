@@ -15,7 +15,7 @@ router.get('/stats/employee/:employeeName', authenticate, setActivityMeta('VIEW'
 router.get('/sales-tracking', authenticate, setActivityMeta('VIEW', 'SALES_TRACKING'), truckCheckoutController.getCheckoutSalesTracking);
 router.get('/employees/stats', authenticate, setActivityMeta('VIEW', 'ALL_EMPLOYEES_STATS'), truckCheckoutController.getAllEmployeesWithStats);
 router.post('/create-new', authenticate, setActivityMeta('CREATE', 'TRUCK_CHECKOUT'), truckCheckoutController.createCheckout);
-router.get('/', authenticate, setActivityMeta('VIEW', 'TRUCK_CHECKOUTS'), truckCheckoutController.getCheckouts);
+router.get('/', authenticate, setActivityMeta('VIEW', 'TRUCK_CHECKOUT'), truckCheckoutController.getCheckouts);
 router.get('/:id', authenticate, setActivityMeta('VIEW', 'TRUCK_CHECKOUT'), truckCheckoutController.getCheckoutById);
 router.delete('/:id', authenticate, requireAdmin(), setActivityMeta('DELETE', 'TRUCK_CHECKOUT'), truckCheckoutController.deleteCheckout);
 const RouteStarInvoice = require('../models/RouteStarInvoice');
