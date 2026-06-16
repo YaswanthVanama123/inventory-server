@@ -1,5 +1,27 @@
 const screenPermissionService = require('../services/screenPermission.service');
 
+const SCREEN_CACHE = new Map();
+const SCREEN_CACHE_TTL_MS = parseInt(process.env.SCREEN_CACHE_TTL_MS) || 60000;
+
+const cacheGet = (userId) => {
+  const entry = SCREEN_CACHE.get(userId);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    SCREEN_CACHE.delete(userId);
+    return null;
+  }
+  return entry.value;
+};
+
+const cacheSet = (userId, value) => {
+  SCREEN_CACHE.set(userId, { value, expiresAt: Date.now() + SCREEN_CACHE_TTL_MS });
+};
+
+const cacheInvalidate = (userId) => {
+  if (userId) SCREEN_CACHE.delete(String(userId));
+  else SCREEN_CACHE.clear();
+};
+
 // Get all screens
 exports.getAllScreens = async (req, res) => {
   try {
@@ -117,6 +139,8 @@ exports.updateDefaultScreens = async (req, res) => {
 
     const screens = await screenPermissionService.updateDefaultScreens(screenIds, adminId);
 
+    cacheInvalidate();
+
     res.json({
       success: true,
       data: screens,
@@ -131,22 +155,19 @@ exports.updateDefaultScreens = async (req, res) => {
   }
 };
 
-// Get screens for logged-in user
 exports.getMyScreens = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = String(req.user._id);
+    const cached = cacheGet(userId);
+    if (cached) {
+      return res.json({ success: true, data: cached });
+    }
     const screens = await screenPermissionService.getUserScreens(userId);
-
-    res.json({
-      success: true,
-      data: screens
-    });
+    cacheSet(userId, screens);
+    res.json({ success: true, data: screens });
   } catch (error) {
     console.error('Error getting user screens:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -200,6 +221,8 @@ exports.updateUserPermissions = async (req, res) => {
       screenIds,
       adminId
     );
+
+    cacheInvalidate(userId);
 
     res.json({
       success: true,

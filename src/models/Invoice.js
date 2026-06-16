@@ -253,7 +253,9 @@ invoiceSchema.index({ 'customer.email': 1, invoiceDate: -1 });
 invoiceSchema.index({ status: 1, paymentStatus: 1 });
 invoiceSchema.index({ invoiceDate: -1, createdAt: -1 });
 invoiceSchema.index({ createdBy: 1, status: 1 });
-invoiceSchema.index({ dueDate: 1, paymentStatus: 1 }); 
+invoiceSchema.index({ dueDate: 1, paymentStatus: 1 });
+invoiceSchema.index({ paymentMethod: 1, invoiceDate: -1 });
+invoiceSchema.index({ 'items.inventory': 1 });
 invoiceSchema.statics.generateInvoiceNumber = async function() {
   const today = new Date();
   const year = today.getFullYear();

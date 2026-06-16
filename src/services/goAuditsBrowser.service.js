@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
 
+const SCREENSHOTS_ENABLED = process.env.GOAUDITS_DEBUG_SCREENSHOTS !== 'false';
+
 class GoAuditsBrowserService {
   constructor() {
     this.baseUrl = process.env.GOAUDITS_BASE_URL || 'https://admin.goaudits.com';
@@ -8,6 +10,14 @@ class GoAuditsBrowserService {
     this.browser = null;
     this.context = null;
     this.page = null;
+  }
+
+  async _captureScreenshot(filePath) {
+    if (!SCREENSHOTS_ENABLED || !this.page) return;
+    try {
+      await this.page.screenshot({ path: filePath });
+      console.error(`   Screenshot saved to ${filePath}`);
+    } catch (e) {}
   }
 
   /**
@@ -102,21 +112,14 @@ class GoAuditsBrowserService {
           return true;
         }
 
-        // Take screenshot for debugging
-        await this.page.screenshot({ path: '/tmp/goaudits-after-login.png' });
-        throw new Error(`Login may have failed - still on signin page. Screenshot saved to /tmp/goaudits-after-login.png`);
+        await this._captureScreenshot('/tmp/goaudits-after-login.png');
+        throw new Error(`Login may have failed - still on signin page.`);
       }
 
       return true;
     } catch (error) {
       console.error('✗ Login failed:', error.message);
-      // Take screenshot for debugging
-      try {
-        await this.page.screenshot({ path: '/tmp/goaudits-login-error.png' });
-        console.error('   Screenshot saved to /tmp/goaudits-login-error.png');
-      } catch (e) {
-        // Ignore screenshot errors
-      }
+      await this._captureScreenshot('/tmp/goaudits-login-error.png');
       throw new Error(`Failed to login to GoAudits: ${error.message}`);
     }
   }
@@ -264,50 +267,31 @@ class GoAuditsBrowserService {
 
     } catch (error) {
       console.error(`✗ Failed to create location ${locationData.store_name}:`, error.message);
-
-      // Take screenshot for debugging
-      try {
-        const screenshotPath = `/tmp/goaudits-create-error-${Date.now()}.png`;
-        await this.page.screenshot({ path: screenshotPath });
-        console.error(`   Screenshot saved to ${screenshotPath}`);
-      } catch (e) {
-        // Ignore screenshot errors
-      }
-
+      await this._captureScreenshot(`/tmp/goaudits-create-error-${Date.now()}.png`);
       throw new Error(`Failed to create location: ${error.message}`);
     }
   }
 
-  /**
-   * Create multiple locations
-   */
   async createMultipleLocations(locationsData) {
+    const results = [];
     try {
       await this.initialize();
-
-      const results = [];
       for (const locationData of locationsData) {
         try {
           const result = await this.createLocation(locationData);
           results.push({ ...result, success: true });
-
-          // Small delay between creations
           await this.page.waitForTimeout(1000);
         } catch (error) {
           results.push({
             store_name: locationData.store_name,
             success: false,
-            error: error.message
+            error: error.message,
           });
         }
       }
-
-      await this.cleanup();
       return results;
-
-    } catch (error) {
+    } finally {
       await this.cleanup();
-      throw error;
     }
   }
 
@@ -316,15 +300,13 @@ class GoAuditsBrowserService {
    */
   async cleanup() {
     try {
-      if (this.page) await this.page.close();
-      if (this.context) await this.context.close();
-      if (this.browser) await this.browser.close();
-
+      if (this.page) await this.page.close().catch(() => {});
+      if (this.context) await this.context.close().catch(() => {});
+      if (this.browser) await this.browser.close().catch(() => {});
+    } finally {
       this.page = null;
       this.context = null;
       this.browser = null;
-    } catch (error) {
-      console.error('Error during cleanup:', error);
     }
   }
 }

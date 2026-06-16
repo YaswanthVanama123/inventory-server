@@ -203,6 +203,9 @@ const inventorySchema = new mongoose.Schema({
 inventorySchema.index({ category: 1, isActive: 1 });
 inventorySchema.index({ 'quantity.current': 1 });
 inventorySchema.index({ createdAt: -1 });
+inventorySchema.index({ isActive: 1, isDeleted: 1, skuCode: 1 });
+inventorySchema.index({ isActive: 1, isDeleted: 1, itemName: 1 });
+inventorySchema.index({ skuCode: 1, isDeleted: 1 });
 inventorySchema.pre('save', function(next) {
   if (this.pricing && this.pricing.purchasePrice && this.pricing.sellingPrice) {
     const profit = this.pricing.sellingPrice - this.pricing.purchasePrice;
@@ -228,23 +231,42 @@ inventorySchema.virtual('needsReorder').get(function() {
 });
 inventorySchema.statics.calculateWeightedAvgPrice = async function(inventoryId) {
   const Purchase = require('./Purchase');
-  const purchases = await Purchase.find({
-    inventoryItem: inventoryId,
-    isDeleted: false,
-    remainingQuantity: { $gt: 0 }
-  });
-  if (!purchases || purchases.length === 0) {
-    return 0;
-  }
-  let totalValue = 0;
-  let totalQuantity = 0;
-  purchases.forEach(purchase => {
-    const qty = purchase.remainingQuantity || 0;
-    const price = purchase.sellingPrice || purchase.purchasePrice || 0;
-    totalValue += qty * price;
-    totalQuantity += qty;
-  });
-  return totalQuantity > 0 ? totalValue / totalQuantity : 0;
+  const result = await Purchase.aggregate([
+    {
+      $match: {
+        inventoryItem: new mongoose.Types.ObjectId(inventoryId),
+        isDeleted: false,
+        remainingQuantity: { $gt: 0 },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalQty: { $sum: '$remainingQuantity' },
+        totalValue: {
+          $sum: {
+            $multiply: [
+              '$remainingQuantity',
+              { $ifNull: ['$sellingPrice', '$purchasePrice'] },
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        avgPrice: {
+          $cond: [
+            { $gt: ['$totalQty', 0] },
+            { $divide: ['$totalValue', '$totalQty'] },
+            0,
+          ],
+        },
+      },
+    },
+  ]);
+  return result.length > 0 ? result[0].avgPrice : 0;
 };
 inventorySchema.set('toJSON', { virtuals: true });
 inventorySchema.set('toObject', { virtuals: true });

@@ -6,6 +6,9 @@ const TruckCheckout = require('../models/TruckCheckout');
 const StockDiscrepancy = require('../models/StockDiscrepancy');
 const ModelCategory = require('../models/ModelCategory');
 
+const VERBOSE = process.env.STOCK_CALC_VERBOSE === 'true';
+const dlog = (...args) => { if (VERBOSE) console.log(...args); };
+
 
 class StockCalculationService {
   async getCurrentStock(itemName) {
@@ -100,7 +103,7 @@ class StockCalculationService {
             ? item.receivedQuantity
             : (item.itemVerified ? item.qty : 0);
           if (quantityToCount > 0) {
-            console.log(`[_calculatePurchases] Counting ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
+            dlog(`[_calculatePurchases] Counting ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
           }
           total += quantityToCount || 0;
         }
@@ -116,7 +119,7 @@ class StockCalculationService {
             ? item.receivedQuantity
             : (item.itemVerified ? item.qty : 0);
           if (quantityToCount > 0) {
-            console.log(`[_calculatePurchases] Counting manual order ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
+            dlog(`[_calculatePurchases] Counting manual order ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
           }
           total += quantityToCount || 0;
         }
@@ -149,7 +152,7 @@ class StockCalculationService {
       invoice.lineItems?.forEach(item => {
         const itemCanonical = aliasMap[item.name?.toLowerCase()] || item.name;
         if (itemCanonical === canonicalName) {
-          console.log(`[_calculateSales] ${canonicalName} - matched line item: ${item.name} (qty: ${item.quantity})`);
+          dlog(`[_calculateSales] ${canonicalName} - matched line item: ${item.name} (qty: ${item.quantity})`);
           total += item.quantity || 0;
         }
       });

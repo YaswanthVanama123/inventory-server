@@ -132,8 +132,11 @@ const truckCheckoutSchema = new mongoose.Schema({
 truckCheckoutSchema.index({ employeeName: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ status: 1, checkoutDate: -1 });
 truckCheckoutSchema.index({ invoiceNumbers: 1 });
-truckCheckoutSchema.index({ 'itemsTaken.name': 1 }); 
-truckCheckoutSchema.index({ itemName: 1, status: 1 }); 
+truckCheckoutSchema.index({ 'itemsTaken.name': 1 });
+truckCheckoutSchema.index({ itemName: 1, status: 1 });
+truckCheckoutSchema.index({ truckNumber: 1, checkoutDate: -1 });
+truckCheckoutSchema.index({ hasDiscrepancy: 1, status: 1 });
+truckCheckoutSchema.index({ stockProcessed: 1, status: 1 });
 truckCheckoutSchema.virtual('totalItemsTaken').get(function() {
   return this.itemsTaken.reduce((sum, item) => sum + item.quantity, 0);
 });

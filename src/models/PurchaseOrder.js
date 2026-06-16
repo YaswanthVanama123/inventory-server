@@ -169,6 +169,9 @@ const purchaseOrderSchema = new mongoose.Schema({
 purchaseOrderSchema.index({ source: 1, sourceOrderId: 1 }, { unique: true });
 purchaseOrderSchema.index({ orderDate: -1, status: 1 });
 purchaseOrderSchema.index({ 'vendor.name': 1 });
+purchaseOrderSchema.index({ source: 1, status: 1 });
+purchaseOrderSchema.index({ stockProcessed: 1, status: 1 });
+purchaseOrderSchema.index({ 'items.sku': 1 });
 purchaseOrderSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0) {
     this.subtotal = this.items.reduce((sum, item) => sum + item.lineTotal, 0);

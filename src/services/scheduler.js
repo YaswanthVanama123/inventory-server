@@ -4,6 +4,10 @@ const SyncRouteStar = require('./sync/syncRouteStar');
 const RouteStarSyncService = require('./routeStarSync.service');
 const routeStarService = require('./routeStar.service');
 const customerConnectService = require('./customerConnect.service');
+const { withCronLock } = require('./cronLock');
+
+const ONE_HOUR = 60 * 60 * 1000;
+const SIX_HOURS = 6 * ONE_HOUR;
 
 class SyncScheduler {
   constructor() {
@@ -44,7 +48,7 @@ class SyncScheduler {
     console.log(`Starting sync scheduler with ${intervalMinutes} minute interval`);
     this.customerConnectTask = cron.schedule(
       cronExpression,
-      async () => {
+      () => withCronLock('scheduler:customerConnect', ONE_HOUR, async () => {
         console.log('Running scheduled CustomerConnect sync...');
         try {
           const syncService = new SyncCustomerConnect(systemUserId);
@@ -54,7 +58,7 @@ class SyncScheduler {
         } catch (error) {
           console.error('Scheduled CustomerConnect sync failed:', error);
         }
-      },
+      }),
       {
         scheduled: true,
         timezone: process.env.TZ || 'America/New_York'
@@ -64,7 +68,7 @@ class SyncScheduler {
     const offsetCronExpression = `${offsetMinutes},${offsetMinutes + intervalMinutes} * * * *`;
     this.routeStarTask = cron.schedule(
       offsetCronExpression,
-      async () => {
+      () => withCronLock('scheduler:routeStar', ONE_HOUR, async () => {
         console.log('Running scheduled RouteStar sync...');
         try {
           const syncService = new SyncRouteStar(systemUserId);
@@ -74,7 +78,7 @@ class SyncScheduler {
         } catch (error) {
           console.error('Scheduled RouteStar sync failed:', error);
         }
-      },
+      }),
       {
         scheduled: true,
         timezone: process.env.TZ || 'America/New_York'
@@ -92,7 +96,7 @@ class SyncScheduler {
     console.log('Setting up RouteStar Items sync schedule (daily at 4:00 AM)');
     this.routeStarItemsTask = cron.schedule(
       itemsSyncCron,
-      async () => {
+      () => withCronLock('scheduler:routeStarItems', SIX_HOURS, async () => {
         console.log('\n========================================');
         console.log('Running scheduled RouteStar Items sync (4:00 AM)...');
         console.log('========================================\n');
@@ -119,7 +123,7 @@ class SyncScheduler {
             await syncService.close();
           }
         }
-      },
+      }),
       {
         scheduled: true,
         timezone: process.env.TZ || 'America/New_York'
@@ -133,7 +137,7 @@ class SyncScheduler {
     // Pending Invoices - Daily at 1:00 AM
     this.pendingInvoicesTask = cron.schedule(
       '0 1 * * *',
-      async () => {
+      () => withCronLock('scheduler:pendingInvoices', SIX_HOURS, async () => {
         console.log('\n========================================');
         console.log('Running scheduled Pending Invoices fetch (1:00 AM)...');
         console.log('========================================\n');
@@ -144,15 +148,14 @@ class SyncScheduler {
         } catch (error) {
           console.error('Scheduled Pending Invoices fetch failed:', error.message);
         }
-      },
+      }),
       { scheduled: true, timezone }
     );
     console.log('Pending Invoices auto-fetch scheduled: Daily at 1:00 AM');
 
-    // Orders (CustomerConnect) - Daily at 2:00 AM
     this.ordersTask = cron.schedule(
       '0 2 * * *',
-      async () => {
+      () => withCronLock('scheduler:orders', SIX_HOURS, async () => {
         console.log('\n========================================');
         console.log('Running scheduled Orders fetch (2:00 AM)...');
         console.log('========================================\n');
@@ -168,15 +171,14 @@ class SyncScheduler {
         } catch (error) {
           console.error('Scheduled Orders fetch failed:', error.message);
         }
-      },
+      }),
       { scheduled: true, timezone }
     );
     console.log('Orders auto-fetch scheduled: Daily at 2:00 AM');
 
-    // Closed Invoices - Daily at 3:00 AM
     this.closedInvoicesTask = cron.schedule(
       '0 3 * * *',
-      async () => {
+      () => withCronLock('scheduler:closedInvoices', SIX_HOURS, async () => {
         console.log('\n========================================');
         console.log('Running scheduled Closed Invoices fetch (3:00 AM)...');
         console.log('========================================\n');
@@ -187,15 +189,14 @@ class SyncScheduler {
         } catch (error) {
           console.error('Scheduled Closed Invoices fetch failed:', error.message);
         }
-      },
+      }),
       { scheduled: true, timezone }
     );
     console.log('Closed Invoices auto-fetch scheduled: Daily at 3:00 AM');
 
-    // Cleanup fetch history older than 15 days - Daily at 4:30 AM
     this.cleanupTask = cron.schedule(
       '30 4 * * *',
-      async () => {
+      () => withCronLock('scheduler:cleanup', ONE_HOUR, async () => {
         try {
           const FetchHistory = require('../models/FetchHistory');
           const cutoff = new Date();
@@ -208,15 +209,14 @@ class SyncScheduler {
         } catch (error) {
           console.error('Fetch history cleanup failed:', error.message);
         }
-      },
+      }),
       { scheduled: true, timezone }
     );
     console.log('Fetch history cleanup scheduled: Daily at 4:30 AM (keeps last 15 days)');
 
-    // QuickBooks sync - hourly at minute 0
     this.quickBooksSyncTask = cron.schedule(
       '0 * * * *',
-      async () => {
+      () => withCronLock('scheduler:quickBooksSync', ONE_HOUR, async () => {
         try {
           const quickBooksSyncService = require('./quickBooksSync.service');
           const [snap, disc] = await Promise.all([
@@ -227,7 +227,7 @@ class SyncScheduler {
         } catch (error) {
           console.error('[QBSync cron] failed:', error.message);
         }
-      },
+      }),
       { scheduled: true, timezone }
     );
     console.log('QuickBooks sync scheduled: Hourly (enqueues stock snapshot + new discrepancies for QBWC pickup)');

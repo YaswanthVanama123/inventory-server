@@ -112,8 +112,7 @@ const auditLogSchema = new mongoose.Schema({
   },
   timestamp: {
     type: Date,
-    default: Date.now,
-    index: true
+    default: Date.now
   }
 });
 
@@ -123,6 +122,13 @@ auditLogSchema.index({ timestamp: -1 });
 auditLogSchema.index({ success: 1 });
 auditLogSchema.index({ device: 1 });
 auditLogSchema.index({ performedByEmail: 1 });
+auditLogSchema.index({ action: 1 });
+auditLogSchema.index({ method: 1 });
+auditLogSchema.index({ endpoint: 1 });
+auditLogSchema.index(
+  { timestamp: 1 },
+  { expireAfterSeconds: parseInt(process.env.AUDIT_LOG_TTL_SECONDS) || 7776000 }
+);
 
 // Virtual for formatted timestamp
 auditLogSchema.virtual('formattedTimestamp').get(function() {

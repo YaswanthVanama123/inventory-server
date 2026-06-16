@@ -157,6 +157,10 @@ const purchaseSchema = new mongoose.Schema({
 purchaseSchema.index({ inventoryItem: 1, purchaseDate: -1 });
 purchaseSchema.index({ purchaseDate: -1 });
 purchaseSchema.index({ isDeleted: 1, isActive: 1 });
+purchaseSchema.index({ inventoryItem: 1, isDeleted: 1, remainingQuantity: 1 });
+purchaseSchema.index({ isActive: 1, isDeleted: 1, remainingQuantity: 1 });
+purchaseSchema.index({ deletionStatus: 1, isDeleted: 1 });
+purchaseSchema.index({ 'syncMetadata.purchaseOrderId': 1 });
 purchaseSchema.pre('save', function(next) {
   if (this.isModified('quantity') || this.isModified('purchasePrice')) {
     this.totalCost = this.quantity * this.purchasePrice;

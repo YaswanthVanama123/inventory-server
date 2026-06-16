@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const mongoSanitize = require('express-mongo-sanitize');
 const path = require('path');
 const connectDB = require('./config/database');
 const initModels = require('./config/initModels');
@@ -13,6 +14,9 @@ const { activityLogger } = require('./middleware/activityLogger');
 
 
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
 (async () => {
   await connectDB();
   try {
@@ -21,73 +25,92 @@ const app = express();
     console.error('Warning: Failed to initialize models:', error.message);
   }
 })();
-app.use(cors());
-app.use(helmet());
-app.use(compression({
-  level: 6, 
-  threshold: 1024, 
-  filter: (req, res) => {
-    if (req.headers['x-no-compression']) {
-      return false;
+
+const corsOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const corsOptions = corsOrigins.length > 0
+  ? {
+      origin(origin, callback) {
+        if (!origin || corsOrigins.includes('*') || corsOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Origin ${origin} not allowed by CORS`));
+      },
+      credentials: true,
     }
+  : { credentials: true };
+
+app.use(cors(corsOptions));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(compression({
+  level: 6,
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
     return compression.filter(req, res);
-  }
+  },
 }));
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  req._startTime = startTime;
-  const originalJson = res.json;
-  res.json = function(data) {
-    const endTime = Date.now();
-    const totalTime = endTime - startTime;
-    // console.log(`[TIMING] ${req.method} ${req.path} | Total: ${totalTime}ms | Response size: ${JSON.stringify(data).length} bytes`);
-    return originalJson.call(this, data);
-  };
-  next();
-});
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+const JSON_LIMIT = process.env.JSON_BODY_LIMIT || '1mb';
+const URLENCODED_LIMIT = process.env.URLENCODED_BODY_LIMIT || '100kb';
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: URLENCODED_LIMIT }));
+app.use(mongoSanitize());
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  maxAge: '7d',
+  immutable: true,
+  fallthrough: true,
+}));
+
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
-  app.use(morgan('combined'));
+  app.use(morgan('combined', { skip: (req) => req.path === '/health' || req.path === '/api/health' }));
 }
+
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: process.env.NODE_ENV === 'development' ? 1000 : 5, 
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 1000 : 5,
   message: {
     success: false,
     error: {
       message: 'Too many login attempts. Please try again after 15 minutes.',
-      code: 'RATE_LIMIT_EXCEEDED'
-    }
+      code: 'RATE_LIMIT_EXCEEDED',
+    },
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => process.env.NODE_ENV === 'development', 
+  skip: () => process.env.NODE_ENV === 'development',
 });
+
 const generalLimiter = rateLimit({
-  windowMs: process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'development' ? 10000 : (process.env.RATE_LIMIT_MAX_REQUESTS || 100),
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 10000 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 600),
   message: {
     success: false,
     error: {
       message: 'Too many requests. Please try again later.',
-      code: 'RATE_LIMIT_EXCEEDED'
-    }
+      code: 'RATE_LIMIT_EXCEEDED',
+    },
   },
-  skip: (req) => process.env.NODE_ENV === 'development', 
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'development',
 });
 if (process.env.NODE_ENV !== 'development') {
-  app.use(generalLimiter);
+  app.use('/api', generalLimiter);
 }
-// Activity logging middleware - place after auth but before routes
+
 app.use(activityLogger({
   excludePaths: ['/health', '/api/health'],
   excludeMethods: [],
-  logSuccessOnly: false
+  logSuccessOnly: false,
 }));
+
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
@@ -125,13 +148,15 @@ const manualOrderRoutes = require('./routes/manualOrder.routes');
 const goAuditsRoutes = require('./routes/goAudits.routes');
 const screenPermissionRoutes = require('./routes/screenPermission.routes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
+
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
+
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/inventory', inventoryRoutes);
@@ -149,7 +174,6 @@ app.use('/api', warehouseRoutes);
 app.use('/api', schedulerRoutes);
 app.use('/api/inventory-scheduler', inventorySchedulerRoutes);
 app.use('/api/qb-sync', quickBooksSyncRoutes);
-// QBWC SOAP endpoint: NO /api prefix, uses raw XML body
 app.use('/qbwc', qbwcRoutes);
 app.use('/api/customerconnect', customerconnectRoutes);
 app.use('/api/routestar', routestarRoutes);
@@ -172,12 +196,12 @@ app.use('/api/screen-permissions', screenPermissionRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use(notFound);
 app.use(errorHandler);
+
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
   console.log(`Access locally at: http://127.0.0.1:${PORT}`);
-  console.log(`Access from network at: http://192.168.1.30:${PORT}`);
   if (process.env.AUTO_START_SCHEDULER === 'true') {
     const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
     const scheduler = getInventoryScheduler();
@@ -193,15 +217,13 @@ const server = app.listen(PORT, HOST, () => {
         ordersLimit,
         invoicesLimit,
         processStock: true,
-        timezone: process.env.TZ || 'America/New_York'
+        timezone: process.env.TZ || 'America/New_York',
       });
-      console.log('✅ Inventory scheduler started - Daily sync at 3:00 AM (fetching ALL data)');
+      console.log('✅ Inventory scheduler started');
     } catch (error) {
       console.error('Failed to start inventory scheduler:', error.message);
     }
 
-    // Also start the SyncScheduler for granular per-source daily fetches
-    // (Pending Invoices at 1 AM, Orders at 2 AM, Closed Invoices at 3 AM, Items at 4 AM, Cleanup at 4:30 AM)
     try {
       const { getScheduler } = require('./services/scheduler');
       const syncScheduler = getScheduler();
@@ -209,27 +231,21 @@ const server = app.listen(PORT, HOST, () => {
         intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 30,
         limit: 50,
         processStock: true,
-        systemUserId: null
+        systemUserId: null,
       });
-      console.log('✅ Sync scheduler started - Daily fetches at 1/2/3/4 AM');
+      console.log('✅ Sync scheduler started');
     } catch (error) {
       console.error('Failed to start sync scheduler:', error.message);
     }
   }
 });
-// Unhandled rejections shouldn't take the server down. Most leaks here come
-// from Playwright targets crashing during scheduled syncs — exiting on those
-// killed the API for everyone and required a manual restart. Log loudly and
-// keep running; truly fatal conditions (DB disconnect, OOM) will surface
-// through their own paths.
+
 process.on('unhandledRejection', (reason) => {
   const err = reason instanceof Error ? reason : new Error(String(reason));
   console.error('Unhandled Rejection (continuing):', err.message);
   if (err.stack) console.error(err.stack);
 });
-// Uncaught exceptions indicate a corrupted JS state — log full context and
-// exit so pm2 can restart us cleanly. Keep the graceful-shutdown attempt but
-// guard it with a hard timeout in case server.close() hangs on open sockets.
+
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
   console.error('Stack trace:', err.stack);
@@ -245,22 +261,25 @@ process.on('uncaughtException', (err) => {
     process.exit(1);
   });
 });
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
-  getInventoryScheduler().stop();
+
+const gracefulShutdown = (signal) => {
+  console.log(`${signal} signal received: closing HTTP server`);
+  try {
+    const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
+    getInventoryScheduler().stop();
+  } catch (e) {
+    console.error('Scheduler stop failed:', e.message);
+  }
+  try {
+    const auditQueue = require('./services/auditQueue');
+    auditQueue.shutdown().catch((e) => console.error('auditQueue shutdown failed:', e.message));
+  } catch (e) {}
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);
   });
-});
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received: closing HTTP server');
-  const{ getInventoryScheduler } = require('./services/inventoryScheduler.service');
-  getInventoryScheduler().stop();
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
-});
+};
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 module.exports = app;

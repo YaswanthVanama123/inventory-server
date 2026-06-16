@@ -4,6 +4,7 @@ const AuditLog = require('../models/AuditLog');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const PurchaseOrder = require('../models/PurchaseOrder');
+const Purchase = require('../models/Purchase');
 const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
@@ -191,6 +192,104 @@ const getSyncMetadata = async (skuCode) => {
       hasSyncedData: false
     };
   }
+};
+
+const getSyncMetadataBatch = async (skuCodes) => {
+  const result = new Map();
+  if (!skuCodes || skuCodes.length === 0) return result;
+  const upper = skuCodes.map((s) => (s || '').toUpperCase()).filter(Boolean);
+  const unique = [...new Set(upper)];
+  for (const sku of unique) {
+    result.set(sku, { lastSyncedAt: null, syncSource: null, hasSyncedData: false });
+  }
+  try {
+    const [ccAgg, rsAgg] = await Promise.all([
+      CustomerConnectOrder.aggregate([
+        { $match: { 'items.sku': { $in: unique }, isDeleted: false } },
+        { $unwind: '$items' },
+        { $match: { 'items.sku': { $in: unique } } },
+        { $group: { _id: '$items.sku', lastSyncedAt: { $max: '$lastSyncedAt' } } },
+      ]),
+      RouteStarInvoice.aggregate([
+        { $match: { 'lineItems.sku': { $in: unique }, isDeleted: false } },
+        { $unwind: '$lineItems' },
+        { $match: { 'lineItems.sku': { $in: unique } } },
+        { $group: { _id: '$lineItems.sku', lastSyncedAt: { $max: '$lastSyncedAt' } } },
+      ]),
+    ]);
+    for (const row of ccAgg) {
+      const entry = result.get(row._id) || { lastSyncedAt: null, syncSource: null, hasSyncedData: false };
+      entry.hasSyncedData = true;
+      const sources = entry.syncSource ? entry.syncSource.split(', ') : [];
+      if (!sources.includes('CustomerConnect')) sources.push('CustomerConnect');
+      entry.syncSource = sources.join(', ');
+      if (!entry.lastSyncedAt || (row.lastSyncedAt && row.lastSyncedAt > entry.lastSyncedAt)) {
+        entry.lastSyncedAt = row.lastSyncedAt;
+      }
+      result.set(row._id, entry);
+    }
+    for (const row of rsAgg) {
+      const entry = result.get(row._id) || { lastSyncedAt: null, syncSource: null, hasSyncedData: false };
+      entry.hasSyncedData = true;
+      const sources = entry.syncSource ? entry.syncSource.split(', ') : [];
+      if (!sources.includes('RouteStar')) sources.push('RouteStar');
+      entry.syncSource = sources.join(', ');
+      if (!entry.lastSyncedAt || (row.lastSyncedAt && row.lastSyncedAt > entry.lastSyncedAt)) {
+        entry.lastSyncedAt = row.lastSyncedAt;
+      }
+      result.set(row._id, entry);
+    }
+  } catch (error) {
+    console.error('Error getting sync metadata batch:', error);
+  }
+  return result;
+};
+
+const getWeightedAvgPriceBatch = async (inventoryIds) => {
+  const result = new Map();
+  if (!inventoryIds || inventoryIds.length === 0) return result;
+  try {
+    const rows = await Purchase.aggregate([
+      {
+        $match: {
+          inventoryItem: { $in: inventoryIds },
+          isDeleted: false,
+          remainingQuantity: { $gt: 0 },
+        },
+      },
+      {
+        $group: {
+          _id: '$inventoryItem',
+          totalQty: { $sum: '$remainingQuantity' },
+          totalValue: {
+            $sum: {
+              $multiply: [
+                '$remainingQuantity',
+                { $ifNull: ['$sellingPrice', '$purchasePrice'] },
+              ],
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          avgPrice: {
+            $cond: [
+              { $gt: ['$totalQty', 0] },
+              { $divide: ['$totalValue', '$totalQty'] },
+              0,
+            ],
+          },
+        },
+      },
+    ]);
+    for (const row of rows) {
+      result.set(String(row._id), row.avgPrice);
+    }
+  } catch (error) {
+    console.error('Error getting weighted avg prices batch:', error);
+  }
+  return result;
 };
 const getEnrichedStockHistory = async (skuCode, stockHistory = []) => {
   try {
@@ -1005,10 +1104,10 @@ const getInventoryItemsForPOS = async (req, res, next) => {
         .limit(parseInt(limit));
       items = items.filter(item => item.isLowStock);
       const total = items.length;
-      const itemsWithPrices = await Promise.all(items.map(async (item) => {
-        const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
-        return transformItemWithWeightedPrice(item, avgPrice);
-      }));
+      const priceMap = await getWeightedAvgPriceBatch(items.map((i) => i._id));
+      const itemsWithPrices = items.map((item) =>
+        transformItemWithWeightedPrice(item, priceMap.get(String(item._id)) || 0)
+      );
       return res.status(200).json({
         success: true,
         data: {
@@ -1029,10 +1128,10 @@ const getInventoryItemsForPOS = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-    const itemsWithPrices = await Promise.all(items.map(async (item) => {
-      const avgPrice = await Inventory.calculateWeightedAvgPrice(item._id);
-      return transformItemWithWeightedPrice(item, avgPrice);
-    }));
+    const priceMap = await getWeightedAvgPriceBatch(items.map((i) => i._id));
+    const itemsWithPrices = items.map((item) =>
+      transformItemWithWeightedPrice(item, priceMap.get(String(item._id)) || 0)
+    );
     res.status(200).json({
       success: true,
       data: {
@@ -1362,14 +1461,17 @@ const getItemsBySyncSource = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-    const itemsWithSync = await Promise.all(items.map(async (item) => {
-      const syncMetadata = await getSyncMetadata(item.skuCode);
-      return transformItem(item, null, syncMetadata);
-    }));
+    const itemsWithSync = (() => {
+      const skuList = items.map((it) => (it.skuCode || '').toUpperCase());
+      return Promise.resolve(getSyncMetadataBatch(skuList)).then((map) =>
+        items.map((item) => transformItem(item, null, map.get((item.skuCode || '').toUpperCase())))
+      );
+    })();
+    const finalItems = await itemsWithSync;
     res.status(200).json({
       success: true,
       data: {
-        items: itemsWithSync,
+        items: finalItems,
         source,
         pagination: {
           total,
@@ -1394,15 +1496,18 @@ const getInventorySyncStatus = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-    const syncStatusList = await Promise.all(items.map(async (item) => {
-      const syncMetadata = await getSyncMetadata(item.skuCode);
-      return {
-        _id: item._id,
-        itemName: item.itemName,
-        skuCode: item.skuCode,
-        currentQuantity: item.quantity.current,
-        sync: syncMetadata
-      };
+    const skuList = items.map((it) => (it.skuCode || '').toUpperCase());
+    const syncMap = await getSyncMetadataBatch(skuList);
+    const syncStatusList = items.map((item) => ({
+      _id: item._id,
+      itemName: item.itemName,
+      skuCode: item.skuCode,
+      currentQuantity: item.quantity.current,
+      sync: syncMap.get((item.skuCode || '').toUpperCase()) || {
+        lastSyncedAt: null,
+        syncSource: null,
+        hasSyncedData: false,
+      },
     }));
     res.status(200).json({
       success: true,

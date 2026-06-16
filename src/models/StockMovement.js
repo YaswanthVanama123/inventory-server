@@ -50,6 +50,8 @@ const stockMovementSchema = new mongoose.Schema({
 stockMovementSchema.index({ sku: 1, timestamp: -1 });
 stockMovementSchema.index({ refType: 1, refId: 1 });
 stockMovementSchema.index({ type: 1, timestamp: -1 });
+stockMovementSchema.index({ sku: 1, type: 1, timestamp: -1 });
+stockMovementSchema.index({ timestamp: -1 });
 stockMovementSchema.statics.getMovementsBySKU = function(sku, startDate, endDate) {
   const query = { sku: sku.toUpperCase() };
   if (startDate || endDate) {

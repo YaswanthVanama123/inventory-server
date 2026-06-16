@@ -164,5 +164,7 @@ routeStarCustomerSchema.index({ active: 1 });
 routeStarCustomerSchema.index({ customerType: 1 });
 routeStarCustomerSchema.index({ salesRep: 1 });
 routeStarCustomerSchema.index({ lastSyncDate: 1 });
+routeStarCustomerSchema.index({ grouping: 1, active: 1 });
+routeStarCustomerSchema.index({ company: 1, active: 1 });
 
 module.exports = mongoose.model('RouteStarCustomer', routeStarCustomerSchema);

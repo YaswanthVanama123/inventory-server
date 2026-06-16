@@ -11,24 +11,29 @@ class StockProcessor {
       console.log(`Purchase order ${purchaseOrder.orderNumber} already processed`);
       return;
     }
-    const movements = [];
+    if (!purchaseOrder.items || purchaseOrder.items.length === 0) {
+      purchaseOrder.stockProcessed = true;
+      purchaseOrder.stockProcessedAt = new Date();
+      await purchaseOrder.save();
+      return [];
+    }
+    const docs = purchaseOrder.items.map((item) => ({
+      sku: item.sku,
+      type: 'IN',
+      qty: item.qty,
+      refType: 'PURCHASE_ORDER',
+      refId: purchaseOrder._id,
+      sourceRef: purchaseOrder.orderNumber,
+      notes: `Purchase from ${purchaseOrder.vendor.name}`,
+      createdBy: userId,
+    }));
+    const movements = await StockMovement.insertMany(docs, { ordered: false });
     for (const item of purchaseOrder.items) {
       try {
-        const movement = await StockMovement.create({
-          sku: item.sku,
-          type: 'IN',
-          qty: item.qty,
-          refType: 'PURCHASE_ORDER',
-          refId: purchaseOrder._id,
-          sourceRef: purchaseOrder.orderNumber,
-          notes: `Purchase from ${purchaseOrder.vendor.name}`,
-          createdBy: userId
-        });
-        movements.push(movement);
         await this.updateStockSummary(item.sku, item.qty, 'IN', userId);
         console.log(`Stock IN: ${item.sku} +${item.qty} from PO ${purchaseOrder.orderNumber}`);
       } catch (error) {
-        console.error(`Error processing item ${item.sku}:`, error.message);
+        console.error(`Error updating stock summary for ${item.sku}:`, error.message);
         throw error;
       }
     }
@@ -42,30 +47,40 @@ class StockProcessor {
       console.log(`Invoice ${invoice.invoiceNumber} already processed`);
       return;
     }
-    const movements = [];
+    if (!invoice.items || invoice.items.length === 0) {
+      invoice.stockProcessed = true;
+      invoice.stockProcessedAt = new Date();
+      await invoice.save();
+      return [];
+    }
+    const skus = [...new Set(invoice.items.map((i) => i.sku))];
+    const stockSummaries = await StockSummary.find({ sku: { $in: skus } })
+      .select('sku availableQty')
+      .lean();
+    const stockBySku = new Map(stockSummaries.map((s) => [s.sku, s.availableQty]));
+    for (const item of invoice.items) {
+      const available = stockBySku.get(item.sku) || 0;
+      if (available < item.qty) {
+        console.warn(`Insufficient stock for ${item.sku}: available ${available}, needed ${item.qty}`);
+      }
+    }
+    const docs = invoice.items.map((item) => ({
+      sku: item.sku,
+      type: 'OUT',
+      qty: item.qty,
+      refType: 'INVOICE',
+      refId: invoice._id,
+      sourceRef: invoice.invoiceNumber,
+      notes: `Sale to ${invoice.customer.name}`,
+      createdBy: userId,
+    }));
+    const movements = await StockMovement.insertMany(docs, { ordered: false });
     for (const item of invoice.items) {
       try {
-        const stockSummary = await StockSummary.findOne({ sku: item.sku });
-        if (!stockSummary || stockSummary.availableQty < item.qty) {
-          console.warn(
-            `Insufficient stock for ${item.sku}: available ${stockSummary?.availableQty || 0}, needed ${item.qty}`
-          );
-        }
-        const movement = await StockMovement.create({
-          sku: item.sku,
-          type: 'OUT',
-          qty: item.qty,
-          refType: 'INVOICE',
-          refId: invoice._id,
-          sourceRef: invoice.invoiceNumber,
-          notes: `Sale to ${invoice.customer.name}`,
-          createdBy: userId
-        });
-        movements.push(movement);
         await this.updateStockSummary(item.sku, item.qty, 'OUT', userId);
         console.log(`Stock OUT: ${item.sku} -${item.qty} from Invoice ${invoice.invoiceNumber}`);
       } catch (error) {
-        console.error(`Error processing item ${item.sku}:`, error.message);
+        console.error(`Error updating stock summary for ${item.sku}:`, error.message);
         throw error;
       }
     }

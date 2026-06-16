@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const CustomerConnectSyncService = require('./customerConnectSync.service');
 const RouteStarSyncService = require('./routeStarSync.service');
 const SyncLog = require('../models/SyncLog');
+const { withCronLock } = require('./cronLock');
 
 
 class InventoryScheduler {
@@ -45,15 +46,19 @@ class InventoryScheduler {
           return;
         }
         this.syncInProgress = true;
-        console.log('\n═══════════════════════════════════════════════════════');
-        console.log(`🔄 Starting Scheduled Inventory Sync - ${new Date().toLocaleString()}`);
-        console.log('═══════════════════════════════════════════════════════\n');
         try {
-          await this.runCompleteSync({ ordersLimit, invoicesLimit, processStock });
-          this.lastRun.combined = new Date();
-          console.log('\n✅ Scheduled sync completed successfully\n');
-        } catch (error) {
-          console.error('\n❌ Scheduled sync failed:', error.message);
+          await withCronLock('inventoryScheduler:fullSync', 6 * 60 * 60 * 1000, async () => {
+            console.log('\n═══════════════════════════════════════════════════════');
+            console.log(`🔄 Starting Scheduled Inventory Sync - ${new Date().toLocaleString()}`);
+            console.log('═══════════════════════════════════════════════════════\n');
+            try {
+              await this.runCompleteSync({ ordersLimit, invoicesLimit, processStock });
+              this.lastRun.combined = new Date();
+              console.log('\n✅ Scheduled sync completed successfully\n');
+            } catch (error) {
+              console.error('\n❌ Scheduled sync failed:', error.message);
+            }
+          });
         } finally {
           this.syncInProgress = false;
         }
