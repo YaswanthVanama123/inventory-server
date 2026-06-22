@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const stockController = require('../controllers/stockController');
 
 
+router.get('/search', authenticate, stockController.search);
 router.get('/category/:categoryName/skus', authenticate, stockController.getCategorySkus);
 router.get('/category/:categoryName/sales', authenticate, stockController.getCategorySales);
 router.get('/use', authenticate, stockController.getUseStock);

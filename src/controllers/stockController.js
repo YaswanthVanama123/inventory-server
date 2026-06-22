@@ -1,5 +1,6 @@
 const stockCalculationService = require('../services/stockCalculation.service');
 const stockService = require('../services/stock.service');
+const stockSearchService = require('../services/stockSearch.service');
 
 
 class StockController {
@@ -73,6 +74,22 @@ class StockController {
       console.log(`[TIMING] Response serialization: ${serializationTime}ms`);
     } catch (error) {
       console.error('Error fetching stock summary:', error);
+      next(error);
+    }
+  }
+
+  // Fuzzy + partial search across category names, aliases (Enviromaster /
+  // order item names), SKUs, manual-PO item names and inventory item names.
+  async search(req, res, next) {
+    try {
+      const q = (req.query.q || '').toString().trim();
+      if (q.length < 2) {
+        return res.json({success: true, data: {query: q, total: 0, matches: []}});
+      }
+      const result = await stockSearchService.searchStock(q);
+      res.json({success: true, data: result});
+    } catch (error) {
+      console.error('Error searching stock:', error);
       next(error);
     }
   }
