@@ -37,7 +37,8 @@ class ManualPurchaseOrderItemController {
 
   async getAllItems(req, res, next) {
     try {
-      const data = await manualPurchaseOrderItemService.getAllItems();
+      const { search } = req.query;
+      const data = await manualPurchaseOrderItemService.getAllItems(search);
       res.json({
         success: true,
         data

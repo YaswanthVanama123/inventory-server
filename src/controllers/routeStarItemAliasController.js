@@ -4,7 +4,7 @@ const routeStarItemAliasService = require('../services/routeStarItemAlias.servic
 class RouteStarItemAliasController {
   async getAllMappings(req, res, next) {
     try {
-      const data = await routeStarItemAliasService.getAllMappings();
+      const data = await routeStarItemAliasService.getAllMappings(req.query.search);
       res.json({
         success: true,
         data

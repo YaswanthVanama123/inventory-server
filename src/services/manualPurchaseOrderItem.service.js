@@ -116,11 +116,21 @@ class ManualPurchaseOrderItemService {
     cache.pageDataExpiry = 0;
   }
 
-  async getAllItems() {
+  async getAllItems(search) {
     const ModelCategory = require('../models/ModelCategory');
 
+    const query = {};
+    if (search) {
+      query.$or = [
+        { sku: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { vendorName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
     const [items, modelMappings] = await Promise.all([
-      ManualPurchaseOrderItem.find()
+      ManualPurchaseOrderItem.find(query)
         .populate('vendorId', 'name email phone')
         .sort({ name: 1 })
         .lean(),

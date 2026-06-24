@@ -98,7 +98,9 @@ class CustomerConnectController {
     try {
       const filters = {
         status: req.query.status,
-        vendor: req.query.vendor,
+        // `vendor` already regex-matches both vendor.name and orderNumber, so
+        // accept a generic `search` param as an alias for the same behavior.
+        vendor: req.query.vendor || req.query.search,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
         stockProcessed: req.query.stockProcessed,

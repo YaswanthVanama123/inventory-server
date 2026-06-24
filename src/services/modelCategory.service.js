@@ -195,8 +195,21 @@ class ModelCategoryService {
     }
     return result;
   }
-  async getAllMappings() {
-    const mappings = await ModelCategory.getAllMappings();
+  async getAllMappings(search) {
+    let mappings = await ModelCategory.getAllMappings();
+    if (search && search.trim()) {
+      const term = search.toLowerCase().trim();
+      mappings = mappings.filter(m => {
+        const modelNumber = (m.modelNumber || '').toLowerCase();
+        const categoryItemName = (m.categoryItemName || '').toLowerCase();
+        const populatedItemName = (m.categoryItemId && m.categoryItemId.itemName
+          ? m.categoryItemId.itemName
+          : '').toLowerCase();
+        return modelNumber.includes(term)
+          || categoryItemName.includes(term)
+          || populatedItemName.includes(term);
+      });
+    }
     return {
       mappings,
       total: mappings.length

@@ -25,7 +25,8 @@ const cacheInvalidate = (userId) => {
 // Get all screens
 exports.getAllScreens = async (req, res) => {
   try {
-    const screens = await screenPermissionService.getAllScreens();
+    const { search } = req.query;
+    const screens = await screenPermissionService.getAllScreens(search);
     res.json({
       success: true,
       data: screens
@@ -260,7 +261,8 @@ exports.initializeScreens = async (req, res) => {
 // Get all users with their permissions summary
 exports.getAllUsersWithPermissions = async (req, res) => {
   try {
-    const users = await screenPermissionService.getAllUsersWithPermissions();
+    const { search } = req.query;
+    const users = await screenPermissionService.getAllUsersWithPermissions(search);
 
     res.json({
       success: true,

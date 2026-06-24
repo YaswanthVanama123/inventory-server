@@ -121,7 +121,7 @@ class RouteStarItemsController {
   }
   async getSalesReport(req, res, next) {
     try {
-      const data = await routeStarItemsService.getSalesReport();
+      const data = await routeStarItemsService.getSalesReport(req.query.search);
       res.json({
         success: true,
         data

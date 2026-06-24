@@ -174,7 +174,7 @@ class RouteStarItemsService {
     await syncService.close();
     return result;
   }
-  async getSalesReport() {
+  async getSalesReport(search) {
     console.time('[getSalesReport] Total execution');
     const [salesByItem, allItems] = await Promise.all([
       (async () => {
@@ -258,6 +258,15 @@ class RouteStarItemsService {
       };
     });
     console.timeEnd('[getSalesReport] Merge');
+    let reportItems = itemsWithSales;
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      reportItems = reportItems.filter(item =>
+        searchRegex.test(item.itemName || '') ||
+        searchRegex.test(item.itemParent || '') ||
+        searchRegex.test(item.description || '')
+      );
+    }
     const totals = {
       totalItems: allItems.length,
       totalSoldQuantity: salesByItem.reduce((sum, s) => sum + s.soldQuantity, 0),
@@ -267,7 +276,7 @@ class RouteStarItemsService {
     console.timeEnd('[getSalesReport] Total execution');
     console.log('[getSalesReport] Totals:', totals);
     return {
-      items: itemsWithSales,
+      items: reportItems,
       totals
     };
   }

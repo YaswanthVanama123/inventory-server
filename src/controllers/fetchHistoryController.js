@@ -7,6 +7,7 @@ const getFetchHistory = async (req, res) => {
       source,
       status,
       fetchType,
+      search,
       limit = 50,
       page = 1,
       days
@@ -25,6 +26,15 @@ const getFetchHistory = async (req, res) => {
     }
     if (fetchType) {
       query.fetchType = fetchType;
+    }
+    if (search) {
+      query.$or = [
+        { source: { $regex: search, $options: 'i' } },
+        { fetchType: { $regex: search, $options: 'i' } },
+        { status: { $regex: search, $options: 'i' } },
+        { errorMessage: { $regex: search, $options: 'i' } },
+        { triggeredBy: { $regex: search, $options: 'i' } }
+      ];
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [history, total] = await Promise.all([

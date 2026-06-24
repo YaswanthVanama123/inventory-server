@@ -27,8 +27,17 @@ class VendorService {
     return await vendor.save();
   }
 
-  async getAllVendors() {
-    const vendors = await Vendor.getAllVendors();
+  async getAllVendors(search) {
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { address: { $regex: search, $options: 'i' } }
+      ];
+    }
+    const vendors = await Vendor.find(query).sort({ name: 1 });
     return {
       vendors,
       total: vendors.length

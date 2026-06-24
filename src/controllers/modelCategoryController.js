@@ -85,7 +85,7 @@ class ModelCategoryController {
   }
   async getAllMappings(req, res, next) {
     try {
-      const data = await modelCategoryService.getAllMappings();
+      const data = await modelCategoryService.getAllMappings(req.query.search);
       res.json({
         success: true,
         data

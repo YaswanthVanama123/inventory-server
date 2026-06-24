@@ -4,8 +4,19 @@ const ModelCategory = require('../models/ModelCategory');
 
 
 class RouteStarItemAliasService {
-  async getAllMappings() {
-    const mappings = await RouteStarItemAlias.getAllActiveMappings();
+  async getAllMappings(search) {
+    let mappings = await RouteStarItemAlias.getAllActiveMappings();
+    if (search && search.trim()) {
+      const term = search.toLowerCase().trim();
+      mappings = mappings.filter(m => {
+        const canonicalName = (m.canonicalName || '').toLowerCase();
+        if (canonicalName.includes(term)) return true;
+        if (Array.isArray(m.aliases)) {
+          return m.aliases.some(a => a && a.name && a.name.toLowerCase().includes(term));
+        }
+        return false;
+      });
+    }
     return {
       mappings,
       total: mappings.length

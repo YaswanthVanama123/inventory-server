@@ -4,9 +4,17 @@ const User = require('../models/User');
 
 class ScreenPermissionService {
   // Get all screens
-  async getAllScreens() {
+  async getAllScreens(search) {
     try {
-      const screens = await Screen.find({ isActive: true })
+      const query = { isActive: true };
+      if (search) {
+        query.$or = [
+          { displayName: { $regex: search, $options: 'i' } },
+          { name: { $regex: search, $options: 'i' } },
+          { path: { $regex: search, $options: 'i' } }
+        ];
+      }
+      const screens = await Screen.find(query)
         .sort({ category: 1, order: 1, displayName: 1 });
       return screens;
     } catch (error) {
@@ -306,9 +314,17 @@ class ScreenPermissionService {
   }
 
   // Get all users with their screen permissions summary
-  async getAllUsersWithPermissions() {
+  async getAllUsersWithPermissions(search) {
     try {
-      const users = await User.find({ role: { $ne: 'admin' } })
+      const query = { role: { $ne: 'admin' } };
+      if (search) {
+        query.$or = [
+          { username: { $regex: search, $options: 'i' } },
+          { fullName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ];
+      }
+      const users = await User.find(query)
         .select('name email role')
         .lean();
 

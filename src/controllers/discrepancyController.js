@@ -11,6 +11,7 @@ exports.getDiscrepancies = async (req, res, next) => {
     const {
       status,
       type,
+      search,
       startDate,
       endDate,
       page = 1,
@@ -130,11 +131,24 @@ exports.getDiscrepancies = async (req, res, next) => {
     }));
 
     const stockDiscrepancies = (result[0]?.data || []).map(d => ({ ...d, _discrepancySource: 'stock' }));
-    const allDiscrepancies = [...stockDiscrepancies, ...normalizedTruckDiscrepancies]
+    let allDiscrepancies = [...stockDiscrepancies, ...normalizedTruckDiscrepancies]
       .sort((a, b) => new Date(b.reportedAt) - new Date(a.reportedAt));
 
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      allDiscrepancies = allDiscrepancies.filter(d =>
+        searchRegex.test(d.itemName || '') ||
+        searchRegex.test(d.itemSku || '') ||
+        searchRegex.test(d.invoiceNumber || '') ||
+        searchRegex.test(d.categoryName || '') ||
+        searchRegex.test(d.notes || '')
+      );
+    }
+
     // Paginate the combined list
-    const totalCombined = (result[0]?.metadata[0]?.total || 0) + truckDiscrepancies.length;
+    const totalCombined = search
+      ? allDiscrepancies.length
+      : (result[0]?.metadata[0]?.total || 0) + truckDiscrepancies.length;
     const paginatedDiscrepancies = allDiscrepancies.slice(skip, skip + limitNum);
 
     console.timeEnd('[Discrepancies] Query time');

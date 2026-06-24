@@ -1093,7 +1093,7 @@ class RouteStarService {
       throw error;
     }
   }
-  async getItemInvoiceUsage() {
+  async getItemInvoiceUsage(search) {
     try {
       console.time('getItemInvoiceUsage');
       console.time('Step 1: Get aliases');
@@ -1195,18 +1195,31 @@ class RouteStarService {
       const allItems = [...mappedItemsArray, ...uniqueItems];
       allItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
       console.timeEnd('Step 3: Process results');
+      const filteredItems = (search && search.trim())
+        ? (() => {
+            const term = search.toLowerCase().trim();
+            return allItems.filter(item => {
+              const itemName = (item.itemName || '').toLowerCase();
+              if (itemName.includes(term)) return true;
+              if (Array.isArray(item.aliases)) {
+                return item.aliases.some(a => a && a.toLowerCase().includes(term));
+              }
+              return false;
+            });
+          })()
+        : allItems;
       const totals = {
-        totalMappedItems: mappedItemsArray.length,
-        totalUniqueItems: uniqueItems.length,
-        totalItems: allItems.length,
-        totalInvoices: allItems.reduce((sum, item) => sum + item.invoiceCount, 0)
+        totalMappedItems: filteredItems.filter(item => item.type === 'mapped').length,
+        totalUniqueItems: filteredItems.filter(item => item.type === 'unique').length,
+        totalItems: filteredItems.length,
+        totalInvoices: filteredItems.reduce((sum, item) => sum + item.invoiceCount, 0)
       };
       console.timeEnd('getItemInvoiceUsage');
-      console.log(`✅ Optimized query returned ${allItems.length} items with ${totals.totalInvoices} invoice references`);
+      console.log(`✅ Optimized query returned ${filteredItems.length} items with ${totals.totalInvoices} invoice references`);
       return {
         success: true,
         data: {
-          items: allItems,
+          items: filteredItems,
           totals
         }
       };
