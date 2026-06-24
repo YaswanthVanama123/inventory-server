@@ -4,9 +4,12 @@ const User = require('../models/User');
 
 class ScreenPermissionService {
   // Get all screens
-  async getAllScreens(search, page, limit) {
+  async getAllScreens(search, page, limit, category) {
     try {
       const query = { isActive: true };
+      if (category) {
+        query.category = category;
+      }
       if (search) {
         query.$or = [
           { displayName: { $regex: search, $options: 'i' } },

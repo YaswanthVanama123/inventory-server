@@ -139,12 +139,16 @@ class ManualPurchaseOrderItemService {
       itemsQuery = itemsQuery.skip((pg - 1) * lim).limit(lim);
     }
 
-    const [items, modelMappings] = await Promise.all([
-      itemsQuery.lean(),
-      ModelCategory.find({
-        modelNumber: { $regex: /^CUSTOM-/ }
-      }).lean()
-    ]);
+    const items = await itemsQuery.lean();
+
+    // Resolve Model→Category mappings for THESE items by their exact SKU. The
+    // mapping lives in ModelCategory keyed by modelNumber === the manual item's
+    // SKU. Match the page's SKUs ($in) rather than a "/^CUSTOM-/" prefix, which
+    // wrongly missed items whose SKU has no hyphen (e.g. CUSTOM9963, RICEBAG15).
+    const skus = items.map(i => i.sku).filter(Boolean);
+    const modelMappings = skus.length
+      ? await ModelCategory.find({ modelNumber: { $in: skus } }).lean()
+      : [];
 
     // Build lookup of ModelCategory mappings by modelNumber
     const modelMappingLookup = new Map();

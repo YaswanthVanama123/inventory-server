@@ -430,14 +430,20 @@ class CustomerConnectService {
       {
         $facet: {
           metadata: [{ $count: 'total' }],
+          totals: [{ $group: { _id: null, totalQuantity: { $sum: '$totalQuantity' }, totalValue: { $sum: '$totalValue' } } }],
           data: [{ $skip: skip }, { $limit: limitNum }]
         }
       }
     ]);
     const total = result[0].metadata[0]?.total || 0;
     const items = result[0].data || [];
+    const agg = result[0].totals[0] || {};
     return {
       items,
+      totals: {
+        totalQuantity: agg.totalQuantity || 0,
+        totalValue: Math.round((agg.totalValue || 0) * 100) / 100
+      },
       pagination: {
         page: pageNum,
         limit: limitNum,
