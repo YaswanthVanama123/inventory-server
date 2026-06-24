@@ -27,7 +27,7 @@ class VendorService {
     return await vendor.save();
   }
 
-  async getAllVendors(search) {
+  async getAllVendors(search, page, limit) {
     const query = {};
     if (search) {
       query.$or = [
@@ -37,10 +37,19 @@ class VendorService {
         { address: { $regex: search, $options: 'i' } }
       ];
     }
-    const vendors = await Vendor.find(query).sort({ name: 1 });
+    const total = await Vendor.countDocuments(query);
+    const lim = parseInt(limit, 10);
+    const pg = parseInt(page, 10) || 1;
+    let q = Vendor.find(query).sort({ name: 1 });
+    if (lim && lim > 0) {
+      q = q.skip((pg - 1) * lim).limit(lim);
+    }
+    const vendors = await q;
     return {
       vendors,
-      total: vendors.length
+      total,
+      page: lim && lim > 0 ? pg : 1,
+      pages: lim && lim > 0 ? Math.ceil(total / lim) : 1
     };
   }
 

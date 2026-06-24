@@ -4,7 +4,7 @@ const User = require('../models/User');
 
 class ScreenPermissionService {
   // Get all screens
-  async getAllScreens(search) {
+  async getAllScreens(search, page, limit) {
     try {
       const query = { isActive: true };
       if (search) {
@@ -14,9 +14,18 @@ class ScreenPermissionService {
           { path: { $regex: search, $options: 'i' } }
         ];
       }
-      const screens = await Screen.find(query)
-        .sort({ category: 1, order: 1, displayName: 1 });
-      return screens;
+      const sort = { category: 1, order: 1, displayName: 1 };
+      const lim = parseInt(limit, 10);
+      const pg = parseInt(page, 10) || 1;
+      // No limit → keep the legacy array shape (other callers depend on it).
+      if (!lim || lim <= 0) {
+        return await Screen.find(query).sort(sort);
+      }
+      const [screens, total] = await Promise.all([
+        Screen.find(query).sort(sort).skip((pg - 1) * lim).limit(lim),
+        Screen.countDocuments(query)
+      ]);
+      return { screens, total, page: pg, pages: Math.ceil(total / lim) };
     } catch (error) {
       throw new Error(`Failed to get screens: ${error.message}`);
     }

@@ -116,7 +116,7 @@ class ManualPurchaseOrderItemService {
     cache.pageDataExpiry = 0;
   }
 
-  async getAllItems(search) {
+  async getAllItems(search, page, limit) {
     const ModelCategory = require('../models/ModelCategory');
 
     const query = {};
@@ -129,11 +129,18 @@ class ManualPurchaseOrderItemService {
       ];
     }
 
+    const total = await ManualPurchaseOrderItem.countDocuments(query);
+    const lim = parseInt(limit, 10);
+    const pg = parseInt(page, 10) || 1;
+    let itemsQuery = ManualPurchaseOrderItem.find(query)
+      .populate('vendorId', 'name email phone')
+      .sort({ name: 1 });
+    if (lim && lim > 0) {
+      itemsQuery = itemsQuery.skip((pg - 1) * lim).limit(lim);
+    }
+
     const [items, modelMappings] = await Promise.all([
-      ManualPurchaseOrderItem.find(query)
-        .populate('vendorId', 'name email phone')
-        .sort({ name: 1 })
-        .lean(),
+      itemsQuery.lean(),
       ModelCategory.find({
         modelNumber: { $regex: /^CUSTOM-/ }
       }).lean()
@@ -158,7 +165,9 @@ class ManualPurchaseOrderItemService {
 
     return {
       items,
-      total: items.length
+      total,
+      page: lim && lim > 0 ? pg : 1,
+      pages: lim && lim > 0 ? Math.ceil(total / lim) : 1
     };
   }
 

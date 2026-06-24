@@ -1093,7 +1093,7 @@ class RouteStarService {
       throw error;
     }
   }
-  async getItemInvoiceUsage(search) {
+  async getItemInvoiceUsage(search, page, limit) {
     try {
       console.time('getItemInvoiceUsage');
       console.time('Step 1: Get aliases');
@@ -1214,13 +1214,22 @@ class RouteStarService {
         totalItems: filteredItems.length,
         totalInvoices: filteredItems.reduce((sum, item) => sum + item.invoiceCount, 0)
       };
+      const total = filteredItems.length;
+      const lim = parseInt(limit, 10);
+      const pg = parseInt(page, 10) || 1;
+      const pageItems = lim && lim > 0
+        ? filteredItems.slice((pg - 1) * lim, (pg - 1) * lim + lim)
+        : filteredItems;
       console.timeEnd('getItemInvoiceUsage');
       console.log(`✅ Optimized query returned ${filteredItems.length} items with ${totals.totalInvoices} invoice references`);
       return {
         success: true,
         data: {
-          items: filteredItems,
-          totals
+          items: pageItems,
+          totals,
+          total,
+          page: lim && lim > 0 ? pg : 1,
+          pages: lim && lim > 0 ? Math.ceil(total / lim) : 1
         }
       };
     } catch (error) {

@@ -411,7 +411,7 @@ class RouteStarController {
   }
   async getItemInvoiceUsage(req, res, next) {
     try {
-      const result = await routeStarService.getItemInvoiceUsage(req.query.search);
+      const result = await routeStarService.getItemInvoiceUsage(req.query.search, req.query.page, req.query.limit);
       res.json(result);
     } catch (error) {
       console.error('Get item invoice usage error:', error);

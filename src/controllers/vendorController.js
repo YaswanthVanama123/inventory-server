@@ -33,8 +33,8 @@ class VendorController {
 
   async getAllVendors(req, res, next) {
     try {
-      const { search } = req.query;
-      const data = await vendorService.getAllVendors(search);
+      const { search, page, limit } = req.query;
+      const data = await vendorService.getAllVendors(search, page, limit);
       res.json({
         success: true,
         data

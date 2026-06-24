@@ -174,7 +174,7 @@ class RouteStarItemsService {
     await syncService.close();
     return result;
   }
-  async getSalesReport(search) {
+  async getSalesReport(search, page, limit) {
     console.time('[getSalesReport] Total execution');
     const [salesByItem, allItems] = await Promise.all([
       (async () => {
@@ -267,17 +267,28 @@ class RouteStarItemsService {
         searchRegex.test(item.description || '')
       );
     }
+    // Totals reflect the (search-filtered) set so the report footer/stat cards
+    // stay consistent with what's shown — identical to before when no search.
     const totals = {
-      totalItems: allItems.length,
-      totalSoldQuantity: salesByItem.reduce((sum, s) => sum + s.soldQuantity, 0),
-      totalSoldAmount: salesByItem.reduce((sum, s) => sum + s.soldAmount, 0),
-      totalInvoices: salesByItem.reduce((sum, s) => sum + s.invoiceCount, 0)
+      totalItems: reportItems.length,
+      totalSoldQuantity: reportItems.reduce((sum, s) => sum + (s.soldQuantity || 0), 0),
+      totalSoldAmount: reportItems.reduce((sum, s) => sum + (s.soldAmount || 0), 0),
+      totalInvoices: reportItems.reduce((sum, s) => sum + (s.invoiceCount || 0), 0)
     };
+    const total = reportItems.length;
+    const lim = parseInt(limit, 10);
+    const pg = parseInt(page, 10) || 1;
+    const pageItems = lim && lim > 0
+      ? reportItems.slice((pg - 1) * lim, (pg - 1) * lim + lim)
+      : reportItems;
     console.timeEnd('[getSalesReport] Total execution');
     console.log('[getSalesReport] Totals:', totals);
     return {
-      items: reportItems,
-      totals
+      items: pageItems,
+      totals,
+      total,
+      page: lim && lim > 0 ? pg : 1,
+      pages: lim && lim > 0 ? Math.ceil(total / lim) : 1
     };
   }
   async getItemsWithStats(filters = {}, pagination = {}) {
