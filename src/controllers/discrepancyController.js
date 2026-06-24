@@ -4,6 +4,7 @@ const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+const mongoose = require('mongoose');
 
 
 exports.getDiscrepancies = async (req, res, next) => {
@@ -19,12 +20,19 @@ exports.getDiscrepancies = async (req, res, next) => {
       includeSummary = 'true'
     } = req.query;
     console.time('[Discrepancies] Query time');
+    // Employees only ever see THEIR OWN discrepancies; admins can opt in with ?mine=true.
+    const scopeToMe = req.user?.role === 'employee' || req.query.mine === 'true';
+    const myId = req.user?.id ? new mongoose.Types.ObjectId(req.user.id) : null;
     const matchQuery = {};
     if (status) {
       matchQuery.status = status;
     }
     if (type) {
       matchQuery.discrepancyType = type;
+    }
+    if (scopeToMe && myId) {
+      // Stock discrepancies the employee personally reported.
+      matchQuery.reportedBy = myId;
     }
     if (startDate || endDate) {
       matchQuery.reportedAt = {};
@@ -110,6 +118,16 @@ exports.getDiscrepancies = async (req, res, next) => {
       truckMatchQuery.reportedAt = {};
       if (startDate) truckMatchQuery.reportedAt.$gte = new Date(startDate);
       if (endDate) truckMatchQuery.reportedAt.$lte = new Date(endDate);
+    }
+    if (scopeToMe) {
+      // Truck discrepancies that belong to this employee: ones they reported,
+      // or that are on their truck / under their name.
+      const or = [];
+      if (myId) or.push({ reportedBy: myId });
+      if (req.user?.fullName) or.push({ employeeName: req.user.fullName });
+      if (req.user?.truckNumber) or.push({ truckNumber: req.user.truckNumber });
+      // If we have no way to identify the employee, return nothing rather than all.
+      truckMatchQuery.$or = or.length ? or : [{ _id: null }];
     }
     const truckDiscrepancies = await TruckDiscrepancy.find(truckMatchQuery)
       .sort({ reportedAt: -1 })
