@@ -2,6 +2,8 @@ const CustomerConnectAutomation = require('../automation/customerconnect');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const StockMovement = require('../models/StockMovement');
 const SyncLog = require('../models/SyncLog');
+const SyncCheckpoint = require('../models/SyncCheckpoint');
+const { bulkUpsert, delay } = require('./sync/streamingSync');
 
 
 let syncLock = false;
@@ -83,112 +85,101 @@ class CustomerConnectSyncService {
     }
     syncLock = true;
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing CustomerConnect Orders to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}${forceRefetchDetails ? ' - FORCE RE-FETCH DETAILS' : ''}`);
+    console.log(`\n📦 Syncing CustomerConnect Orders to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}${forceRefetchDetails ? ' - FORCE RE-FETCH DETAILS' : ''} [streaming]`);
     await this.createSyncLog();
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('customerconnect', 'orders', { resume: fetchAll });
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let detailsFetched = 0;
+    let total = 0;
+    const errors = [];
     try {
-      const result = await this.automation.fetchOrdersList(limit);
-      const orders = result.orders;
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      const errors = [];
-      for (const order of orders) {
-        try {
+      const onPage = async (pageOrders, pageNumber) => {
+        // Build basic order docs (line items are filled in by the detail
+        // fetch below; the $set deliberately omits `items` so existing line
+        // items are preserved on update).
+        const docs = [];
+        for (const order of pageOrders) {
           if (!order.orderNumber) {
-            throw new Error('Missing order number');
+            skipped++;
+            errors.push({ orderNumber: 'UNKNOWN', error: 'Missing order number' });
+            continue;
           }
-          const existing = await CustomerConnectOrder.findByOrderNumber(order.orderNumber);
-          const orderData = {
+          docs.push({
             orderNumber: order.orderNumber,
             poNumber: order.poNumber || '',
             status: this.mapStatus(order.status),
             orderDate: order.orderDate ? new Date(order.orderDate) : new Date(),
-            vendor: {
-              name: order.vendorName || 'Unknown'
-            },
+            vendor: { name: order.vendorName || 'Unknown' },
             total: parseFloat(order.total?.replace(/[$,]/g, '')) || 0,
             detailUrl: order.detailUrl,
             lastSyncedAt: new Date(),
             rawData: order
-          };
-          let savedOrder;
-          let shouldFetchDetails = false;
-          if (existing) {
-            Object.assign(existing, orderData);
-            savedOrder = await existing.save();
-            updated++;
-            if (existing.items && existing.items.length > 0) {
-              console.log(`  ⊙ Order #${order.orderNumber} exists with ${existing.items.length} items`);
-              shouldFetchDetails = forceRefetchDetails;
-              if (!forceRefetchDetails) {
-                console.log(`     (Skipping detail re-fetch - use forceRefetchDetails=true to update)`);
-              }
-            } else {
-              shouldFetchDetails = true; 
-            }
-          } else {
-            savedOrder = await CustomerConnectOrder.create(orderData);
-            created++;
-            shouldFetchDetails = true; 
-          }
-          console.log(`  ✓ Saved order #${order.orderNumber}${existing ? ' (updated)' : ' (new)'}`);
-          if (!shouldFetchDetails) {
-            continue; 
-          }
-          if (order.detailUrl) {
-            try {
-              console.log(`  → Fetching details for #${order.orderNumber}...`);
-              const details = await this.automation.fetchOrderDetails(order.detailUrl);
-              console.log(`  ✓ Details fetched:`, {
-                vendor: details.vendor?.name || 'N/A',
-                poNumber: details.poNumber || 'N/A',
-                items: details.items?.length || 0
-              });
-              const freshOrder = await CustomerConnectOrder.findByOrderNumber(order.orderNumber);
-              freshOrder.poNumber = details.poNumber || freshOrder.poNumber;
-              freshOrder.vendor.name = details.vendor?.name || freshOrder.vendor.name;
-              freshOrder.items = details.items.map(item => ({
-                sku: item.sku || item.name.toUpperCase(),
-                name: item.name,
-                qty: item.qty || 0,
-                unitPrice: item.unitPrice || 0,
-                lineTotal: item.lineTotal || 0
-              }));
-              freshOrder.subtotal = details.subtotal || 0;
-              freshOrder.tax = details.tax || 0;
-              freshOrder.shipping = details.shipping || 0;
-              freshOrder.total = details.total || freshOrder.total;
-              await freshOrder.save();
-              console.log(`  ✓ Details saved: ${details.items.length} items`);
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (detailError) {
-              console.error(`  ✗ Failed to fetch details for #${order.orderNumber}:`, detailError.message);
-              console.error(`  ✗ Error stack:`, detailError.stack);
-            }
-          }
-        } catch (error) {
-          errors.push({
-            orderNumber: order.orderNumber || 'UNKNOWN',
-            error: error.message,
-            rawStatus: order.status
           });
-          skipped++;
-          if (errors.length <= 5) {
-            console.error(`  ✗ Error saving order ${order.orderNumber}: ${error.message}`);
-            console.error(`     Raw status: "${order.status}"`);
+        }
+
+        const res = await bulkUpsert(
+          CustomerConnectOrder,
+          docs,
+          ['orderNumber'],
+          { items: [], stockProcessed: false, verified: false, subtotal: 0, tax: 0, shipping: 0 }
+        );
+        created += res.created;
+        updated += res.updated;
+        total += pageOrders.length;
+
+        // Decide which orders on this page need their line-item details.
+        const pageNumbers = docs.map((d) => d.orderNumber);
+        let toDetail;
+        if (forceRefetchDetails) {
+          toDetail = docs.filter((d) => d.detailUrl).map((d) => d.orderNumber);
+        } else {
+          const empties = await CustomerConnectOrder.find({
+            orderNumber: { $in: pageNumbers },
+            $or: [{ items: { $exists: false } }, { items: { $size: 0 } }]
+          }).select('orderNumber detailUrl').lean();
+          toDetail = empties.filter((e) => e.detailUrl).map((e) => e.orderNumber);
+        }
+
+        let pageDetails = 0;
+        for (const orderNumber of toDetail) {
+          try {
+            console.log(`  → Fetching details for #${orderNumber}...`);
+            await this.syncOrderDetails(orderNumber);
+            detailsFetched++;
+            pageDetails++;
+            await delay(500);
+          } catch (detailError) {
+            console.error(`  ✗ Failed to fetch details for #${orderNumber}: ${detailError.message}`);
           }
         }
-      }
+
+        await checkpoint.recordPage(pageNumber, {
+          processed: pageOrders.length,
+          created: res.created,
+          updated: res.updated,
+          detailsFetched: pageDetails
+        });
+        console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated, ${pageDetails} details (running total: ${total})`);
+        pageOrders.length = 0;
+      };
+
+      const result = await this.automation.fetchOrdersList(limit, { onPage, startPage });
+      total = result.totalCount != null ? result.totalCount : total;
+
+      await checkpoint.finish('completed');
       await this.updateSyncLog({
-        total: orders.length,
+        total,
         created,
         updated,
         skipped,
         success: true
       });
-      console.log(`   ✓ Saved: ${created} new, ${updated} updated${skipped > 0 ? `, ${skipped} failed` : ''}\n`);
-      return { synced: created + updated, created, updated, skipped, total: orders.length, errors, pagination: result.pagination };
+      console.log(`   ✓ Saved: ${created} new, ${updated} updated${skipped > 0 ? `, ${skipped} failed` : ''}, ${detailsFetched} details\n`);
+      return { synced: created + updated, created, updated, skipped, detailsFetched, total, errors, pagination: result.pagination };
     } catch (error) {
+      await checkpoint.finish('failed', { errorMessage: error.message });
       await this.updateSyncLog({
         error: error.message
       });

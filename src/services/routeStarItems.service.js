@@ -4,6 +4,11 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarSyncService = require('./routeStarSync.service');
 const ModelCategory = require('../models/ModelCategory');
 
+// Escape regex metacharacters so a search term (e.g. an item/canonical name with
+// "(", "+", "/", "," etc.) is matched LITERALLY. Without this, `new RegExp(search)`
+// either throws (unbalanced "(" / "[") or silently mismatches.
+const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 
 class RouteStarItemsService {
   async getItemStats() {
@@ -102,7 +107,7 @@ class RouteStarItemsService {
     });
     let mergedItems = Object.values(groupedByCanonical);
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
+      const searchRegex = new RegExp(escapeRegex(search), 'i');
       mergedItems = mergedItems.filter(item => {
         return searchRegex.test(item.itemName) ||
                searchRegex.test(item.itemParent || '') ||
@@ -260,7 +265,7 @@ class RouteStarItemsService {
     console.timeEnd('[getSalesReport] Merge');
     let reportItems = itemsWithSales;
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
+      const searchRegex = new RegExp(escapeRegex(search), 'i');
       reportItems = reportItems.filter(item =>
         searchRegex.test(item.itemName || '') ||
         searchRegex.test(item.itemParent || '') ||
@@ -359,7 +364,7 @@ class RouteStarItemsService {
     });
     let mergedItems = Object.values(groupedByCanonical);
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
+      const searchRegex = new RegExp(escapeRegex(search), 'i');
       mergedItems = mergedItems.filter(item => {
         return searchRegex.test(item.itemName) ||
                searchRegex.test(item.itemParent || '') ||

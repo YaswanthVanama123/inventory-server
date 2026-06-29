@@ -35,6 +35,11 @@ class TruckCheckoutController {
         startDate: req.query.startDate,
         endDate: req.query.endDate
       };
+      // Employees can only ever see THEIR OWN checkouts — force the name filter
+      // regardless of any client-supplied employeeName.
+      if (req.user?.role === 'employee') {
+        filters.employeeName = req.user.fullName || req.user.username;
+      }
       const pagination = {
         page: req.query.page,
         limit: req.query.limit
@@ -235,7 +240,12 @@ class TruckCheckoutController {
   }
   async getCheckoutSalesTracking(req, res, next) {
     try {
-      const result = await truckCheckoutService.getCheckoutSalesTracking(req.query);
+      const query = {...req.query};
+      // Employees only see their own sales tracking.
+      if (req.user?.role === 'employee') {
+        query.employeeName = req.user.fullName || req.user.username;
+      }
+      const result = await truckCheckoutService.getCheckoutSalesTracking(query);
       res.status(200).json({
         success: true,
         data: result
@@ -247,6 +257,10 @@ class TruckCheckoutController {
   }
   async getAllEmployeesWithStats(req, res, next) {
     try {
+      // Admin-only aggregation; an employee hitting this only gets themselves.
+      if (req.user?.role === 'employee') {
+        return res.status(200).json({success: true, data: []});
+      }
       const filters = {
         startDate: req.query.startDate,
         endDate: req.query.endDate,

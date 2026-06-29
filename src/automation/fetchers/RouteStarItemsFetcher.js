@@ -7,26 +7,38 @@ class RouteStarItemsFetcher {
     this.selectors = selectors;
     this.baseUrl = baseUrl;
   }
-  async fetchItems(limit = Infinity) {
+  async fetchItems(limit = Infinity, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Items ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
     await this.navigator.navigateToItems();
-    return await this.fetchItemsList(limit, this.selectors.itemsList);
+    return await this.fetchItemsList(limit, this.selectors.itemsList, options);
   }
-  async fetchItemsList(limit, selectors) {
+  async fetchItemsList(limit, selectors, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
+    const stream = typeof options.onPage === 'function';
+    const startPage = Math.max(0, options.startPage || 0);
     const items = [];
-    const seenItemNames = new Set();  
+    let totalCount = 0;
+    const seenItemNames = new Set();
     let hasNextPage = true;
     let pageCount = 0;
-    const maxPages = fetchAll ? Infinity : Math.ceil(limit / 20); 
+    const maxPages = fetchAll ? Infinity : Math.ceil(limit / 20);
     console.log(`📊 Pagination settings:`);
     console.log(`   - Fetch all: ${fetchAll}`);
     console.log(`   - Limit: ${limit === Infinity ? 'Infinity' : limit}`);
     console.log(`   - Max pages: ${maxPages === Infinity ? 'Infinity' : maxPages}`);
+    console.log(`   - Streaming: ${stream}`);
+    if (startPage > 0) {
+      console.log(`   ⏩ Resuming — skipping ${startPage} already-saved page(s)...`);
+      for (let p = 0; p < startPage && hasNextPage; p++) {
+        hasNextPage = await this.navigator.goToNextPage();
+        pageCount++;
+      }
+    }
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
-      const itemsBeforePage = items.length;
+      const pageItems = [];
+      const itemsBeforePage = totalCount;
       try {
         await this.page.waitForSelector(selectors.itemRows, {
           timeout: 30000,  
@@ -60,7 +72,7 @@ class RouteStarItemsFetcher {
       }
       for (let i = 0; i < itemRows.length; i++) {
         const row = itemRows[i];
-        if (!fetchAll && items.length >= limit) {
+        if (!fetchAll && totalCount >= limit) {
           console.log(`   Reached limit of ${limit} items, stopping`);
           break;
         }
@@ -72,7 +84,9 @@ class RouteStarItemsFetcher {
               continue;
             }
             console.log(`  ✓ Row ${i + 1}: Item "${itemData.itemName}"`);
-            items.push(itemData);
+            if (stream) pageItems.push(itemData);
+            else items.push(itemData);
+            totalCount++;
             seenItemNames.add(itemData.itemName);
           } else {
             console.log(`  ⊘ Row ${i + 1}: Skipped (no item name or empty row)`);
@@ -81,14 +95,19 @@ class RouteStarItemsFetcher {
           console.log(`  ✗ Row ${i + 1}: Error - ${error.message}`);
         }
       }
-      console.log(`   Page ${pageCount + 1} complete: ${items.length} total items collected so far`);
-      const newItemsOnPage = items.length - itemsBeforePage;
+      console.log(`   Page ${pageCount + 1} complete: ${totalCount} total items collected so far`);
+      // Stream this page straight to the caller (DB) before moving on.
+      if (stream && pageItems.length > 0) {
+        await options.onPage(pageItems, pageCount + 1);
+        pageItems.length = 0;
+      }
+      const newItemsOnPage = totalCount - itemsBeforePage;
       if (itemRows.length > 0 && newItemsOnPage === 0) {
         console.log(`   ⚠️  All items on this page were duplicates - pagination may be stuck`);
         console.log(`   ✓ Stopping pagination to prevent infinite loop`);
         break;
       }
-      if (fetchAll || items.length < limit) {
+      if (fetchAll || totalCount < limit) {
         console.log('   Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
         if (hasNextPage) {
@@ -104,9 +123,12 @@ class RouteStarItemsFetcher {
     }
     console.log(`\n✅ Pagination complete:`);
     console.log(`   - Total pages processed: ${pageCount + 1}`);
-    console.log(`   - Total items fetched: ${items.length}`);
-    if (items.length === 0) {
+    console.log(`   - Total items fetched: ${totalCount}`);
+    if (totalCount === 0) {
       console.log(`   ℹ️  Note: 0 items found - this is normal if there are no items currently`);
+    }
+    if (stream) {
+      return { totalCount, pagesProcessed: pageCount + 1 };
     }
     return items;
   }

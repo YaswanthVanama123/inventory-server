@@ -7,18 +7,34 @@ class CustomerConnectFetcher {
     this.navigator = navigator;
     this.selectors = selectors;
   }
-  async fetchOrders(limit = Infinity) {
+  async fetchOrders(limit = Infinity, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📥 Fetching CustomerConnect Orders ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    // Streaming mode: when an onPage callback is supplied each page is handed
+    // off immediately and never accumulated, keeping memory constant.
+    const stream = typeof options.onPage === 'function';
+    const startPage = Math.max(0, options.startPage || 0);
+    console.log(`\n📥 Fetching CustomerConnect Orders ${fetchAll ? '(ALL)' : `(limit: ${limit})`}${stream ? ' [streaming]' : ''}`);
     await this.navigator.navigateToOrders();
     const paginationInfo = await this.navigator.getPaginationInfo();
     console.log(`   Total Available: ${paginationInfo.totalOrders} orders`);
+    // In non-streaming mode `orders` accumulates everything (legacy callers).
+    // In streaming mode only `pageOrders` is held and `totalCount` tracks size.
     const orders = [];
+    let totalCount = 0;
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
     let firstOrderLogged = false;
+    // Resume: fast-forward past pages that a previous interrupted run saved.
+    if (startPage > 0) {
+      console.log(`   ⏩ Resuming — skipping ${startPage} already-saved page(s)...`);
+      for (let p = 0; p < startPage && hasNextPage; p++) {
+        hasNextPage = await this.navigator.goToNextPage();
+        pageCount++;
+      }
+    }
     while (hasNextPage && pageCount < maxPages) {
+      const pageOrders = [];
       let contentReady = false;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -54,31 +70,50 @@ class CustomerConnectFetcher {
         firstOrderLogged = true;
       }
       for (const orderDiv of orderDivs) {
-        if (!fetchAll && orders.length >= limit) {
+        if (!fetchAll && totalCount >= limit) {
           console.log(`  ⊗ Limit reached (${limit}), stopping...`);
           break;
         }
         try {
           const orderData = await this.extractOrderData(orderDiv);
           if (orderData) {
-            orders.push(orderData);
+            if (stream) pageOrders.push(orderData);
+            else orders.push(orderData);
+            totalCount++;
             console.log(`  ✓ Extracted: #${orderData.orderNumber}`);
           }
         } catch (error) {
           console.warn(`  ⊗ Skipped order: ${error.message}`);
         }
       }
-      if (!fetchAll && orders.length >= limit) {
+      // Stream this page straight to the caller (DB) before moving on.
+      if (stream && pageOrders.length > 0) {
+        await options.onPage(pageOrders, pageCount + 1);
+        pageOrders.length = 0;
+      }
+      if (!fetchAll && totalCount >= limit) {
         console.log(`  → Limit reached, stopping pagination`);
         hasNextPage = false;
-      } else if (fetchAll || orders.length < limit) {
+      } else if (fetchAll || totalCount < limit) {
         hasNextPage = await this.navigator.goToNextPage();
         if (hasNextPage) pageCount++;
       } else {
         hasNextPage = false;
       }
     }
-    console.log(`   ✓ Fetched: ${orders.length} orders\n`);
+    console.log(`   ✓ Fetched: ${totalCount} orders\n`);
+    if (stream) {
+      return {
+        totalCount,
+        pagesProcessed: pageCount + 1,
+        pagination: {
+          totalOrders: paginationInfo.totalOrders,
+          totalPages: paginationInfo.totalPages,
+          fetchedOrders: totalCount,
+          fetchedPages: pageCount
+        }
+      };
+    }
     return {
       orders,
       pagination: {

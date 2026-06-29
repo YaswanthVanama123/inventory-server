@@ -118,9 +118,14 @@ class RouteStarAutomation {
     }
     return await this.navigator.navigateToItems();
   }
-  async fetchInvoicesList(limit = Infinity, direction = 'new') {
+  async fetchInvoicesList(limit = Infinity, direction = 'new', options = {}) {
     if (!this.isLoggedIn) {
       await this.login();
+    }
+    // Streaming mode: call the fetcher directly so a whole-list retry can't
+    // restart pagination over already-saved pages (per-page retries remain).
+    if (typeof options.onPage === 'function') {
+      return await this.fetcher.fetchPendingInvoices(limit, direction, options);
     }
     return await retry(
       async () => await this.fetcher.fetchPendingInvoices(limit, direction),
@@ -134,9 +139,12 @@ class RouteStarAutomation {
       }
     );
   }
-  async fetchClosedInvoicesList(limit = Infinity, direction = 'new') {
+  async fetchClosedInvoicesList(limit = Infinity, direction = 'new', options = {}) {
     if (!this.isLoggedIn) {
       await this.login();
+    }
+    if (typeof options.onPage === 'function') {
+      return await this.fetcher.fetchClosedInvoices(limit, direction, options);
     }
     return await retry(
       async () => await this.fetcher.fetchClosedInvoices(limit, direction),
@@ -150,9 +158,12 @@ class RouteStarAutomation {
       }
     );
   }
-  async fetchItemsList(limit = Infinity) {
+  async fetchItemsList(limit = Infinity, options = {}) {
     if (!this.isLoggedIn) {
       await this.login();
+    }
+    if (typeof options.onPage === 'function') {
+      return await this.itemsFetcher.fetchItems(limit, options);
     }
     return await retry(
       async () => await this.itemsFetcher.fetchItems(limit),
@@ -167,9 +178,12 @@ class RouteStarAutomation {
     );
   }
 
-  async fetchCustomersList(limit = Infinity) {
+  async fetchCustomersList(limit = Infinity, options = {}) {
     if (!this.isLoggedIn) {
       await this.login();
+    }
+    if (typeof options.onPage === 'function') {
+      return await this.customerFetcher.fetchCustomersList(limit, options);
     }
     return await retry(
       async () => await this.customerFetcher.fetchCustomersList(limit),

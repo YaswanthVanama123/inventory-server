@@ -15,6 +15,8 @@ const RouteStarCustomerParser = require('../automation/parsers/routestar-custome
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 const SyncLog = require('../models/SyncLog');
+const SyncCheckpoint = require('../models/SyncCheckpoint');
+const { bulkUpsert, delay } = require('./sync/streamingSync');
 const routestarConfig = require('../automation/config/routestar.config');
 
 
@@ -69,74 +71,48 @@ class RouteStarSyncService {
   }
   async syncItems(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing RouteStar Items to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    console.log(`\n📦 Syncing RouteStar Items to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} [streaming]`);
     await this.createSyncLog('routestar_items');
+    // Resume an interrupted full run; partial runs always start fresh.
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'items', { resume: fetchAll });
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    let total = 0;
     try {
-      const items = await this.automation.fetchItemsList(limit);
-      console.log(`✓ Fetched ${items.length} items from RouteStar`);
-      if (items.length === 0) {
-        console.log(`ℹ️  No items found - this is normal if there are no items in the system`);
-        await this.updateSyncLog({
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          success: true
+      // Stream each page to MongoDB then discard it — memory stays flat.
+      const onPage = async (pageItems, pageNumber) => {
+        const docs = pageItems.map((it) => ({
+          ...it,
+          syncSource: 'RouteStar',
+          lastSynced: new Date()
+        }));
+        const res = await bulkUpsert(RouteStarItem, docs, ['itemName', 'itemParent']);
+        created += res.created;
+        updated += res.updated;
+        total += pageItems.length;
+        await checkpoint.recordPage(pageNumber, {
+          processed: pageItems.length,
+          created: res.created,
+          updated: res.updated
         });
-        return {
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          failed: 0,
-          items: []
-        };
-      }
-      console.log(`\n💾 Saving ${items.length} items to database...`);
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      let failed = 0;
-      const savedItems = [];
-      for (let i = 0; i < items.length; i++) {
-        const itemData = items[i];
-        try {
-          const existing = await RouteStarItem.findOne({
-            itemName: itemData.itemName,
-            itemParent: itemData.itemParent
-          });
-          if (existing) {
-            Object.assign(existing, {
-              ...itemData,
-              lastSynced: new Date()
-            });
-            await existing.save();
-            updated++;
-            console.log(`  ✓ [${i + 1}/${items.length}] Updated: ${itemData.itemName}`);
-            savedItems.push(existing);
-          } else {
-            const newItem = await RouteStarItem.create({
-              ...itemData,
-              syncSource: 'RouteStar',
-              lastSynced: new Date()
-            });
-            created++;
-            console.log(`  ✓ [${i + 1}/${items.length}] Created: ${itemData.itemName}`);
-            savedItems.push(newItem);
-          }
-        } catch (error) {
-          failed++;
-          console.error(`  ✗ [${i + 1}/${items.length}] Failed to save item ${itemData.itemName}:`, error.message);
-        }
-      }
+        console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated (running total: ${total})`);
+        pageItems.length = 0; // release the page
+      };
+
+      const summary = await this.automation.fetchItemsList(limit, { onPage, startPage });
+      total = summary.totalCount != null ? summary.totalCount : total;
+
+      await checkpoint.finish('completed');
       console.log(`\n✅ Item sync complete:`);
-      console.log(`   - Total fetched: ${items.length}`);
+      console.log(`   - Total fetched: ${total}`);
       console.log(`   - Created: ${created}`);
       console.log(`   - Updated: ${updated}`);
       console.log(`   - Skipped: ${skipped}`);
       console.log(`   - Failed: ${failed}`);
       await this.updateSyncLog({
-        total: items.length,
+        total,
         created,
         updated,
         skipped,
@@ -144,15 +120,16 @@ class RouteStarSyncService {
         success: true
       });
       return {
-        total: items.length,
+        total,
         created,
         updated,
         skipped,
         failed,
-        items: savedItems
+        items: []
       };
     } catch (error) {
       console.error('❌ Items sync error:', error);
+      await checkpoint.finish('failed', { errorMessage: error.message });
       await this.updateSyncLog({
         error: error.message,
         success: false
@@ -163,81 +140,56 @@ class RouteStarSyncService {
 
   async syncCustomers(limit = Infinity) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n👥 Syncing RouteStar Customers to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
+    console.log(`\n👥 Syncing RouteStar Customers to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} [streaming]`);
     await this.createSyncLog('routestar_customers');
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'customers', { resume: fetchAll });
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    let total = 0;
     try {
-      const customers = await this.automation.fetchCustomersList(limit);
-      console.log(`✓ Fetched ${customers.length} customers from RouteStar`);
-      if (customers.length === 0) {
-        console.log(`ℹ️  No customers found - this is normal if there are no customers in the system`);
-        await this.updateSyncLog({
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          success: true
-        });
-        return {
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          failed: 0,
-          customers: []
-        };
-      }
-      console.log(`\n💾 Saving ${customers.length} customers to database...`);
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      let failed = 0;
-      const savedCustomers = [];
-      for (let i = 0; i < customers.length; i++) {
-        const rawCustomer = customers[i];
-        try {
-          const customerData = RouteStarCustomerParser.parseCustomerList(rawCustomer);
-
-          if (!customerData.customerId) {
-            console.log(`  ⊗ [${i + 1}/${customers.length}] Skipped: No customer ID`);
-            skipped++;
-            continue;
+      const onPage = async (pageCustomers, pageNumber) => {
+        const docs = [];
+        for (const rawCustomer of pageCustomers) {
+          try {
+            const customerData = RouteStarCustomerParser.parseCustomerList(rawCustomer);
+            if (!customerData.customerId) {
+              skipped++;
+              continue;
+            }
+            docs.push({ ...customerData, lastSyncDate: new Date() });
+          } catch (error) {
+            failed++;
+            console.error(`  ✗ Failed to parse customer ${rawCustomer.customerId}:`, error.message);
           }
-
-          const existing = await RouteStarCustomer.findOne({
-            customerId: customerData.customerId
-          });
-
-          if (existing) {
-            Object.assign(existing, {
-              ...customerData,
-              lastSyncDate: new Date()
-            });
-            await existing.save();
-            updated++;
-            console.log(`  ✓ [${i + 1}/${customers.length}] Updated: ${customerData.customerName || customerData.customerId}`);
-            savedCustomers.push(existing);
-          } else {
-            const newCustomer = await RouteStarCustomer.create({
-              ...customerData,
-              lastSyncDate: new Date()
-            });
-            created++;
-            console.log(`  ✓ [${i + 1}/${customers.length}] Created: ${customerData.customerName || customerData.customerId}`);
-            savedCustomers.push(newCustomer);
-          }
-        } catch (error) {
-          failed++;
-          console.error(`  ✗ [${i + 1}/${customers.length}] Failed to save customer ${rawCustomer.customerId}:`, error.message);
         }
-      }
+        const res = await bulkUpsert(RouteStarCustomer, docs, ['customerId']);
+        created += res.created;
+        updated += res.updated;
+        total += pageCustomers.length;
+        await checkpoint.recordPage(pageNumber, {
+          processed: pageCustomers.length,
+          created: res.created,
+          updated: res.updated,
+          failed
+        });
+        console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated (running total: ${total})`);
+        pageCustomers.length = 0;
+      };
+
+      const summary = await this.automation.fetchCustomersList(limit, { onPage, startPage });
+      total = summary.totalCount != null ? summary.totalCount : total;
+
+      await checkpoint.finish('completed');
       console.log(`\n✅ Customer sync complete:`);
-      console.log(`   - Total fetched: ${customers.length}`);
+      console.log(`   - Total fetched: ${total}`);
       console.log(`   - Created: ${created}`);
       console.log(`   - Updated: ${updated}`);
       console.log(`   - Skipped: ${skipped}`);
       console.log(`   - Failed: ${failed}`);
       await this.updateSyncLog({
-        total: customers.length,
+        total,
         created,
         updated,
         skipped,
@@ -245,15 +197,16 @@ class RouteStarSyncService {
         success: true
       });
       return {
-        total: customers.length,
+        total,
         created,
         updated,
         skipped,
         failed,
-        customers: savedCustomers
+        customers: []
       };
     } catch (error) {
       console.error('❌ Customers sync error:', error);
+      await checkpoint.finish('failed', { errorMessage: error.message });
       await this.updateSyncLog({
         error: error.message,
         success: false
@@ -489,101 +442,103 @@ class RouteStarSyncService {
   }
   async syncPendingInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing RouteStar Pending Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
+    console.log(`\n📦 Syncing RouteStar Pending Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction} [streaming]`);
     await this.createSyncLog();
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'pending_invoices', { resume: fetchAll });
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let detailsFetched = 0;
+    let total = 0;
+    let deleted = 0;
+    const errors = [];
+    // Only the invoice NUMBERS are retained across pages (for the delete-diff),
+    // never the full invoice objects — this keeps memory flat.
+    const fetchedInvoiceNumbers = [];
     try {
-      const invoices = await this.automation.fetchInvoicesList(limit, direction);
-      console.log(`✓ Fetched ${invoices.length} pending invoices from RouteStar`);
-      if (invoices.length === 0) {
-        console.log(`ℹ️  No pending invoices found - this is normal if all work is complete and invoices have moved to closed`);
-        await this.updateSyncLog({
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          success: true
-        });
-        return { created: 0, updated: 0, skipped: 0, total: 0, errors: [] };
-      }
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      let detailsFetched = 0;
-      const errors = [];
-      for (const invoice of invoices) {
-        try {
-          const invoiceData = {
-            invoiceNumber: invoice.invoiceNumber,
-            invoiceType: 'pending',
-            status: normalizeStatus(invoice.status),
-            invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
-            customer: {
-              name: invoice.customerName || 'Unknown',
-              link: invoice.customerLink
-            },
-            enteredBy: invoice.enteredBy,
-            assignedTo: invoice.assignedTo,
-            stop: invoice.stop ? parseInt(invoice.stop) : 0,
-            serviceNotes: invoice.serviceNotes,
-            isComplete: invoice.isComplete || false,
-            isPosted: invoice.isPosted || false,
-            total: parseFloat(invoice.total) || 0,
-            payment: invoice.payment,
-            lastModified: parseRouteStarDate(invoice.lastModified),
-            arrivalTime: invoice.arrivalTime,
-            detailUrl: invoice.detailUrl,
-            lastSyncedAt: new Date(),
-            syncSource: 'pending',
-            rawData: invoice
-          };
-          const result = await RouteStarInvoice.findOneAndUpdate(
-            { invoiceNumber: invoice.invoiceNumber },
-            invoiceData,
-            {
-              upsert: true,
-              new: true,
-              runValidators: true,
-              setDefaultsOnInsert: true
-            }
-          );
-          const wasCreated = !result.createdAt ||
-                            (new Date() - result.createdAt < 1000);
-          if (wasCreated) {
-            created++;
-            console.log(`  ✓ Created: ${invoice.invoiceNumber}`);
-          } else {
-            updated++;
-            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
+      const onPage = async (pageInvoices, pageNumber) => {
+        const docs = pageInvoices.map((invoice) => ({
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceType: 'pending',
+          status: normalizeStatus(invoice.status),
+          invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
+          customer: {
+            name: invoice.customerName || 'Unknown',
+            link: invoice.customerLink
+          },
+          enteredBy: invoice.enteredBy,
+          assignedTo: invoice.assignedTo,
+          stop: invoice.stop ? parseInt(invoice.stop) : 0,
+          serviceNotes: invoice.serviceNotes,
+          isComplete: invoice.isComplete || false,
+          isPosted: invoice.isPosted || false,
+          total: parseFloat(invoice.total) || 0,
+          payment: invoice.payment,
+          lastModified: parseRouteStarDate(invoice.lastModified),
+          arrivalTime: invoice.arrivalTime,
+          detailUrl: invoice.detailUrl,
+          lastSyncedAt: new Date(),
+          syncSource: 'pending',
+          rawData: invoice
+        }));
+
+        const res = await bulkUpsert(
+          RouteStarInvoice,
+          docs,
+          ['invoiceNumber'],
+          { stockProcessed: false, source: 'routestar' }
+        );
+        created += res.created;
+        updated += res.updated;
+        total += pageInvoices.length;
+        for (const inv of pageInvoices) fetchedInvoiceNumbers.push(inv.invoiceNumber);
+
+        // Fetch line-item details only for the invoices on THIS page that
+        // still lack them (idempotent + resume-safe: re-running a page whose
+        // details are already saved skips them).
+        const pageNumbers = pageInvoices.map((inv) => inv.invoiceNumber);
+        const needDetails = await RouteStarInvoice.find({
+          invoiceNumber: { $in: pageNumbers },
+          $or: [{ lineItems: { $exists: false } }, { lineItems: { $size: 0 } }]
+        }).select('invoiceNumber').lean();
+
+        let pageDetails = 0;
+        for (const inv of needDetails) {
+          try {
+            console.log(`    → Fetching details for ${inv.invoiceNumber}...`);
+            await this.syncInvoiceDetails(inv.invoiceNumber);
+            detailsFetched++;
+            pageDetails++;
+            await delay(1000);
+          } catch (detailError) {
+            console.error(`    ✗ Failed to fetch details for ${inv.invoiceNumber}: ${detailError.message}`);
           }
-          const needsDetails = !result.lineItems || result.lineItems.length === 0;
-          if (needsDetails) {
-            try {
-              console.log(`    → Fetching details for ${invoice.invoiceNumber}...`);
-              await this.syncInvoiceDetails(invoice.invoiceNumber);
-              detailsFetched++;
-              console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (detailError) {
-              console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
-            }
-          }
-        } catch (error) {
-          errors.push({
-            invoiceNumber: invoice.invoiceNumber,
-            error: error.message
-          });
-          skipped++;
-          console.error(`  ✗ Error processing ${invoice.invoiceNumber}: ${error.message}`);
         }
+
+        await checkpoint.recordPage(pageNumber, {
+          processed: pageInvoices.length,
+          created: res.created,
+          updated: res.updated,
+          detailsFetched: pageDetails
+        });
+        console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated, ${pageDetails} details (running total: ${total})`);
+        pageInvoices.length = 0;
+      };
+
+      const summary = await this.automation.fetchInvoicesList(limit, direction, { onPage, startPage });
+      total = summary.totalCount != null ? summary.totalCount : total;
+
+      if (total === 0) {
+        console.log(`ℹ️  No pending invoices found - this is normal if all work is complete and invoices have moved to closed`);
       }
-      let deleted = 0;
-      if (fetchAll) {
+
+      // Reconcile deletions: any pending invoice no longer present upstream.
+      if (fetchAll && total > 0) {
         console.log(`\n🗑️  Checking for pending invoices to delete...`);
-        const fetchedInvoiceNumbers = invoices.map(inv => inv.invoiceNumber);
         const invoicesToDelete = await RouteStarInvoice.find({
           invoiceType: 'pending',
           invoiceNumber: { $nin: fetchedInvoiceNumbers }
-        }).lean();
+        }).select('invoiceNumber').lean();
         if (invoicesToDelete.length > 0) {
           console.log(`  Found ${invoicesToDelete.length} pending invoices no longer in RouteStar - deleting...`);
           const deleteResult = await RouteStarInvoice.deleteMany({
@@ -591,9 +546,6 @@ class RouteStarSyncService {
             invoiceNumber: { $nin: fetchedInvoiceNumbers }
           });
           deleted = deleteResult.deletedCount;
-          invoicesToDelete.forEach(inv => {
-            console.log(`  ✗ Deleted: ${inv.invoiceNumber} (no longer pending)`);
-          });
           console.log(`  ✓ Deleted ${deleted} pending invoices that are no longer active`);
         } else {
           console.log(`  ℹ️  No pending invoices need to be deleted`);
@@ -601,8 +553,10 @@ class RouteStarSyncService {
       } else {
         console.log(`  ℹ️  Skipping deletion check (not fetching all pending invoices)`);
       }
+
+      await checkpoint.finish('completed', { deleted });
       await this.updateSyncLog({
-        total: invoices.length,
+        total,
         created,
         updated,
         skipped,
@@ -614,9 +568,10 @@ class RouteStarSyncService {
       console.log(`  - Deleted: ${deleted}`);
       console.log(`  - Details Fetched: ${detailsFetched}`);
       console.log(`  - Skipped: ${skipped}`);
-      console.log(`  - Total processed: ${invoices.length}`);
-      return { created, updated, deleted, detailsFetched, skipped, total: invoices.length, errors };
+      console.log(`  - Total processed: ${total}`);
+      return { created, updated, deleted, detailsFetched, skipped, total, errors };
     } catch (error) {
+      await checkpoint.finish('failed', { errorMessage: error.message });
       await this.updateSyncLog({
         error: error.message
       });
@@ -625,100 +580,96 @@ class RouteStarSyncService {
   }
   async syncClosedInvoices(limit = Infinity, direction = 'new') {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction}`);
+    console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction} [streaming]`);
     await this.createSyncLog();
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'closed_invoices', { resume: fetchAll });
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let detailsFetched = 0;
+    let total = 0;
+    const errors = [];
     try {
-      const invoices = await this.automation.fetchClosedInvoicesList(limit, direction);
-      console.log(`✓ Fetched ${invoices.length} closed invoices from RouteStar`);
-      if (invoices.length === 0) {
-        console.log(`⚠️  No closed invoices found - this may indicate an issue or there truly are no closed invoices`);
-        await this.updateSyncLog({
-          total: 0,
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          success: true
-        });
-        return { created: 0, updated: 0, skipped: 0, total: 0, errors: [] };
-      }
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      let detailsFetched = 0;
-      const errors = [];
-      for (const invoice of invoices) {
-        try {
-          const invoiceData = {
-            invoiceNumber: invoice.invoiceNumber,
-            invoiceType: 'closed',
-            status: normalizeStatus(invoice.status) || 'Closed',
-            invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
-            dateCompleted: parseRouteStarDate(invoice.dateCompleted),
-            customer: {
-              name: invoice.customerName || 'Unknown',
-              link: invoice.customerLink
-            },
-            enteredBy: invoice.enteredBy,
-            assignedTo: invoice.assignedTo,
-            serviceNotes: invoice.serviceNotes,
-            isComplete: invoice.isComplete || false,
-            subtotal: parseFloat(invoice.subtotal) || 0,
-            total: parseFloat(invoice.total) || 0,
-            lastModified: parseRouteStarDate(invoice.lastModified),
-            arrivalTime: invoice.arrivalTime,
-            departureTime: invoice.departureTime,
-            elapsedTime: invoice.elapsedTime,
-            customerGrouping: invoice.customerGrouping,
-            postedBy: invoice.postedBy,
-            postedTimestamp: parseRouteStarDate(invoice.postedTimestamp),
-            paymentMethod: invoice.paymentMethod,
-            detailUrl: invoice.detailUrl,
-            lastSyncedAt: new Date(),
-            syncSource: 'closed',
-            rawData: invoice
-          };
-          const result = await RouteStarInvoice.findOneAndUpdate(
-            { invoiceNumber: invoice.invoiceNumber },
-            invoiceData,
-            {
-              upsert: true,
-              new: true,
-              runValidators: true,
-              setDefaultsOnInsert: true
-            }
-          );
-          const wasCreated = !result.createdAt ||
-                            (new Date() - result.createdAt < 1000);
-          if (wasCreated) {
-            created++;
-            console.log(`  ✓ Created: ${invoice.invoiceNumber}`);
-          } else {
-            updated++;
-            console.log(`  ↻ Updated: ${invoice.invoiceNumber}`);
+      const onPage = async (pageInvoices, pageNumber) => {
+        const docs = pageInvoices.map((invoice) => ({
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceType: 'closed',
+          status: normalizeStatus(invoice.status) || 'Closed',
+          invoiceDate: parseRouteStarDate(invoice.invoiceDate) || new Date(),
+          dateCompleted: parseRouteStarDate(invoice.dateCompleted),
+          customer: {
+            name: invoice.customerName || 'Unknown',
+            link: invoice.customerLink
+          },
+          enteredBy: invoice.enteredBy,
+          assignedTo: invoice.assignedTo,
+          serviceNotes: invoice.serviceNotes,
+          isComplete: invoice.isComplete || false,
+          subtotal: parseFloat(invoice.subtotal) || 0,
+          total: parseFloat(invoice.total) || 0,
+          lastModified: parseRouteStarDate(invoice.lastModified),
+          arrivalTime: invoice.arrivalTime,
+          departureTime: invoice.departureTime,
+          elapsedTime: invoice.elapsedTime,
+          customerGrouping: invoice.customerGrouping,
+          postedBy: invoice.postedBy,
+          postedTimestamp: parseRouteStarDate(invoice.postedTimestamp),
+          paymentMethod: invoice.paymentMethod,
+          detailUrl: invoice.detailUrl,
+          lastSyncedAt: new Date(),
+          syncSource: 'closed',
+          rawData: invoice
+        }));
+
+        const res = await bulkUpsert(
+          RouteStarInvoice,
+          docs,
+          ['invoiceNumber'],
+          { stockProcessed: false, source: 'routestar' }
+        );
+        created += res.created;
+        updated += res.updated;
+        total += pageInvoices.length;
+
+        const pageNumbers = pageInvoices.map((inv) => inv.invoiceNumber);
+        const needDetails = await RouteStarInvoice.find({
+          invoiceNumber: { $in: pageNumbers },
+          $or: [{ lineItems: { $exists: false } }, { lineItems: { $size: 0 } }]
+        }).select('invoiceNumber').lean();
+
+        let pageDetails = 0;
+        for (const inv of needDetails) {
+          try {
+            console.log(`    → Fetching details for ${inv.invoiceNumber}...`);
+            await this.syncInvoiceDetails(inv.invoiceNumber);
+            detailsFetched++;
+            pageDetails++;
+            await delay(1000);
+          } catch (detailError) {
+            console.error(`    ✗ Failed to fetch details for ${inv.invoiceNumber}: ${detailError.message}`);
           }
-          const needsDetails = !result.lineItems || result.lineItems.length === 0;
-          if (needsDetails) {
-            try {
-              console.log(`    → Fetching details for ${invoice.invoiceNumber}...`);
-              await this.syncInvoiceDetails(invoice.invoiceNumber);
-              detailsFetched++;
-              console.log(`    ✓ Details fetched for ${invoice.invoiceNumber}`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (detailError) {
-              console.error(`    ✗ Failed to fetch details for ${invoice.invoiceNumber}: ${detailError.message}`);
-            }
-          }
-        } catch (error) {
-          errors.push({
-            invoiceNumber: invoice.invoiceNumber,
-            error: error.message
-          });
-          skipped++;
-          console.error(`  ✗ Error processing ${invoice.invoiceNumber}: ${error.message}`);
         }
+
+        await checkpoint.recordPage(pageNumber, {
+          processed: pageInvoices.length,
+          created: res.created,
+          updated: res.updated,
+          detailsFetched: pageDetails
+        });
+        console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated, ${pageDetails} details (running total: ${total})`);
+        pageInvoices.length = 0;
+      };
+
+      const summary = await this.automation.fetchClosedInvoicesList(limit, direction, { onPage, startPage });
+      total = summary.totalCount != null ? summary.totalCount : total;
+
+      if (total === 0) {
+        console.log(`⚠️  No closed invoices found - this may indicate an issue or there truly are no closed invoices`);
       }
+
+      await checkpoint.finish('completed');
       await this.updateSyncLog({
-        total: invoices.length,
+        total,
         created,
         updated,
         skipped,
@@ -729,9 +680,10 @@ class RouteStarSyncService {
       console.log(`  - Updated: ${updated}`);
       console.log(`  - Details Fetched: ${detailsFetched}`);
       console.log(`  - Skipped: ${skipped}`);
-      console.log(`  - Total processed: ${invoices.length}`);
-      return { created, updated, skipped, detailsFetched, total: invoices.length, errors };
+      console.log(`  - Total processed: ${total}`);
+      return { created, updated, skipped, detailsFetched, total, errors };
     } catch (error) {
+      await checkpoint.finish('failed', { errorMessage: error.message });
       await this.updateSyncLog({
         error: error.message
       });

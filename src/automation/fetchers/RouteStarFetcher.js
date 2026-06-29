@@ -8,25 +8,29 @@ class RouteStarFetcher {
     this.selectors = selectors;
     this.baseUrl = baseUrl;
   }
-  async fetchPendingInvoices(limit = Infinity, direction = 'new') {
+  async fetchPendingInvoices(limit = Infinity, direction = 'new', options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Pending Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
     await this.navigator.navigateToInvoices();
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
-    return await this.fetchInvoicesList(limit, this.selectors.invoicesList, 'pending');
+    return await this.fetchInvoicesList(limit, this.selectors.invoicesList, 'pending', options);
   }
-  async fetchClosedInvoices(limit = Infinity, direction = 'new') {
+  async fetchClosedInvoices(limit = Infinity, direction = 'new', options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Closed Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
     await this.navigator.navigateToClosedInvoices();
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
-    return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed');
+    return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed', options);
   }
-  async fetchInvoicesList(limit, selectors, type) {
+  async fetchInvoicesList(limit, selectors, type, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
+    // Streaming mode: hand each page to the caller and never accumulate.
+    const stream = typeof options.onPage === 'function';
+    const startPage = Math.max(0, options.startPage || 0);
     const invoices = [];
+    let totalCount = 0;
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
@@ -34,8 +38,18 @@ class RouteStarFetcher {
     console.log(`   - Fetch all: ${fetchAll}`);
     console.log(`   - Limit: ${limit === Infinity ? 'Infinity' : limit}`);
     console.log(`   - Max pages: ${maxPages === Infinity ? 'Infinity' : maxPages}`);
+    console.log(`   - Streaming: ${stream}`);
+    // Resume: fast-forward past pages a previous interrupted run already saved.
+    if (startPage > 0) {
+      console.log(`   ⏩ Resuming — skipping ${startPage} already-saved page(s)...`);
+      for (let p = 0; p < startPage && hasNextPage; p++) {
+        hasNextPage = await this.navigator.goToNextPage();
+        pageCount++;
+      }
+    }
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
+      const pageInvoices = [];
       try {
         await this.page.waitForSelector(selectors.invoiceRows, {
           timeout: 30000,  
@@ -69,7 +83,7 @@ class RouteStarFetcher {
       }
       for (let i = 0; i < invoiceRows.length; i++) {
         const row = invoiceRows[i];
-        if (!fetchAll && invoices.length >= limit) {
+        if (!fetchAll && totalCount >= limit) {
           console.log(`   Reached limit of ${limit} invoices, stopping`);
           break;
         }
@@ -77,7 +91,9 @@ class RouteStarFetcher {
           const invoiceData = await this.extractInvoiceData(row, selectors);
           if (invoiceData) {
             console.log(`  ✓ Row ${i + 1}: Invoice #${invoiceData.invoiceNumber}`);
-            invoices.push(invoiceData);
+            if (stream) pageInvoices.push(invoiceData);
+            else invoices.push(invoiceData);
+            totalCount++;
           } else {
             console.log(`  ⊘ Row ${i + 1}: Skipped (no invoice number or empty row)`);
           }
@@ -85,8 +101,13 @@ class RouteStarFetcher {
           console.log(`  ✗ Row ${i + 1}: Error - ${error.message}`);
         }
       }
-      console.log(`   Page ${pageCount + 1} complete: ${invoices.length} total invoices collected so far`);
-      if (fetchAll || invoices.length < limit) {
+      console.log(`   Page ${pageCount + 1} complete: ${totalCount} total invoices collected so far`);
+      // Stream this page straight to the caller (DB) before moving on.
+      if (stream && pageInvoices.length > 0) {
+        await options.onPage(pageInvoices, pageCount + 1);
+        pageInvoices.length = 0;
+      }
+      if (fetchAll || totalCount < limit) {
         console.log('   Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
         if (hasNextPage) {
@@ -102,9 +123,12 @@ class RouteStarFetcher {
     }
     console.log(`\n✅ Pagination complete:`);
     console.log(`   - Total pages processed: ${pageCount + 1}`);
-    console.log(`   - Total invoices fetched: ${invoices.length}`);
-    if (invoices.length === 0) {
+    console.log(`   - Total invoices fetched: ${totalCount}`);
+    if (totalCount === 0) {
       console.log(`   ℹ️  Note: 0 invoices found - this is normal if there are no ${type} invoices currently`);
+    }
+    if (stream) {
+      return { totalCount, pagesProcessed: pageCount + 1 };
     }
     return invoices;
   }

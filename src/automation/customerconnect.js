@@ -99,9 +99,16 @@ class CustomerConnectAutomation {
   async getPaginationInfo() {
     return await this.navigator.getPaginationInfo();
   }
-  async fetchOrdersList(limit = Infinity) {
+  async fetchOrdersList(limit = Infinity, options = {}) {
     if (!this.isLoggedIn) {
       await this.login();
+    }
+    // Streaming mode writes each page to the DB as it is scraped. We call the
+    // fetcher directly (not through the whole-list retry wrapper) so a retry
+    // can't restart pagination and re-stream pages that are already saved;
+    // the fetcher still retries per-page content loads internally.
+    if (typeof options.onPage === 'function') {
+      return await this.fetcher.fetchOrders(limit, options);
     }
     return await retry(
       async () => await this.fetcher.fetchOrders(limit),

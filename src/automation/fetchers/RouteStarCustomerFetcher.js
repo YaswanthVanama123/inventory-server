@@ -6,17 +6,20 @@ class RouteStarCustomerFetcher {
     this.baseUrl = baseUrl;
   }
 
-  async fetchCustomersList(limit = Infinity) {
+  async fetchCustomersList(limit = Infinity, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Customers ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
 
     await this.navigator.navigateToCustomers();
-    return await this.fetchCustomers(limit);
+    return await this.fetchCustomers(limit, options);
   }
 
-  async fetchCustomers(limit) {
+  async fetchCustomers(limit, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
+    const stream = typeof options.onPage === 'function';
+    const startPage = Math.max(0, options.startPage || 0);
     const customers = [];
+    let totalCount = 0;
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
@@ -25,9 +28,19 @@ class RouteStarCustomerFetcher {
     console.log(`   - Fetch all: ${fetchAll}`);
     console.log(`   - Limit: ${limit === Infinity ? 'Infinity' : limit}`);
     console.log(`   - Max pages: ${maxPages === Infinity ? 'Infinity' : maxPages}`);
+    console.log(`   - Streaming: ${stream}`);
+
+    if (startPage > 0) {
+      console.log(`   ⏩ Resuming — skipping ${startPage} already-saved page(s)...`);
+      for (let p = 0; p < startPage && hasNextPage; p++) {
+        hasNextPage = await this.navigator.goToNextPage();
+        pageCount++;
+      }
+    }
 
     while (hasNextPage && pageCount < maxPages) {
       console.log(`\n📄 Processing page ${pageCount + 1}...`);
+      const pageCustomers = [];
 
       try {
         await this.page.waitForSelector('div.ht_master', {
@@ -68,7 +81,7 @@ class RouteStarCustomerFetcher {
       for (let i = 0; i < customerRows.length; i++) {
         const row = customerRows[i];
 
-        if (!fetchAll && customers.length >= limit) {
+        if (!fetchAll && totalCount >= limit) {
           console.log(`   Reached limit of ${limit} customers, stopping`);
           break;
         }
@@ -77,7 +90,9 @@ class RouteStarCustomerFetcher {
           const customerData = await this.extractCustomerListData(row);
           if (customerData) {
             console.log(`  ✓ Row ${i + 1}: Customer ${customerData.customerName || customerData.customerId}`);
-            customers.push(customerData);
+            if (stream) pageCustomers.push(customerData);
+            else customers.push(customerData);
+            totalCount++;
           } else {
             console.log(`  ⊘ Row ${i + 1}: Skipped (no customer data or empty row)`);
           }
@@ -86,9 +101,15 @@ class RouteStarCustomerFetcher {
         }
       }
 
-      console.log(`   Page ${pageCount + 1} complete: ${customers.length} total customers collected so far`);
+      console.log(`   Page ${pageCount + 1} complete: ${totalCount} total customers collected so far`);
 
-      if (fetchAll || customers.length < limit) {
+      // Stream this page straight to the caller (DB) before moving on.
+      if (stream && pageCustomers.length > 0) {
+        await options.onPage(pageCustomers, pageCount + 1);
+        pageCustomers.length = 0;
+      }
+
+      if (fetchAll || totalCount < limit) {
         console.log('   Checking for next page...');
         hasNextPage = await this.navigator.goToNextPage();
         if (hasNextPage) {
@@ -105,12 +126,15 @@ class RouteStarCustomerFetcher {
 
     console.log(`\n✅ Pagination complete:`);
     console.log(`   - Total pages processed: ${pageCount + 1}`);
-    console.log(`   - Total customers fetched: ${customers.length}`);
+    console.log(`   - Total customers fetched: ${totalCount}`);
 
-    if (customers.length === 0) {
+    if (totalCount === 0) {
       console.log(`   ℹ️  Note: 0 customers found - this is normal if there are no customers currently`);
     }
 
+    if (stream) {
+      return { totalCount, pagesProcessed: pageCount + 1 };
+    }
     return customers;
   }
 

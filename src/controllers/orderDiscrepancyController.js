@@ -6,6 +6,7 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 const StockProcessor = require('../services/stockProcessor');
+const mongoose = require('mongoose');
 
 
 exports.getOrderDiscrepancies = async (req, res, next) => {
@@ -27,6 +28,11 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
       query.reportedAt = {};
       if (startDate) query.reportedAt.$gte = new Date(startDate);
       if (endDate) query.reportedAt.$lte = new Date(endDate);
+    }
+    // Employees only ever see THEIR OWN order discrepancies; admins can opt in
+    // with ?mine=true.
+    if ((req.user?.role === 'employee' || req.query.mine === 'true') && req.user?.id) {
+      query.reportedBy = new mongoose.Types.ObjectId(req.user.id);
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [discrepancies, total] = await Promise.all([
