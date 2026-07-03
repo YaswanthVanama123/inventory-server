@@ -472,6 +472,69 @@ const getDashboard = async (req, res, next) => {
             },
             { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
             { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalPurchaseAmount: 0, totalPurchaseOrders: 0 }] } } }
+          ],
+          // Manual PurchaseOrder collection is a separate order source (source: 'manual').
+          // Include it additively in the dashboard purchase cost / order counts so
+          // manual POs are reflected alongside customerconnectorders. Uses order-level
+          // `total` (subtotal + tax + shipping) and counts one order per document.
+          manualPurchaseTotals: [
+            { $limit: 1 },
+            {
+              $lookup: {
+                from: 'purchaseorders',
+                pipeline: [
+                  {
+                    $match: {
+                      source: 'manual',
+                      status: { $in: ['confirmed', 'received', 'completed'] },
+                      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+                    }
+                  },
+                  {
+                    $group: {
+                      _id: null,
+                      totalPurchaseAmount: { $sum: '$total' },
+                      totalPurchaseOrders: { $sum: 1 }
+                    }
+                  }
+                ],
+                as: 'totals'
+              }
+            },
+            { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
+            { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalPurchaseAmount: 0, totalPurchaseOrders: 0 }] } } }
+          ],
+          // Manual PO purchase cost broken down by month, mirroring purchasesByMonth
+          // (customerconnectorders) so the monthly purchase trend includes manual POs.
+          manualPurchasesByMonth: [
+            { $limit: 1 },
+            {
+              $lookup: {
+                from: 'purchaseorders',
+                pipeline: [
+                  {
+                    $match: {
+                      source: 'manual',
+                      status: { $in: ['confirmed', 'received', 'completed'] },
+                      orderDate: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
+                    }
+                  },
+                  {
+                    $group: {
+                      _id: {
+                        month: { $month: '$orderDate' },
+                        year: { $year: '$orderDate' }
+                      },
+                      cost: { $sum: '$total' }
+                    }
+                  },
+                  { $sort: { '_id.year': 1, '_id.month': 1 } }
+                ],
+                as: 'monthlyData'
+              }
+            },
+            { $unwind: '$monthlyData' },
+            { $replaceRoot: { newRoot: '$monthlyData' } }
           ]
         }
       }
@@ -486,7 +549,14 @@ const getDashboard = async (req, res, next) => {
     const recentActivity = dashboardData.recentActivity || [];
     const inventoryItems = dashboardData.inventoryItems || [];
     const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
-    const purchaseTotals = dashboardData.purchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
+    const ccPurchaseTotals = dashboardData.purchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
+    const manualPurchaseTotals = dashboardData.manualPurchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
+    // Combine customerconnectorders + manual PurchaseOrder totals so dashboard
+    // purchase cost / order counts include the manual PO source additively.
+    const purchaseTotals = {
+      totalPurchaseAmount: (ccPurchaseTotals.totalPurchaseAmount || 0) + (manualPurchaseTotals.totalPurchaseAmount || 0),
+      totalPurchaseOrders: (ccPurchaseTotals.totalPurchaseOrders || 0) + (manualPurchaseTotals.totalPurchaseOrders || 0)
+    };
     const totalRevenue = salesTotals.totalRevenue || 0;
     const totalPurchaseAmount = purchaseTotals.totalPurchaseAmount || 0;
     const totalProfit = totalRevenue - totalPurchaseAmount;
@@ -529,6 +599,23 @@ const getDashboard = async (req, res, next) => {
         month: monthNames[p._id.month - 1],
         cost: p.cost || 0
       });
+    });
+    // Fold manual PurchaseOrder monthly cost into the same month buckets so the
+    // purchase trend / salesTrend profit calc account for manual POs too.
+    (dashboardData.manualPurchasesByMonth || []).forEach(p => {
+      const key = `${p._id.year}-${p._id.month}`;
+      const cost = p.cost || 0;
+      if (purchasesByMonthMap[key] !== undefined) {
+        purchasesByMonthMap[key] += cost;
+        const existing = purchasesByMonthArray.find(e => e.month === monthNames[p._id.month - 1]);
+        if (existing) existing.cost += cost;
+      } else {
+        purchasesByMonthMap[key] = cost;
+        purchasesByMonthArray.push({
+          month: monthNames[p._id.month - 1],
+          cost
+        });
+      }
     });
     const salesTrend = (dashboardData.salesByMonth || []).map(m => {
       const key = `${m._id.year}-${m._id.month}`;

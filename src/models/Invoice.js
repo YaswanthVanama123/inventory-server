@@ -168,7 +168,7 @@ const invoiceSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Status is required'],
     enum: {
-      values: ['draft', 'issued', 'paid', 'cancelled', 'pending'],
+      values: ['draft', 'issued', 'paid', 'cancelled', 'pending', 'approved', 'rejected'],
       message: '{VALUE} is not a valid status'
     },
     default: 'draft',
@@ -203,6 +203,11 @@ const invoiceSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: [2000, 'Remarks must not exceed 2000 characters']
+  },
+  rejectionReason: {
+    type: String,
+    trim: true,
+    maxlength: [2000, 'Rejection reason must not exceed 2000 characters']
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -298,7 +303,14 @@ invoiceSchema.pre('save', async function(next) {
     if (this.isModified('paymentStatus') && this.paymentStatus === 'paid' && !this.paymentDate) {
       this.paymentDate = Date.now();
     }
-    if (this.paymentStatus === 'paid' && this.status !== 'paid') {
+    // Auto-promote status to 'paid' when payment is marked paid, but do NOT
+    // override an explicit approval-workflow status set in the same save
+    // (approve sends status:'approved' + paymentStatus:'paid').
+    if (
+      this.paymentStatus === 'paid' &&
+      this.status !== 'paid' &&
+      !(this.isModified('status') && ['approved', 'rejected'].includes(this.status))
+    ) {
       this.status = 'paid';
     }
     this.updatedAt = Date.now();

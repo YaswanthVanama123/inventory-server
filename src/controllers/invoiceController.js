@@ -495,7 +495,7 @@ const updateInvoice = async (req, res, next) => {
       }
       req.body.items = processedItems;
     }
-    const allowedUpdates = ['customer', 'items', 'taxRate', 'discount', 'notes', 'remarks', 'status', 'paymentStatus', 'paymentMethod', 'dueDate'];
+    const allowedUpdates = ['customer', 'items', 'taxRate', 'discount', 'notes', 'remarks', 'status', 'paymentStatus', 'paymentMethod', 'dueDate', 'rejectionReason'];
     allowedUpdates.forEach(field => {
       if (req.body[field] !== undefined) {
         invoice[field] = req.body[field];

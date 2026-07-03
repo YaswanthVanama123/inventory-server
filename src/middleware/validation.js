@@ -287,7 +287,14 @@ const invoiceValidation = {
       .isFloat({ min: 0 }).withMessage('Total amount must be non-negative'),
     body('status')
       .optional()
-      .isIn(['draft', 'pending', 'paid', 'overdue', 'cancelled']).withMessage('Invalid status'),
+      .isIn(['draft', 'issued', 'pending', 'paid', 'cancelled', 'approved', 'rejected']).withMessage('Invalid status'),
+    body('paymentStatus')
+      .optional()
+      .isIn(['pending', 'paid', 'cancelled']).withMessage('Invalid payment status'),
+    body('rejectionReason')
+      .optional()
+      .trim()
+      .isLength({ max: 2000 }).withMessage('Rejection reason is too long'),
     body('issueDate')
       .optional()
       .isISO8601().withMessage('Invalid issue date format'),

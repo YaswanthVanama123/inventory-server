@@ -125,7 +125,8 @@ class ManualPurchaseOrderItemService {
         { sku: { $regex: search, $options: 'i' } },
         { name: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
-        { vendorName: { $regex: search, $options: 'i' } }
+        { vendorName: { $regex: search, $options: 'i' } },
+        { mappedCategoryItemName: { $regex: search, $options: 'i' } }
       ];
     }
 
