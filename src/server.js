@@ -101,7 +101,10 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === 'development',
 });
-if (process.env.NODE_ENV !== 'development') {
+// Rate limiting is DISABLED by default (clients behind a shared office IP/NAT
+// were tripping the per-IP limits). To re-enable, set ENABLE_RATE_LIMIT=true.
+const rateLimitEnabled = process.env.ENABLE_RATE_LIMIT === 'true';
+if (rateLimitEnabled) {
   app.use('/api', generalLimiter);
 }
 
@@ -157,7 +160,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use('/api/auth', loginLimiter, authRoutes);
+app.use('/api/auth', ...(rateLimitEnabled ? [loginLimiter] : []), authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reports', reportRoutes);
