@@ -242,7 +242,7 @@ class RouteStarItemAliasService {
       unmappedItems: Math.max(0, unmappedItems)
     };
   }
-  async getPageDataOptimized() {
+  async getPageDataOptimized(options = {}) {
     const CustomerConnectOrder = require('../models/CustomerConnectOrder');
     const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
 
@@ -346,13 +346,51 @@ class RouteStarItemAliasService {
       unmappedItems: unmappedItemsCount,
       excludedByModelMapping: mappedInModelCategory.size
     };
+
+    // ----- Server-side filter / pagination for the item-names table -----
+    // NOTE: `allItems` (below) stays the FULL set — it feeds alias suggestions,
+    // the quick-map picker, and "select all unmapped" on the client. Only the
+    // table `items` slice is paginated.
+    const { search, status } = options;
+    let filteredItems = itemsWithMappingStatus;
+
+    if (search && String(search).trim()) {
+      const term = String(search).toLowerCase().trim();
+      filteredItems = filteredItems.filter(item =>
+        (item.itemName || '').toLowerCase().includes(term) ||
+        (item.canonicalName || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (status === 'mapped') {
+      filteredItems = filteredItems.filter(item => item.isMapped);
+    } else if (status === 'unmapped') {
+      filteredItems = filteredItems.filter(item => !item.isMapped);
+    }
+
+    const page = Math.max(1, parseInt(options.page, 10) || 1);
+    const limit = Math.max(1, parseInt(options.limit, 10) || 20);
+    const filteredTotal = filteredItems.length;
+    const totalPages = Math.max(1, Math.ceil(filteredTotal / limit));
+    const start = (page - 1) * limit;
+    const pageItems = filteredItems.slice(start, start + limit);
+
     return {
       mappings: {
         mappings,
         total: mappings.length
       },
       uniqueItems: {
-        items: itemsWithMappingStatus,
+        // paginated slice for the table
+        items: pageItems,
+        // FULL set for suggestions / quick-map / select-all
+        allItems: itemsWithMappingStatus,
+        pagination: {
+          total: filteredTotal,
+          page,
+          limit,
+          totalPages
+        },
         stats: {
           totalUniqueItems: allAvailableItems.length,
           mappedItems: mappedItemsCount,

@@ -359,10 +359,14 @@ class ManualPurchaseOrderItemService {
     return result;
   }
 
-  async getPageData() {
-    // Check cache first
+  async getPageData(options = {}) {
+    const { search, page, limit } = options;
+    const hasParams = search !== undefined || page !== undefined || limit !== undefined;
+
+    // The blob cache only covers the parameterless default call. Any paginated /
+    // filtered request bypasses it (the shape depends on the params).
     const now = Date.now();
-    if (cache.pageData && now < cache.pageDataExpiry) {
+    if (!hasParams && cache.pageData && now < cache.pageDataExpiry) {
       return cache.pageData;
     }
 
@@ -371,21 +375,31 @@ class ManualPurchaseOrderItemService {
     try {
       const Vendor = require('../models/Vendor');
 
-      // Fetch all three datasets in parallel
-      const [itemsResult, routeStarResult, vendorsResult] = await Promise.all([
-        this.getAllItems(),
+      // Fetch the (paginated) items, the full dropdown sources, and full-set
+      // stats in parallel. Dropdowns (routeStarItems, vendors) stay FULL.
+      const [itemsResult, routeStarResult, vendorsResult, stats] = await Promise.all([
+        this.getAllItems(search, page, limit),
         this.getRouteStarItems(),
         Vendor.find({ isActive: true })
           .select('_id name email phone')
           .sort({ name: 1 })
           .lean()
-          .maxTimeMS(5000)
+          .maxTimeMS(5000),
+        this.getItemStats(search)
       ]);
 
+      const lim = parseInt(limit, 10);
       const result = {
         items: itemsResult.items || [],
         routeStarItems: routeStarResult.items || [],
         vendors: vendorsResult || [],
+        stats,
+        pagination: {
+          total: itemsResult.total || 0,
+          page: itemsResult.page || 1,
+          limit: lim && lim > 0 ? lim : (itemsResult.total || 0),
+          totalPages: itemsResult.pages || 1
+        },
         totals: {
           items: itemsResult.total || 0,
           routeStarItems: routeStarResult.total || 0,
@@ -393,9 +407,11 @@ class ManualPurchaseOrderItemService {
         }
       };
 
-      // Cache the result
-      cache.pageData = result;
-      cache.pageDataExpiry = now + CACHE_TTL.PAGE_DATA;
+      // Only cache the parameterless default response.
+      if (!hasParams) {
+        cache.pageData = result;
+        cache.pageDataExpiry = now + CACHE_TTL.PAGE_DATA;
+      }
 
       const endTime = Date.now();
       console.log(`[PERF] getPageData completed in ${endTime - startTime}ms`);
@@ -405,6 +421,34 @@ class ManualPurchaseOrderItemService {
       console.error('[ERROR] getPageData failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Dashboard stats computed over the FULL item set (respecting the same search
+   * filter as the list, so the counts match what the user is looking at).
+   */
+  async getItemStats(search) {
+    const match = {};
+    if (search) {
+      match.$or = [
+        { sku: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { vendorName: { $regex: search, $options: 'i' } },
+        { mappedCategoryItemName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const [total, mapped, active] = await Promise.all([
+      ManualPurchaseOrderItem.countDocuments(match),
+      ManualPurchaseOrderItem.countDocuments({
+        ...match,
+        mappedCategoryItemId: { $ne: null }
+      }),
+      ManualPurchaseOrderItem.countDocuments({ ...match, isActive: true })
+    ]);
+
+    return { total, mapped, active };
   }
 
   async getRouteStarItems() {

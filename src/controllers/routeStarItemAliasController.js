@@ -225,7 +225,8 @@ class RouteStarItemAliasController {
   }
   async getPageData(req, res, next) {
     try {
-      const data = await routeStarItemAliasService.getPageDataOptimized();
+      const { page, limit, search, status } = req.query;
+      const data = await routeStarItemAliasService.getPageDataOptimized({ page, limit, search, status });
       res.json({
         success: true,
         data

@@ -6,7 +6,7 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
 
 class ModelCategoryService {
-  async getUniqueModels() {
+  async getUniqueModels(options = {}) {
     // Fetch CustomerConnect order items
     const ccOrderItems = await CustomerConnectOrder.aggregate([
       { $unwind: '$items' },
@@ -88,9 +88,51 @@ class ModelCategoryService {
     // Sort by model number
     result.sort((a, b) => a.modelNumber.localeCompare(b.modelNumber));
 
+    // ----- Server-side filtering / pagination -----
+    const { search, status } = options;
+    let filtered = result;
+
+    if (search && String(search).trim()) {
+      const term = String(search).toLowerCase().trim();
+      filtered = filtered.filter(m =>
+        (m.modelNumber || '').toLowerCase().includes(term) ||
+        (m.orderItemName || '').toLowerCase().includes(term) ||
+        (m.categoryItemName || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (status === 'mapped') {
+      filtered = filtered.filter(m => m.categoryItemName);
+    } else if (status === 'unmapped') {
+      filtered = filtered.filter(m => !m.categoryItemName);
+    }
+
+    // Stats are always computed over the FULL (unfiltered) set.
+    const mappedCount = result.filter(m => m.categoryItemName).length;
+    const stats = {
+      total: result.length,
+      mapped: mappedCount,
+      unmapped: result.length - mappedCount
+    };
+
+    const page = Math.max(1, parseInt(options.page, 10) || 1);
+    const limit = Math.max(1, parseInt(options.limit, 10) || 20);
+    const filteredTotal = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(filteredTotal / limit));
+    const start = (page - 1) * limit;
+    const pageItems = filtered.slice(start, start + limit);
+
     return {
-      models: result,
-      total: result.length
+      models: pageItems,
+      stats,
+      pagination: {
+        total: filteredTotal,
+        page,
+        limit,
+        totalPages
+      },
+      // kept for backward-compat: total of the (filtered) set
+      total: filteredTotal
     };
   }
   async getRouteStarItems() {

@@ -4,7 +4,8 @@ const modelCategoryService = require('../services/modelCategory.service');
 class ModelCategoryController {
   async getUniqueModels(req, res, next) {
     try {
-      const data = await modelCategoryService.getUniqueModels();
+      const { page, limit, search, status } = req.query;
+      const data = await modelCategoryService.getUniqueModels({ page, limit, search, status });
       res.json({
         success: true,
         data

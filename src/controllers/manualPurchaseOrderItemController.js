@@ -164,7 +164,8 @@ class ManualPurchaseOrderItemController {
 
   async getPageData(req, res, next) {
     try {
-      const data = await manualPurchaseOrderItemService.getPageData();
+      const { search, page, limit } = req.query;
+      const data = await manualPurchaseOrderItemService.getPageData({ search, page, limit });
       res.json({
         success: true,
         data
