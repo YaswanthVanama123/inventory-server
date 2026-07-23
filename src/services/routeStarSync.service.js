@@ -911,20 +911,12 @@ class RouteStarSyncService {
     console.log('\n🔄 Starting full RouteStar sync...');
     console.log('===================================');
     const results = {
-      customers: null,
-      customerDetails: null,
       pending: null,
       closed: null,
       details: null,
       stock: null
     };
     try {
-      // 1. Customers first — list sync (base fields) then detail sync (Account #, service address,
-      //    lat/long, pricing) so everything stays current in this one pass. Detail sync fetches the
-      //    customers still missing details; run this whole step every time.
-      results.customers = await this.syncCustomers(Infinity);
-      results.customerDetails = await this.syncAllCustomerDetails(Infinity, false);
-      // 2. Invoices + stock.
       results.pending = await this.syncPendingInvoices(pendingLimit);
       results.closed = await this.syncClosedInvoices(closedLimit);
       results.details = await this.syncAllInvoiceDetails(detailsLimit);

@@ -214,17 +214,20 @@ class ModelCategoryService {
       await mapping.save();
     }
 
-    // Sync mapping back to ManualPurchaseOrderItem if this is a CUSTOM-* SKU
-    if (modelNumber.toUpperCase().startsWith('CUSTOM-')) {
-      await ManualPurchaseOrderItem.findOneAndUpdate(
-        { sku: modelNumber.toUpperCase() },
-        {
-          mappedCategoryItemId: categoryItemId || null,
-          mappedCategoryItemName: categoryItemName || null,
-          lastUpdatedBy: userId
-        }
-      );
-    }
+    // Keep any ManualPurchaseOrderItem that shares this SKU in sync so the
+    // mapped name is reflected in the Manual PO Items module too — for ALL
+    // SKUs, not only CUSTOM-* ones (previously plain SKUs like "FLUTE" were
+    // mapped in Model Mapping and shown in Stock but never propagated here).
+    // findOneAndUpdate is a no-op when no manual item has this SKU (e.g. a
+    // CustomerConnect-only model), so this is safe for every mapping.
+    await ManualPurchaseOrderItem.findOneAndUpdate(
+      { sku: modelNumber.toUpperCase() },
+      {
+        mappedCategoryItemId: categoryItemId || null,
+        mappedCategoryItemName: categoryItemName || null,
+        lastUpdatedBy: userId
+      }
+    );
 
     return mapping;
   }
@@ -235,6 +238,13 @@ class ModelCategoryService {
     if (!result) {
       throw new Error('Mapping not found');
     }
+    // Clear the synced mapping on any ManualPurchaseOrderItem with this SKU so
+    // un-mapping is reflected in the Manual PO Items module (mirror of the
+    // sync-back in saveMapping).
+    await ManualPurchaseOrderItem.findOneAndUpdate(
+      { sku: modelNumber.toUpperCase() },
+      { mappedCategoryItemId: null, mappedCategoryItemName: null }
+    );
     return result;
   }
   async getAllMappings(search) {

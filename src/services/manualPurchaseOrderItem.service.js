@@ -144,23 +144,24 @@ class ManualPurchaseOrderItemService {
 
     // Resolve Model→Category mappings for THESE items by their exact SKU. The
     // mapping lives in ModelCategory keyed by modelNumber === the manual item's
-    // SKU. Match the page's SKUs ($in) rather than a "/^CUSTOM-/" prefix, which
-    // wrongly missed items whose SKU has no hyphen (e.g. CUSTOM9963, RICEBAG15).
-    const skus = items.map(i => i.sku).filter(Boolean);
-    const modelMappings = skus.length
-      ? await ModelCategory.find({ modelNumber: { $in: skus } }).lean()
+    // SKU (uppercased). We uppercase on BOTH sides — matching how the Stock
+    // module resolves the mapping (item.sku.toUpperCase()) — so a case
+    // discrepancy can never hide a mapping that Stock happily shows.
+    const skusUpper = [...new Set(items.map(i => (i.sku || '').toUpperCase()).filter(Boolean))];
+    const modelMappings = skusUpper.length
+      ? await ModelCategory.find({ modelNumber: { $in: skusUpper } }).lean()
       : [];
 
-    // Build lookup of ModelCategory mappings by modelNumber
+    // Build lookup of ModelCategory mappings by (uppercased) modelNumber
     const modelMappingLookup = new Map();
     for (const mapping of modelMappings) {
-      modelMappingLookup.set(mapping.modelNumber, mapping);
+      modelMappingLookup.set((mapping.modelNumber || '').toUpperCase(), mapping);
     }
 
     // Enrich items: if item has no mappedCategoryItemName but ModelCategory has a mapping, use it
     for (const item of items) {
       if (!item.mappedCategoryItemName) {
-        const mapping = modelMappingLookup.get(item.sku);
+        const mapping = modelMappingLookup.get((item.sku || '').toUpperCase());
         if (mapping?.categoryItemName) {
           item.mappedCategoryItemName = mapping.categoryItemName;
           item.mappedCategoryItemId = mapping.categoryItemId;
@@ -428,6 +429,7 @@ class ManualPurchaseOrderItemService {
    * filter as the list, so the counts match what the user is looking at).
    */
   async getItemStats(search) {
+    const ModelCategory = require('../models/ModelCategory');
     const match = {};
     if (search) {
       match.$or = [
@@ -439,14 +441,30 @@ class ManualPurchaseOrderItemService {
       ];
     }
 
-    const [total, mapped, active] = await Promise.all([
-      ManualPurchaseOrderItem.countDocuments(match),
-      ManualPurchaseOrderItem.countDocuments({
-        ...match,
-        mappedCategoryItemId: { $ne: null }
-      }),
+    // Load the matched items' sku + persisted mapping so the "mapped" count
+    // mirrors the list display: an item is considered mapped if it has a
+    // persisted mappedCategoryItemId OR a live ModelCategory mapping keyed by
+    // its SKU (the same resolution getAllItems uses). This keeps the stat
+    // accurate for legacy mappings that predate the write-back sync.
+    const [items, active] = await Promise.all([
+      ManualPurchaseOrderItem.find(match).select('sku mappedCategoryItemId').lean(),
       ManualPurchaseOrderItem.countDocuments({ ...match, isActive: true })
     ]);
+
+    const total = items.length;
+    const skusUpper = [...new Set(items.map(i => (i.sku || '').toUpperCase()).filter(Boolean))];
+    const mappedSkuSet = skusUpper.length
+      ? new Set(
+          (await ModelCategory.find({
+            modelNumber: { $in: skusUpper },
+            categoryItemName: { $ne: null }
+          }).select('modelNumber').lean()).map(m => (m.modelNumber || '').toUpperCase())
+        )
+      : new Set();
+
+    const mapped = items.filter(
+      i => i.mappedCategoryItemId != null || mappedSkuSet.has((i.sku || '').toUpperCase())
+    ).length;
 
     return { total, mapped, active };
   }
