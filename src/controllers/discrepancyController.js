@@ -178,6 +178,9 @@ exports.getDiscrepancies = async (req, res, next) => {
           total: totalCombined,
           page: pageNum,
           limit: limitNum,
+          // `pages` is the convention across the other list endpoints;
+          // `totalPages` is kept for existing callers.
+          pages: Math.ceil(totalCombined / limitNum),
           totalPages: Math.ceil(totalCombined / limitNum)
         }
       }

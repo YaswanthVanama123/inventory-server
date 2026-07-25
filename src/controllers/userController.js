@@ -4,18 +4,24 @@ const AuditLog = require('../models/AuditLog');
 
 const getUsers = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, role, search } = req.query;
-    const query = { isDeleted: false };
-    if (role) query.role = role;
+    const { page = 1, limit = 10, role, search, isActive } = req.query;
+    // Base query = search only. The role/isActive facets narrow the page but NOT
+    // the stats, so the stat cards keep showing totals across the whole search.
+    const baseQuery = { isDeleted: false };
     if (search) {
-      query.$or = [
+      baseQuery.$or = [
         { username: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { fullName: { $regex: search, $options: 'i' } }
       ];
     }
+    const query = { ...baseQuery };
+    if (role) query.role = role;
+    if (isActive !== undefined && isActive !== '') {
+      query.isActive = isActive === 'true' || isActive === true;
+    }
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [users, total] = await Promise.all([
+    const [users, total, statsAgg] = await Promise.all([
       User.find(query)
         .select('-password')
         .populate('createdBy', 'username fullName')
@@ -23,12 +29,27 @@ const getUsers = async (req, res, next) => {
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
-      User.countDocuments(query)
+      User.countDocuments(query),
+      User.aggregate([
+        { $match: baseQuery },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            active: { $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] } },
+            inactive: { $sum: { $cond: [{ $eq: ['$isActive', true] }, 0, 1] } },
+            admins: { $sum: { $cond: [{ $eq: ['$role', 'admin'] }, 1, 0] } },
+            employees: { $sum: { $cond: [{ $eq: ['$role', 'employee'] }, 1, 0] } }
+          }
+        },
+        { $project: { _id: 0 } }
+      ])
     ]);
     res.status(200).json({
       success: true,
       data: {
         users,
+        stats: statsAgg[0] || { total: 0, active: 0, inactive: 0, admins: 0, employees: 0 },
         pagination: {
           total,
           page: parseInt(page),
