@@ -27,9 +27,14 @@ class ModelCategoryService {
       }
     ]).allowDiskUse(true);
 
-    // Fetch Manual PO items
+    // Fetch Manual PO items. We also pull their own mapping fields: a manual
+    // item can be mapped from the Manual PO Items screen, which writes to
+    // ManualPurchaseOrderItem.mappedCategoryItem* and NOT to ModelCategory.
+    // Without this the model would show as Unmapped here while the Manual PO
+    // screen shows it mapped. (manualPurchaseOrderItem.service does the mirror
+    // of this fallback in the other direction.)
     const manualPOItems = await ManualPurchaseOrderItem.find({ isActive: true })
-      .select('sku name')
+      .select('sku name mappedCategoryItemName mappedCategoryItemId')
       .lean();
 
     // Combine both sources into a Map to deduplicate by SKU
@@ -44,8 +49,18 @@ class ModelCategoryService {
       });
     }
 
+    // Manual-PO-side mappings, keyed by uppercased SKU (ModelCategory stores
+    // modelNumber uppercased, so both sides must agree on case).
+    const manualMappingLookup = new Map();
+
     // Add Manual PO items (if SKU already exists from CC, mark as 'both')
     for (const item of manualPOItems) {
+      if (item.mappedCategoryItemName) {
+        manualMappingLookup.set((item.sku || '').toUpperCase(), {
+          categoryItemName: item.mappedCategoryItemName,
+          categoryItemId: item.mappedCategoryItemId
+        });
+      }
       if (modelsMap.has(item.sku)) {
         const existing = modelsMap.get(item.sku);
         existing.source = 'both';
@@ -72,15 +87,17 @@ class ModelCategoryService {
       mappingLookup.set(mapping.modelNumber, mapping);
     }
 
-    // Combine models with their mappings
+    // Combine models with their mappings. ModelCategory wins when both exist;
+    // the Manual PO item's own mapping is the fallback.
     const result = allModels.map(model => {
       const mapping = mappingLookup.get(model.modelNumber);
+      const manualMapping = manualMappingLookup.get((model.modelNumber || '').toUpperCase());
       return {
         modelNumber: model.modelNumber,
         orderItemName: model.orderItemName,
         source: model.source,
-        categoryItemName: mapping?.categoryItemName || null,
-        categoryItemId: mapping?.categoryItemId || null,
+        categoryItemName: mapping?.categoryItemName || manualMapping?.categoryItemName || null,
+        categoryItemId: mapping?.categoryItemId || manualMapping?.categoryItemId || null,
         notes: mapping?.notes || ''
       };
     });

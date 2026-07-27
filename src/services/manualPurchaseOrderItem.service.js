@@ -79,6 +79,17 @@ class ManualPurchaseOrderItemService {
 
       const savedItem = await item.save();
 
+      // Mirror the mapping into the canonical ModelCategory store (see
+      // syncMappingToModelCategory) so Model Mapping agrees with this screen.
+      if (savedItem.mappedCategoryItemName) {
+        await this.syncMappingToModelCategory(
+          savedItem.sku,
+          savedItem.mappedCategoryItemName,
+          savedItem.mappedCategoryItemId,
+          userId
+        );
+      }
+
       // Invalidate cache after creating new item
       this.invalidateCache();
 
@@ -103,6 +114,14 @@ class ManualPurchaseOrderItemService {
         });
 
         const savedItem = await item.save();
+        if (savedItem.mappedCategoryItemName) {
+          await this.syncMappingToModelCategory(
+            savedItem.sku,
+            savedItem.mappedCategoryItemName,
+            savedItem.mappedCategoryItemId,
+            userId
+          );
+        }
         this.invalidateCache();
         return savedItem;
       }
@@ -200,6 +219,31 @@ class ManualPurchaseOrderItemService {
     return item;
   }
 
+  /**
+   * Mirror a manual item's category mapping into ModelCategory, which is the
+   * canonical Model→Category store keyed by modelNumber (=== the SKU,
+   * uppercased). Mapping an item from the Manual PO Items screen must land
+   * here too, otherwise Model Mapping reports it as Unmapped.
+   * Clearing the mapping removes the ModelCategory row.
+   */
+  async syncMappingToModelCategory(sku, categoryItemName, categoryItemId, userId) {
+    if (!sku) return;
+    const ModelCategory = require('../models/ModelCategory');
+    const modelNumber = String(sku).toUpperCase();
+
+    if (categoryItemName) {
+      await ModelCategory.upsertMapping(
+        modelNumber,
+        categoryItemName,
+        categoryItemId || null,
+        userId
+      );
+    } else {
+      // Mapping cleared here — drop the canonical row so the two agree.
+      await ModelCategory.findOneAndDelete({ modelNumber });
+    }
+  }
+
   async updateItem(sku, updateData, userId) {
     const item = await ManualPurchaseOrderItem.findOne({ sku: sku.toUpperCase() });
     if (!item) {
@@ -254,6 +298,22 @@ class ManualPurchaseOrderItemService {
     item.lastUpdatedBy = userId;
 
     const updated = await item.save();
+
+    // Mirror the mapping into ModelCategory (the canonical Model→Category
+    // store) so Model Mapping, Stock, and every other consumer keyed on
+    // modelNumber see it too. Without this, an item mapped here shows as
+    // "Unmapped" on the Model Mapping screen. saveMapping() does the reverse.
+    if (
+      updateData.mappedCategoryItemName !== undefined ||
+      updateData.mappedCategoryItemId !== undefined
+    ) {
+      await this.syncMappingToModelCategory(
+        updated.sku,
+        updated.mappedCategoryItemName,
+        updated.mappedCategoryItemId,
+        userId
+      );
+    }
 
     // Cascade SKU rename across every collection that stores the SKU as a
     // foreign key. Done after save() so the master record is updated first;
