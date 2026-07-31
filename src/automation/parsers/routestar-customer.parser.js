@@ -17,6 +17,7 @@ class RouteStarCustomerParser {
       status: rawCustomer.status || null,
       onRoute: rawCustomer.onRoute || null,
       lastServiceDate: rawCustomer.lastServiceDate || null,
+      createdDate: (() => { const d = rawCustomer.createdDate ? new Date(rawCustomer.createdDate) : null; return d && !isNaN(d.getTime()) ? d : null; })(),
       zone: rawCustomer.zone || null,
       lastSyncDate: new Date(),
       rawData: rawCustomer

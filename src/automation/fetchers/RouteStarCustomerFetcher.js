@@ -78,6 +78,16 @@ class RouteStarCustomerFetcher {
         break;
       }
 
+      // Map visible column headers -> cell index (robust to RouteStar column reorder/hide)
+      const colMap = {};
+      try {
+        const headerThs = await masterTable.$$('table.htCore thead tr th');
+        for (let h = 0; h < headerThs.length; h++) {
+          const label = (await headerThs[h].evaluate((el) => (el.textContent || '').trim())).toLowerCase();
+          if (label) colMap[label] = h - 1; // minus the leading row-header/corner th
+        }
+      } catch (e) { /* fall back to name/link extraction if header read fails */ }
+
       for (let i = 0; i < customerRows.length; i++) {
         const row = customerRows[i];
 
@@ -87,7 +97,7 @@ class RouteStarCustomerFetcher {
         }
 
         try {
-          const customerData = await this.extractCustomerListData(row);
+          const customerData = await this.extractCustomerListData(row, colMap);
           if (customerData) {
             console.log(`  ✓ Row ${i + 1}: Customer ${customerData.customerName || customerData.customerId}`);
             if (stream) pageCustomers.push(customerData);
@@ -138,60 +148,59 @@ class RouteStarCustomerFetcher {
     return customers;
   }
 
-  async extractCustomerListData(row) {
+  async extractCustomerListData(row, colMap = {}) {
     try {
-      // Extract basic data from customer list view
-      // Based on actual table structure observed in RouteStar
-      const customerName = await row.$eval('td:nth-of-type(1)', el => el.textContent.trim()).catch(() => null);
+      const tds = await row.$$('td');
+      if (!tds.length) return null;
 
-      if (!customerName) {
-        return null;
-      }
+      const cellAt = (name) => {
+        const idx = colMap[name];
+        return (idx != null && idx >= 0 && tds[idx]) ? tds[idx] : null;
+      };
+      const textOf = async (name) => {
+        const cell = cellAt(name);
+        if (!cell) return null;
+        const t = await cell.evaluate((el) => (el.textContent || '').trim());
+        return t || null;
+      };
 
-      // Extract customerId from the link in the first column (if exists)
-      const customerLink = await row.$eval('td:nth-of-type(1) a', el => el.href).catch(() => null);
-      let customerId = customerName; // Default to name if no ID found
+      // customerId comes from the customer-detail link (in the Customer column) — found
+      // anywhere in the row so it survives column reordering/hiding.
+      const customerLink = await row.$eval('a[href*="customerdetail/"]', (el) => el.href).catch(() => null);
+      let customerId = null;
       if (customerLink) {
-        const match = customerLink.match(/customerdetail\/([^/]+)$/);
-        if (match) {
-          customerId = match[1];
-        }
+        const match = customerLink.match(/customerdetail\/([^/?#]+)/);
+        if (match) customerId = decodeURIComponent(match[1]);
       }
 
-      const serviceAddress1 = await row.$eval('td:nth-of-type(2)', el => el.textContent.trim()).catch(() => null);
-      const serviceCity = await row.$eval('td:nth-of-type(3)', el => el.textContent.trim()).catch(() => null);
-      const serviceState = await row.$eval('td:nth-of-type(4)', el => el.textContent.trim()).catch(() => null);
-      const serviceZip = await row.$eval('td:nth-of-type(5)', el => el.textContent.trim()).catch(() => null);
-      const phone = await row.$eval('td:nth-of-type(6)', el => el.textContent.trim()).catch(() => null);
-      const email = await row.$eval('td:nth-of-type(7)', el => el.textContent.trim()).catch(() => null);
-      const contact = await row.$eval('td:nth-of-type(8)', el => el.textContent.trim()).catch(() => null);
-      const accountNumber = await row.$eval('td:nth-of-type(9)', el => el.textContent.trim()).catch(() => null);
-      const balance = await row.$eval('td:nth-of-type(10)', el => el.textContent.replace(/[$,]/g, '').trim()).catch(() => null);
-      const customerType = await row.$eval('td:nth-of-type(11)', el => el.textContent.trim()).catch(() => null);
-      const salesRep = await row.$eval('td:nth-of-type(12)', el => el.textContent.trim()).catch(() => null);
-      const status = await row.$eval('td:nth-of-type(13)', el => el.textContent.trim()).catch(() => null);
-      const onRoute = await row.$eval('td:nth-of-type(14)', el => el.textContent.trim()).catch(() => null);
-      const lastServiceDate = await row.$eval('td:nth-of-type(15)', el => el.textContent.trim()).catch(() => null);
-      const zone = await row.$eval('td:nth-of-type(16)', el => el.textContent.trim()).catch(() => null);
+      const firstCellText = tds[0] ? await tds[0].evaluate((el) => (el.textContent || '').trim()) : null;
+      const customerName = (await textOf('customer')) || (await textOf('company')) || firstCellText || null;
+      if (!customerId) customerId = customerName;
+      if (!customerId) return null;
+
+      const balanceRaw = await textOf('balance');
+      const createdRaw = await textOf('created');
+      const lastServiceRaw = (await textOf('last service date')) || (await textOf('last service'));
 
       return {
         customerId,
         customerName,
-        contact,
-        email,
-        phone,
-        serviceAddress1,
-        serviceCity,
-        serviceState,
-        serviceZip,
-        accountNumber,
-        balance: balance ? parseFloat(balance) : null,
-        customerType,
-        salesRep,
-        status,
-        onRoute,
-        lastServiceDate: lastServiceDate ? new Date(lastServiceDate) : null,
-        zone,
+        contact: await textOf('contact'),
+        email: await textOf('email'),
+        phone: await textOf('phone'),
+        serviceAddress1: await textOf('address'),
+        serviceCity: await textOf('city'),
+        serviceState: await textOf('state'),
+        serviceZip: await textOf('zip'),
+        accountNumber: await textOf('account'),
+        balance: balanceRaw ? parseFloat(balanceRaw.replace(/[$,]/g, '')) : null,
+        customerType: await textOf('customer type'),
+        salesRep: await textOf('sales rep'),
+        status: await textOf('status'),
+        onRoute: await textOf('on route'),
+        lastServiceDate: lastServiceRaw ? new Date(lastServiceRaw) : null,
+        zone: await textOf('zone'),
+        createdDate: createdRaw || null,
         detailUrl: `${this.baseUrl}/web/customerdetail/${customerId}`
       };
     } catch (error) {
