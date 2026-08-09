@@ -3,6 +3,7 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const FetchHistory = require('../models/FetchHistory');
+const { virginiaDateRange } = require('../utils/syncWindow');
 
 class RouteStarService {
   
@@ -585,18 +586,35 @@ class RouteStarService {
         query['customer.name'] = new RegExp(customer, 'i');
       }
       if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
+      // Closed invoices are filtered by when the work was COMPLETED — the date
+      // users actually care about. Other types keep invoiceDate.
+      const allowedDateFields = ['invoiceDate', 'dateCompleted', 'createdAt'];
+      const defaultDateField = invoiceType === 'closed' ? 'dateCompleted' : 'invoiceDate';
+      const filterField = allowedDateFields.includes(dateField) ? dateField : defaultDateField;
+
       if (startDate || endDate) {
-        const allowedDateFields = ['invoiceDate', 'dateCompleted', 'createdAt'];
-        const filterField = allowedDateFields.includes(dateField) ? dateField : 'invoiceDate';
-        query[filterField] = {};
-        if (startDate) query[filterField].$gte = new Date(startDate);
-        if (endDate) query[filterField].$lte = new Date(endDate);
+        // Date-only inputs are Virginia calendar days. Resolving them to
+        // ET midnight .. ET 23:59:59.999 keeps a same-day range meaningful — a
+        // raw `new Date('2026-08-09')` is midnight UTC (8 PM the previous day in
+        // Virginia), which made "from the 9th to the 9th" match nothing.
+        const { start, end } = virginiaDateRange(startDate, endDate);
+        const range = {};
+        if (start) range.$gte = start;
+        if (end) range.$lte = end;
+        query[filterField] = range;
+        // An invoice with no completion date cannot satisfy a completion-date
+        // filter — exclude nulls explicitly rather than relying on comparison.
+        if (filterField === 'dateCompleted') {
+          query[filterField].$ne = null;
+        }
       }
       const skip = (page - 1) * limit;
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
           .select('_id invoiceNumber invoiceDate dateCompleted customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete source createdAt updatedAt lastSyncedAt lineItems')
-          .sort({ invoiceDate: -1 })
+          // Order by the same field the list is filtered on, so the ordering
+          // matches the dates the user is looking at.
+          .sort({ [filterField]: -1, invoiceNumber: -1 })
           .skip(skip)
           .limit(parseInt(limit))
           .lean(),

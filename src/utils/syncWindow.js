@@ -64,9 +64,63 @@ function rollingWindow(lookbackDays = 30, now = new Date()) {
   return { dateFrom, dateTo, scope: `${dateFrom}..${dateTo}` };
 }
 
+/**
+ * UTC offset (in minutes) that Virginia is at on a given instant — handles EST
+ * (-300) vs EDT (-240) without hardcoding either.
+ */
+function virginiaOffsetMinutes(at) {
+  // 'en-US' longOffset renders like "GMT-4" / "GMT-04:00".
+  const label = new Intl.DateTimeFormat('en-US', {
+    timeZone: VIRGINIA_TIMEZONE,
+    timeZoneName: 'longOffset'
+  }).formatToParts(at).find((p) => p.type === 'timeZoneName').value;
+  const m = label.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
+}
+
+/**
+ * Convert a YYYY-MM-DD (a calendar day *in Virginia*) plus a wall-clock time
+ * into the correct UTC instant.
+ *
+ * Date-only filters are otherwise parsed by `new Date('2026-08-09')` as midnight
+ * UTC — which is 8 PM the previous day in Virginia. That shifts every day
+ * boundary by 4-5 hours and makes a same-day range match nothing at all.
+ */
+function virginiaDayBoundary(isoDate, endOfDay = false) {
+  const [y, m, d] = String(isoDate).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const h = endOfDay ? 23 : 0;
+  const min = endOfDay ? 59 : 0;
+  const sec = endOfDay ? 59 : 0;
+  const ms = endOfDay ? 999 : 0;
+  // Guess using the offset at that wall time, then re-resolve so a DST
+  // transition on the day itself still lands on the right instant.
+  const naive = Date.UTC(y, m - 1, d, h, min, sec, ms);
+  let offset = virginiaOffsetMinutes(new Date(naive));
+  let instant = new Date(naive - offset * 60000);
+  const settled = virginiaOffsetMinutes(instant);
+  if (settled !== offset) {
+    instant = new Date(naive - settled * 60000);
+  }
+  return instant;
+}
+
+/** Inclusive [start, end] UTC instants covering the given Virginia day(s). */
+function virginiaDateRange(startDate, endDate) {
+  return {
+    start: startDate ? virginiaDayBoundary(startDate, false) : null,
+    end: endDate ? virginiaDayBoundary(endDate, true) : null
+  };
+}
+
 module.exports = {
   VIRGINIA_TIMEZONE,
   virginiaToday,
   shiftDays,
-  rollingWindow
+  rollingWindow,
+  virginiaOffsetMinutes,
+  virginiaDayBoundary,
+  virginiaDateRange
 };
