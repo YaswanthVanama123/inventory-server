@@ -18,6 +18,7 @@ const SyncLog = require('../models/SyncLog');
 const SyncCheckpoint = require('../models/SyncCheckpoint');
 const { bulkUpsert, delay } = require('./sync/streamingSync');
 const routestarConfig = require('../automation/config/routestar.config');
+const { rollingWindow } = require('../utils/syncWindow');
 
 
 function parseRouteStarDate(dateString) {
@@ -578,11 +579,33 @@ class RouteStarSyncService {
       throw error;
     }
   }
-  async syncClosedInvoices(limit = Infinity, direction = 'new') {
+  async syncClosedInvoices(limit = Infinity, direction = 'new', options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction} [streaming]`);
+
+    // Date window. RouteStar's grid defaults to a narrow range, so without an
+    // explicit window a "fetch all" run only ever saw that slice — which is why
+    // recently-closed invoices never got stored. A rolling look-back re-scans
+    // the recent past every run, so anything a previous run missed is picked up
+    // (upserts are keyed on invoiceNumber, so re-scans are cheap no-ops).
+    // `fullBackfill: true` scans without a window for a one-off full catch-up.
+    const fullBackfill = options.fullBackfill === true;
+    let window = null;
+    if (!fullBackfill) {
+      const lookbackDays = options.lookbackDays != null
+        ? options.lookbackDays
+        : (process.env.ROUTESTAR_CLOSED_LOOKBACK_DAYS || 30);
+      window = rollingWindow(lookbackDays);
+      console.log(`   📅 Date window (Virginia time): ${window.dateFrom} → ${window.dateTo}`);
+    } else {
+      console.log('   📅 Full backfill — no date window applied');
+    }
+
     await this.createSyncLog();
-    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'closed_invoices', { resume: fetchAll });
+    const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'closed_invoices', {
+      resume: fetchAll,
+      scope: fullBackfill ? 'full' : window.scope
+    });
     let created = 0;
     let updated = 0;
     let skipped = 0;
@@ -660,7 +683,11 @@ class RouteStarSyncService {
         pageInvoices.length = 0;
       };
 
-      const summary = await this.automation.fetchClosedInvoicesList(limit, direction, { onPage, startPage });
+      const summary = await this.automation.fetchClosedInvoicesList(limit, direction, {
+        onPage,
+        startPage,
+        ...(window ? { dateFrom: window.dateFrom, dateTo: window.dateTo } : {})
+      });
       total = summary.totalCount != null ? summary.totalCount : total;
 
       if (total === 0) {

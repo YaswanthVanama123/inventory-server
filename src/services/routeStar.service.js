@@ -146,16 +146,46 @@ class RouteStarService {
       throw error;
     }
   }
-  async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null) {
-    let syncService = null;
-    let fetchRecord = null;
-    try {
-      fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
-        limit: limit,
-        direction: direction,
-        triggeredBy: triggeredBy,
-        userId: userId
+  /**
+   * Sync closed invoices.
+   *
+   * A full scrape takes minutes, which is far longer than any browser or
+   * reverse proxy will hold a request open (the API client gives up at 30s and
+   * the proxy returns 504 at ~60s). So when `options.background` is set we
+   * create the FetchHistory record, kick the work off, and return the fetchId
+   * immediately — callers track progress by polling Fetch History instead of
+   * holding the connection.
+   */
+  async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null, options = {}) {
+    const fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
+      limit: limit,
+      direction: direction,
+      triggeredBy: triggeredBy,
+      userId: userId
+    });
+
+    const work = this._runClosedSync(fetchRecord, limit, direction, options);
+
+    if (options.background) {
+      // Failures are already recorded on the fetch record by _runClosedSync;
+      // swallow here so the rejection never becomes an unhandled promise.
+      work.catch((error) => {
+        console.error('Background closed invoices sync failed:', error.message);
       });
+      return {
+        success: true,
+        started: true,
+        message: 'Closed invoices sync started. Track progress in Fetch History.',
+        fetchId: fetchRecord._id
+      };
+    }
+
+    return await work;
+  }
+
+  async _runClosedSync(fetchRecord, limit, direction, options = {}) {
+    let syncService = null;
+    try {
       if (limit === 0 || limit === null || limit === 'Infinity' || limit === Infinity) {
         limit = Infinity;
       } else {
@@ -163,7 +193,7 @@ class RouteStarService {
       }
       syncService = new RouteStarSyncService();
       await syncService.init();
-      const results = await syncService.syncClosedInvoices(limit);
+      const results = await syncService.syncClosedInvoices(limit, direction, options);
       await fetchRecord.markCompleted({
         totalFetched: results.total || 0,
         created: results.created || 0,
@@ -178,8 +208,10 @@ class RouteStarService {
       };
     } catch (error) {
       console.error('Closed invoices sync error:', error);
-      if (fetchRecord) {
+      try {
         await fetchRecord.markFailed(error.message, { stack: error.stack });
+      } catch (markError) {
+        console.error('Failed to record sync failure:', markError.message);
       }
       throw error;
     } finally {

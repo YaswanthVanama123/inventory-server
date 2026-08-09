@@ -147,7 +147,7 @@ class RouteStarAutomation {
       return await this.fetcher.fetchClosedInvoices(limit, direction, options);
     }
     return await retry(
-      async () => await this.fetcher.fetchClosedInvoices(limit, direction),
+      async () => await this.fetcher.fetchClosedInvoices(limit, direction, options),
       {
         attempts: 3,
         delay: 2000,

@@ -47,7 +47,11 @@ const syncCheckpointSchema = new mongoose.Schema({
   detailsFetched: { type: Number, default: 0 },
   failed: { type: Number, default: 0 },
   startedAt: { type: Date, default: Date.now },
-  errorMessage: { type: String }
+  errorMessage: { type: String },
+  // Signature of the source-side filter this run scanned (e.g. the closed
+  // invoice date window). Page N of one window is NOT page N of another, so a
+  // crashed run may only be resumed when the scope is identical.
+  scope: { type: String }
 }, {
   timestamps: true
 });
@@ -64,10 +68,17 @@ syncCheckpointSchema.index({ scraper: 1, entity: 1 }, { unique: true });
  * @returns {Promise<{ doc, startPage }>}  startPage = pages to skip on the source.
  */
 syncCheckpointSchema.statics.begin = async function (scraper, entity, options = {}) {
-  const { resume = true } = options;
+  const { resume = true, scope = null } = options;
   let doc = await this.findOne({ scraper, entity });
 
-  if (doc && resume && doc.status === 'in_progress' && doc.lastCompletedPage > 0) {
+  if (
+    doc &&
+    resume &&
+    doc.status === 'in_progress' &&
+    doc.lastCompletedPage > 0 &&
+    // Only resume when the previous run scanned the same source-side window.
+    (doc.scope || null) === (scope || null)
+  ) {
     // A previous run died mid-flight — resume after the last saved page.
     return { doc, startPage: doc.lastCompletedPage };
   }
@@ -75,6 +86,7 @@ syncCheckpointSchema.statics.begin = async function (scraper, entity, options = 
   if (!doc) {
     doc = new this({ scraper, entity });
   }
+  doc.scope = scope || undefined;
   // Fresh run: reset counters.
   doc.status = 'in_progress';
   doc.lastCompletedPage = 0;

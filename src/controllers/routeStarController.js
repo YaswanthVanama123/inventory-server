@@ -59,7 +59,29 @@ class RouteStarController {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
       const userId = req.user?._id;
-      const result = await routeStarService.syncClosed(limit, direction, triggeredBy, userId);
+      // Optional overrides:
+      //   lookbackDays  – how many days back to re-scan (default 30, env-tunable)
+      //   fullBackfill  – ignore the date window entirely and scan everything
+      //                   (use once to catch up invoices older than the window)
+      const options = {};
+      if (req.body.lookbackDays != null) options.lookbackDays = req.body.lookbackDays;
+      if (req.body.fullBackfill === true || req.body.fullBackfill === 'true') {
+        options.fullBackfill = true;
+      }
+      // Scraping takes minutes — far longer than the API client's 30s timeout or
+      // the proxy's ~60s ceiling. Run it in the background and hand back the
+      // fetchId so the UI can poll Fetch History for progress. Pass
+      // `background: false` to wait synchronously (scripts / short limits).
+      options.background = req.body.background !== false;
+      const result = await routeStarService.syncClosed(limit, direction, triggeredBy, userId, options);
+      if (result.started) {
+        return res.status(202).json({
+          success: true,
+          started: true,
+          message: result.message,
+          fetchId: result.fetchId
+        });
+      }
       res.json({
         success: true,
         message: result.message,

@@ -20,6 +20,13 @@ class RouteStarFetcher {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📥 Fetching RouteStar Closed Invoices ${fetchAll ? '(ALL)' : `(limit: ${limit})`}`);
     await this.navigator.navigateToClosedInvoices();
+    // Apply an explicit date window. Without this the grid keeps its narrow
+    // default range and the sync can never see recently-closed invoices.
+    if (options.dateFrom && options.dateTo) {
+      await this.navigator.setClosedInvoiceDateRange(options.dateFrom, options.dateTo);
+    } else {
+      console.log('  ℹ️  No date window supplied — using the page default range');
+    }
     const sortDirection = direction === 'new' ? 'desc' : 'asc';
     await this.navigator.sortByInvoiceNumber(sortDirection);
     return await this.fetchInvoicesList(limit, this.selectors.closedInvoicesList, 'closed', options);

@@ -38,6 +38,11 @@ module.exports = {
     arrivalTime: 'td:nth-of-type(15)'
   },
   closedInvoicesList: {
+    // RouteStar's closed-invoice grid is date-filtered by two native date
+    // inputs (rendered in DOM order: from, to). The scraper MUST set these —
+    // left alone, the page defaults to a narrow window and the sync silently
+    // only ever sees that slice.
+    dateInputs: 'input[type="date"]',
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
     invoiceNumber: 'td:nth-of-type(1) a',
