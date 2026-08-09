@@ -89,6 +89,16 @@ class RouteStarController {
         fetchId: result.fetchId
       });
     } catch (error) {
+      // Already running — 409 so the UI can say so instead of showing a failure.
+      if (error.code === 'SYNC_IN_PROGRESS') {
+        return res.status(409).json({
+          success: false,
+          code: 'SYNC_IN_PROGRESS',
+          message: error.message,
+          fetchId: error.fetchId,
+          startedAt: error.startedAt
+        });
+      }
       console.error('Closed invoices sync error:', error);
       res.status(500).json({
         success: false,

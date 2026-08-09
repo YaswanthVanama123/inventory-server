@@ -157,6 +157,18 @@ class RouteStarService {
    * holding the connection.
    */
   async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null, options = {}) {
+    // Refuse to start a second scrape on top of a live one — two Playwright
+    // sessions would fight over the same RouteStar login. Stale records are
+    // reaped by findActiveRun, so a crashed run can't block this forever.
+    const active = await FetchHistory.findActiveRun('routestar_invoices', 'closed');
+    if (active) {
+      const err = new Error('A closed invoices sync is already running. Wait for it to finish.');
+      err.code = 'SYNC_IN_PROGRESS';
+      err.fetchId = active._id;
+      err.startedAt = active.startedAt;
+      throw err;
+    }
+
     const fetchRecord = await FetchHistory.startFetch('routestar_invoices', 'closed', {
       limit: limit,
       direction: direction,
