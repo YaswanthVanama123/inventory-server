@@ -15,15 +15,6 @@ class CustomerConnectNavigator {
       timeout: 90000      
     });
     await this.page.waitForTimeout(2000);
-    try {
-      const screenshotsDir = require('path').join(__dirname, '../../screenshots');
-      require('fs').mkdirSync(screenshotsDir, { recursive: true });
-      await this.page.screenshot({
-        path: require('path').join(screenshotsDir, `orders-page-${Date.now()}.png`),
-        fullPage: true,
-        timeout: 15000
-      });
-    } catch (e) {}
     await this.page.waitForSelector('#content', { timeout: 20000 });
   }
   async navigateToOrderDetails(orderUrl) {

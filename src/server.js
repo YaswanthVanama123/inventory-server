@@ -209,6 +209,17 @@ const HOST = '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
   console.log(`Access locally at: http://127.0.0.1:${PORT}`);
+
+  // Nightly screenshot cleanup (11:30 PM). Started unconditionally — unlike the
+  // sync schedulers it needs no DB or browser, and screenshots are written on
+  // dev machines where AUTO_START_SCHEDULER is usually off.
+  try {
+    const { getScreenshotCleanupScheduler } = require('./services/screenshotCleanup.service');
+    getScreenshotCleanupScheduler().start();
+  } catch (error) {
+    console.error('Failed to start screenshot cleanup scheduler:', error.message);
+  }
+
   if (process.env.AUTO_START_SCHEDULER === 'true') {
     const { getInventoryScheduler } = require('./services/inventoryScheduler.service');
     const scheduler = getInventoryScheduler();
@@ -276,6 +287,12 @@ const gracefulShutdown = (signal) => {
     getInventoryScheduler().stop();
   } catch (e) {
     console.error('Scheduler stop failed:', e.message);
+  }
+  try {
+    const { getScreenshotCleanupScheduler } = require('./services/screenshotCleanup.service');
+    getScreenshotCleanupScheduler().stop();
+  } catch (e) {
+    console.error('Screenshot cleanup stop failed:', e.message);
   }
   try {
     const auditQueue = require('./services/auditQueue');

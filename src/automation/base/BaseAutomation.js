@@ -240,20 +240,14 @@ class BaseAutomation {
     }
     return results;
   }
+  /**
+   * Capture a failure screenshot. Routed through the shared helper so the
+   * "errors only, local only" rules apply here too — returns null when
+   * screenshots are disabled (e.g. in production).
+   */
   async takeScreenshot(name) {
-    try {
-      const screenshotsDir = path.join(__dirname, '../../screenshots');
-      if (!fs.existsSync(screenshotsDir)) {
-        fs.mkdirSync(screenshotsDir, { recursive: true });
-      }
-      const filename = `${name}-${Date.now()}.png`;
-      const filepath = path.join(screenshotsDir, filename);
-      await this.page.screenshot({ path: filepath, fullPage: true });
-      return filepath;
-    } catch (error) {
-      console.error('Screenshot failed:', error.message);
-      return null;
-    }
+    const { captureScreenshot } = require('../utils/screenshot');
+    return captureScreenshot(this.page, name);
   }
   async executeWithRetry(fn, options = {}) {
     const { retries = 3, delay = 2000, onRetry = null } = options;

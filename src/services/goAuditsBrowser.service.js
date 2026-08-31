@@ -1,6 +1,11 @@
 const { chromium } = require('playwright');
+const { screenshotsEnabled } = require('../automation/utils/screenshot');
 
-const SCREENSHOTS_ENABLED = process.env.GOAUDITS_DEBUG_SCREENSHOTS !== 'false';
+// Defaulted ON everywhere before, which meant production kept writing debug
+// PNGs to /tmp. Now it follows the same rule as the scrapers: errors only,
+// local only. GOAUDITS_DEBUG_SCREENSHOTS=false still forces it off.
+const goAuditsScreenshotsEnabled = () =>
+  process.env.GOAUDITS_DEBUG_SCREENSHOTS !== 'false' && screenshotsEnabled();
 
 class GoAuditsBrowserService {
   constructor() {
@@ -13,7 +18,7 @@ class GoAuditsBrowserService {
   }
 
   async _captureScreenshot(filePath) {
-    if (!SCREENSHOTS_ENABLED || !this.page) return;
+    if (!goAuditsScreenshotsEnabled() || !this.page) return;
     try {
       await this.page.screenshot({ path: filePath });
       console.error(`   Screenshot saved to ${filePath}`);

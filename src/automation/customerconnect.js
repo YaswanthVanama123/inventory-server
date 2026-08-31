@@ -242,10 +242,14 @@ class CustomerConnectAutomation {
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
-      await captureScreenshot(this.page, name);
-      this.logger.info('Screenshot captured', { name });
+      // Returns null when screenshots are disabled (production) — callers
+      // store the path on the sync log, so hand it back.
+      const filepath = await captureScreenshot(this.page, name);
+      if (filepath) this.logger.info('Error screenshot captured', { name });
+      return filepath;
     } catch (error) {
       this.logger.warn('Failed to capture screenshot', { error: error.message });
+      return null;
     }
   }
   async close() {

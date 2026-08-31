@@ -1,5 +1,6 @@
 const config = require('../config/routestar.config');
 const selectors = require('../selectors/routestar.selectors');
+const { captureScreenshot } = require('../utils/screenshot');
 
 
 class RouteStarNavigator {
@@ -34,20 +35,12 @@ class RouteStarNavigator {
     console.log('Waiting for page structure to render...');
     await this.page.waitForTimeout(3000);  
     console.log('Waiting for invoice table to render (max 5 minutes)...');
-    try {
-      const screenshotPath = `./screenshots/waiting-0s-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
-    } catch (e) {
-      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
-    }
     let tableRendered = false;
     const startTime = Date.now();
     const maxWaitMs = 300000;  
     const pollIntervalMs = 2000;  
     const logIntervalMs = 30000;  
     let lastLogTime = startTime;
-    let lastScreenshotTime = startTime;
     while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
       const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
       if (table) {
@@ -59,38 +52,16 @@ class RouteStarNavigator {
         console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
         lastLogTime = Date.now();
       }
-      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
-        try {
-          const screenshotPath = `./screenshots/waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`  📸 Screenshot: ${screenshotPath}`);
-          lastScreenshotTime = Date.now();
-        } catch (e) {
-          console.log(`  ⚠️  Screenshot failed: ${e.message}`);
-          lastScreenshotTime = Date.now(); 
-        }
-      }
       await this.page.waitForTimeout(pollIntervalMs);
     }
     if (!tableRendered) {
       console.log('❌ Table did not render within 5 minutes');
-      try {
-        const screenshotPath = `./screenshots/table-not-rendered-${Date.now()}.png`;
-        await this.page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`  📸 Screenshot: ${screenshotPath}`);
-      } catch (e) {
-      }
+      await captureScreenshot(this.page, 'table-not-rendered');
       throw new Error('Invoices table did not render. Page may have failed to load properly.');
     }
     console.log('✓ Table rendered successfully');
     console.log('Waiting for table data to load...');
     await this.page.waitForTimeout(5000);
-    try {
-      const screenshotPath = `./screenshots/table-rendered-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`📸 Screenshot: ${screenshotPath}`);
-    } catch (e) {
-    }
     console.log('✓ Successfully navigated to pending invoices page');
   }
   async sortByInvoiceNumber(direction = 'desc') {
@@ -134,14 +105,7 @@ class RouteStarNavigator {
       return true;
     } catch (error) {
       console.log(`⚠️  Sorting failed: ${error.message} - will proceed without sorting`);
-      try {
-        const timestamp = Date.now();
-        const screenshotPath = `./screenshots/sort-failed-${timestamp}.png`;
-        await this.page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`  Screenshot saved to: ${screenshotPath}`);
-      } catch (screenshotError) {
-        console.log(`  Could not save screenshot: ${screenshotError.message}`);
-      }
+      await captureScreenshot(this.page, 'sort-failed');
       return false;
     }
   }
@@ -171,20 +135,12 @@ class RouteStarNavigator {
     console.log('Waiting for page structure to render...');
     await this.page.waitForTimeout(3000);  
     console.log('Waiting for closed invoices table to render (max 5 minutes)...');
-    try {
-      const screenshotPath = `./screenshots/closed-waiting-0s-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
-    } catch (e) {
-      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
-    }
     let tableRendered = false;
     const startTime = Date.now();
     const maxWaitMs = 300000;  
     const pollIntervalMs = 2000;  
     const logIntervalMs = 30000;  
     let lastLogTime = startTime;
-    let lastScreenshotTime = startTime;
     while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
       const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
       if (table) {
@@ -196,36 +152,16 @@ class RouteStarNavigator {
         console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
         lastLogTime = Date.now();
       }
-      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
-        try {
-          const screenshotPath = `./screenshots/closed-waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`  📸 Screenshot: ${screenshotPath}`);
-          lastScreenshotTime = Date.now();
-        } catch (e) {
-        }
-      }
       await this.page.waitForTimeout(pollIntervalMs);
     }
     if (!tableRendered) {
       console.log('❌ Table did not render within 5 minutes');
-      try {
-        const screenshotPath = `./screenshots/closed-table-not-rendered-${Date.now()}.png`;
-        await this.page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`  📸 Screenshot: ${screenshotPath}`);
-      } catch (e) {
-      }
+      await captureScreenshot(this.page, 'closed-table-not-rendered');
       throw new Error('Closed invoices table did not render.');
     }
     console.log('✓ Table rendered successfully');
     console.log('Waiting for table data to load...');
     await this.page.waitForTimeout(5000);
-    try {
-      const screenshotPath = `./screenshots/closed-table-rendered-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`📸 Screenshot: ${screenshotPath}`);
-    } catch (e) {
-    }
     console.log('✓ Successfully navigated to closed invoices page');
   }
 
@@ -306,20 +242,12 @@ class RouteStarNavigator {
     console.log('Waiting for page structure to render...');
     await this.page.waitForTimeout(3000);  
     console.log('Waiting for items table to render (max 5 minutes)...');
-    try {
-      const screenshotPath = `./screenshots/items-waiting-0s-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`  📸 Initial screenshot: ${screenshotPath}`);
-    } catch (e) {
-      console.log(`  ⚠️  Screenshot failed: ${e.message}`);
-    }
     let tableRendered = false;
     const startTime = Date.now();
     const maxWaitMs = 300000;  
     const pollIntervalMs = 2000;  
     const logIntervalMs = 30000;  
     let lastLogTime = startTime;
-    let lastScreenshotTime = startTime;
     while (!tableRendered && (Date.now() - startTime) < maxWaitMs) {
       const table = await this.page.$('table, .dataTables_wrapper, .handsontable, div.ht_master');
       if (table) {
@@ -331,38 +259,16 @@ class RouteStarNavigator {
         console.log(`  Still waiting... (${Math.floor(elapsed / 1000)}s elapsed)`);
         lastLogTime = Date.now();
       }
-      if (elapsed - (lastScreenshotTime - startTime) >= logIntervalMs) {
-        try {
-          const screenshotPath = `./screenshots/items-waiting-${Math.floor(elapsed / 1000)}s-${Date.now()}.png`;
-          await this.page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`  📸 Screenshot: ${screenshotPath}`);
-          lastScreenshotTime = Date.now();
-        } catch (e) {
-          console.log(`  ⚠️  Screenshot failed: ${e.message}`);
-          lastScreenshotTime = Date.now(); 
-        }
-      }
       await this.page.waitForTimeout(pollIntervalMs);
     }
     if (!tableRendered) {
       console.log('❌ Table did not render within 5 minutes');
-      try {
-        const screenshotPath = `./screenshots/items-table-not-rendered-${Date.now()}.png`;
-        await this.page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`  📸 Screenshot: ${screenshotPath}`);
-      } catch (e) {
-      }
+      await captureScreenshot(this.page, 'items-table-not-rendered');
       throw new Error('Items table did not render. Page may have failed to load properly.');
     }
     console.log('✓ Table rendered successfully');
     console.log('Waiting for table data to load...');
     await this.page.waitForTimeout(5000);
-    try {
-      const screenshotPath = `./screenshots/items-table-rendered-${Date.now()}.png`;
-      await this.page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`📸 Screenshot: ${screenshotPath}`);
-    } catch (e) {
-    }
     console.log('✓ Successfully navigated to items page');
   }
   async setItemsPerPageToAll() {
@@ -373,12 +279,6 @@ class RouteStarNavigator {
       console.log('✓ Selected "All" items per page');
       console.log('Waiting for table to reload with all items (this may take 15-20 seconds for large datasets)...');
       await this.page.waitForTimeout(15000);  
-      try {
-        const screenshotPath = `./screenshots/items-all-loaded-${Date.now()}.png`;
-        await this.page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`📸 Screenshot: ${screenshotPath}`);
-      } catch (e) {
-      }
       console.log('✓ All items loaded');
       return true;
     } catch (error) {
