@@ -8,6 +8,7 @@ const Purchase = require('../models/Purchase');
 const StockSummary = require('../models/StockSummary');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
+const itemCaseQuantityService = require('../services/itemCaseQuantity.service');
 const { uploadToImgBB, uploadMultipleToImgBB, deleteLocalFile } = require('../utils/imgbbUpload');
 
 
@@ -127,6 +128,7 @@ const transformItem = (item, weightedAvgPrice = null, syncMetadata = null) => {
     poNumber: itemObj.poNumber || '',
     orderCount: itemObj.orderCount || 0,
     totalPurchased: itemObj.totalPurchased || 0,
+    unitsPerCase: itemObj.unitsPerCase || 1,
     customerName: itemObj.customerName || '',
     invoiceNumber: itemObj.invoiceNumber || '',
     invoiceType: itemObj.invoiceType || '',
@@ -331,6 +333,9 @@ const getEnrichedStockHistory = async (skuCode, stockHistory = []) => {
 const getInventoryItems = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, category, search, lowStock, includeSyncStatus } = req.query;
+    // Purchase lines are recorded per case; the quantities shown here are in
+    // selling units, so every purchased qty is scaled by its case quantity.
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const ccOrders = await CustomerConnectOrder.find({}).lean();
     const ccItemsMap = new Map();
     ccOrders.forEach(order => {
@@ -343,9 +348,10 @@ const getInventoryItems = async (req, res, next) => {
               return;
             }
           }
+          const units = itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
           if (ccItemsMap.has(sku)) {
             const existing = ccItemsMap.get(sku);
-            existing.totalQuantity += item.qty || 0;
+            existing.totalQuantity += units;
             existing.totalValue += item.lineTotal || 0;
             existing.orderCount += 1;
             if (order.lastSyncedAt > existing.lastSyncedAt) {
@@ -358,7 +364,8 @@ const getInventoryItems = async (req, res, next) => {
               itemName: item.name,
               name: item.name,
               description: `Purchased from ${order.vendor?.name || 'CustomerConnect'}`,
-              totalQuantity: item.qty || 0,
+              unitsPerCase: itemCaseQuantityService.unitsPerCase(caseMap, sku),
+              totalQuantity: units,
               totalValue: item.lineTotal || 0,
               latestUnitPrice: item.unitPrice || 0,
               orderCount: 1,
@@ -437,9 +444,10 @@ const getInventoryItems = async (req, res, next) => {
               return;
             }
           }
+          const units = itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
           if (manualItemsMap.has(sku)) {
             const existing = manualItemsMap.get(sku);
-            existing.totalQuantity += item.qty || 0;
+            existing.totalQuantity += units;
             existing.totalValue += item.lineTotal || 0;
             existing.orderCount += 1;
             const orderTime = new Date(order.orderDate || order.createdAt || 0).getTime();
@@ -453,7 +461,8 @@ const getInventoryItems = async (req, res, next) => {
               itemName: item.name,
               name: item.name,
               description: `Purchased from ${order.vendor?.name || 'Manual Order'}`,
-              totalQuantity: item.qty || 0,
+              unitsPerCase: itemCaseQuantityService.unitsPerCase(caseMap, sku),
+              totalQuantity: units,
               totalValue: item.lineTotal || 0,
               latestUnitPrice: item.unitPrice || 0,
               orderCount: 1,
@@ -507,6 +516,7 @@ const getInventoryItems = async (req, res, next) => {
         poNumber: ccItem.poNumber,
         orderCount: ccItem.orderCount,
         totalPurchased: ccItem.totalQuantity,
+        unitsPerCase: ccItem.unitsPerCase || 1,
         sync: {
           syncSource: 'customerconnect',
           hasSyncedData: true,
@@ -643,6 +653,7 @@ const getInventoryItems = async (req, res, next) => {
           poNumber: manualItem.poNumber,
           orderCount: manualItem.orderCount,
           totalPurchased: manualItem.totalQuantity,
+          unitsPerCase: manualItem.unitsPerCase || 1,
           sync: {
             syncSource: 'manual',
             hasSyncedData: false,
@@ -1667,6 +1678,7 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
       });
     });
     const mappings = await ModelCategory.find().lean();
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const skuToCategoryMap = {};
     mappings.forEach(mapping => {
       if (mapping.modelNumber && mapping.categoryItemName) {
@@ -1716,7 +1728,8 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
           if (category && groupedItems[category]) {
-            groupedItems[category].totalPurchased += item.qty || 0;
+            // Order quantities are per case; checkout stock is per selling unit.
+            groupedItems[category].totalPurchased += itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
           }
         });
       }

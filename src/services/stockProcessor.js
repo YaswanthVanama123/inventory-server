@@ -3,6 +3,7 @@ const StockSummary = require('../models/StockSummary');
 const Product = require('../models/Product');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const ExternalInvoice = require('../models/ExternalInvoice');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 
 class StockProcessor {
@@ -17,10 +18,13 @@ class StockProcessor {
       await purchaseOrder.save();
       return [];
     }
+    // Purchase lines are counted in purchase units (cases). Stock movements are
+    // always recorded in selling units, so scale by the SKU's case quantity.
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const docs = purchaseOrder.items.map((item) => ({
       sku: item.sku,
       type: 'IN',
-      qty: item.qty,
+      qty: itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty),
       refType: 'PURCHASE_ORDER',
       refId: purchaseOrder._id,
       sourceRef: purchaseOrder.orderNumber,
@@ -30,8 +34,9 @@ class StockProcessor {
     const movements = await StockMovement.insertMany(docs, { ordered: false });
     for (const item of purchaseOrder.items) {
       try {
-        await this.updateStockSummary(item.sku, item.qty, 'IN', userId);
-        console.log(`Stock IN: ${item.sku} +${item.qty} from PO ${purchaseOrder.orderNumber}`);
+        const units = itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty);
+        await this.updateStockSummary(item.sku, units, 'IN', userId);
+        console.log(`Stock IN: ${item.sku} +${units} from PO ${purchaseOrder.orderNumber}`);
       } catch (error) {
         console.error(`Error updating stock summary for ${item.sku}:`, error.message);
         throw error;
@@ -200,14 +205,18 @@ class StockProcessor {
     }
 
     const reversalMovements = [];
+    const caseMap = await itemCaseQuantityService.getLookupMap();
 
     for (const item of purchaseOrder.items) {
       try {
+        // Mirror processPurchaseOrder: the original IN was in selling units.
+        const units = itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty);
+
         // Create OUT movement to reverse the original IN
         const movement = await StockMovement.create({
           sku: item.sku,
           type: 'OUT',
-          qty: item.qty,
+          qty: units,
           refType: 'PURCHASE_ORDER_REVERSAL',
           refId: purchaseOrder._id,
           sourceRef: purchaseOrder.orderNumber,
@@ -218,9 +227,9 @@ class StockProcessor {
         reversalMovements.push(movement);
 
         // Update stock summary by removing the quantity
-        await this.updateStockSummary(item.sku, item.qty, 'OUT', userId);
+        await this.updateStockSummary(item.sku, units, 'OUT', userId);
 
-        console.log(`Stock reversal: ${item.sku} -${item.qty} from PO ${purchaseOrder.orderNumber}`);
+        console.log(`Stock reversal: ${item.sku} -${units} from PO ${purchaseOrder.orderNumber}`);
       } catch (error) {
         console.error(`Error reversing item ${item.sku}:`, error.message);
         throw error;
@@ -242,22 +251,29 @@ class StockProcessor {
    */
   static async processItemVerification(order, item, receivedQty, verificationId, userId = null) {
     try {
+      // receivedQty is counted in purchase units (cases); stock is in selling units.
+      const caseMap = await itemCaseQuantityService.getLookupMap();
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item.sku);
+      const units = (receivedQty || 0) * unitsPerCase;
+
       // Create stock movement for received quantity
       const movement = await StockMovement.create({
         sku: item.sku,
         type: 'IN',
-        qty: receivedQty,
+        qty: units,
         refType: 'ITEM_VERIFICATION',
         refId: order._id,
         sourceRef: `${order.orderNumber} - Verification ${verificationId}`,
-        notes: `Partial receipt: ${receivedQty} units from ${order.vendor?.name || 'Unknown Vendor'}`,
+        notes: unitsPerCase > 1
+          ? `Partial receipt: ${receivedQty} x ${unitsPerCase} = ${units} units from ${order.vendor?.name || 'Unknown Vendor'}`
+          : `Partial receipt: ${units} units from ${order.vendor?.name || 'Unknown Vendor'}`,
         createdBy: userId
       });
 
       // Update stock summary
-      await this.updateStockSummary(item.sku, receivedQty, 'IN', userId);
+      await this.updateStockSummary(item.sku, units, 'IN', userId);
 
-      console.log(`✓ Stock IN (Verification): ${item.sku} +${receivedQty} from Order ${order.orderNumber}`);
+      console.log(`✓ Stock IN (Verification): ${item.sku} +${units} from Order ${order.orderNumber}`);
 
       return movement;
     } catch (error) {

@@ -19,6 +19,7 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const RouteStarItem = require('../models/RouteStarItem');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const ModelCategory = require('../models/ModelCategory');
+const ItemCaseQuantity = require('../models/ItemCaseQuantity');
 const FetchHistory = require('../models/FetchHistory');
 const TruckCheckout = require('../models/TruckCheckout');
 async function initModels() {
@@ -43,6 +44,7 @@ async function initModels() {
     { name: 'RouteStarItem', model: RouteStarItem },
     { name: 'RouteStarItemAlias', model: RouteStarItemAlias },
     { name: 'ModelCategory', model: ModelCategory },
+    { name: 'ItemCaseQuantity', model: ItemCaseQuantity },
     { name: 'FetchHistory', model: FetchHistory },
     { name: 'TruckCheckout', model: TruckCheckout }
   ];

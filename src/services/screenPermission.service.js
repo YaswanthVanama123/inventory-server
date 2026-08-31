@@ -296,6 +296,7 @@ class ScreenPermissionService {
         // Master Data
         { name: 'vendors', displayName: 'Vendors', path: '/vendors', icon: 'BuildingIcon', category: 'Master Data', isDefault: false, order: 13 },
         { name: 'manual-po-items', displayName: 'Manual PO Items', path: '/manual-po-items', icon: 'TagIcon', category: 'Master Data', isDefault: false, order: 14 },
+        { name: 'case-quantity-mapping', displayName: 'Case Quantity Mapping', path: '/case-quantity-mapping', icon: 'CubeIcon', category: 'Master Data', isDefault: false, order: 15 },
 
         // Reports & Analytics
         { name: 'sales-report', displayName: 'Sales Report', path: '/routestar/sales-report', icon: 'ChartIcon', category: 'Reports', isDefault: false, order: 15 },
@@ -306,6 +307,7 @@ class ScreenPermissionService {
         { name: 'users', displayName: 'Users', path: '/users', icon: 'UsersIcon', category: 'Administration', isDefault: false, order: 18 },
         { name: 'screen-permissions', displayName: 'Screen Permissions', path: '/admin/screen-permissions', icon: 'ShieldCheckIcon', category: 'Administration', isDefault: false, order: 19 },
         { name: 'screen-management', displayName: 'Screen Management', path: '/admin/screens', icon: 'ClipboardListIcon', category: 'Administration', isDefault: false, order: 20 },
+        { name: 'data-cleanup', displayName: 'Data Cleanup', path: '/admin/data-cleanup', icon: 'TrashIcon', category: 'Administration', isDefault: false, order: 20.5 },
         { name: 'settings', displayName: 'Settings', path: '/settings', icon: 'SettingsIcon', category: 'Administration', isDefault: false, order: 21 },
         { name: 'fetch-history', displayName: 'Fetch History', path: '/system/fetch-history', icon: 'ClockHistoryIcon', category: 'Administration', isDefault: false, order: 22 },
 

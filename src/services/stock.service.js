@@ -6,6 +6,7 @@ const ModelCategory = require('../models/ModelCategory');
 const RouteStarItem = require('../models/RouteStarItem');
 const StockDiscrepancy = require('../models/StockDiscrepancy');
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 
 class StockService {
@@ -33,6 +34,7 @@ class StockService {
       categoryItemName: categoryName
     }).lean();
     console.timeEnd('[getCategorySkus] Step 1: Get mappings');
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const skus = mappings.map(m => m.modelNumber);
     if (skus.length === 0) {
       console.timeEnd(`[getCategorySkus] Total for ${categoryName}`);
@@ -157,9 +159,21 @@ class StockService {
         console.log(`[getCategorySkus] First purchase history entry:`, JSON.stringify(filteredPurchaseHistory[0]));
       }
 
+      // Purchase quantities are recorded in purchase units (cases); stock is
+      // tracked in selling units, so scale by the SKU's case quantity.
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item.sku);
+
       skuData[item.sku] = {
         ...item,
-        purchaseHistory: filteredPurchaseHistory
+        unitsPerCase,
+        totalQuantityCases: item.totalQuantity || 0,
+        totalQuantity: (item.totalQuantity || 0) * unitsPerCase,
+        purchaseHistory: filteredPurchaseHistory.map(order => ({
+          ...order,
+          caseQuantity: order.quantity || 0,
+          unitsPerCase,
+          quantity: (order.quantity || 0) * unitsPerCase
+        }))
       };
     });
     skus.forEach(sku => {
@@ -169,7 +183,9 @@ class StockService {
         skuData[skuUpper] = {
           sku: skuUpper,
           itemName: mapping?.notes || '',
+          unitsPerCase: itemCaseQuantityService.unitsPerCase(caseMap, skuUpper),
           totalQuantity: 0,
+          totalQuantityCases: 0,
           totalValue: 0,
           purchaseHistory: []
         };
@@ -538,37 +554,49 @@ class StockService {
     ]);
     console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
 
+    // Purchase quantities are in purchase units (cases). Convert to selling
+    // units before they are compared with sales / checkouts, which are always
+    // recorded per single unit.
+    const caseMap = await itemCaseQuantityService.getLookupMap();
+    const scalePurchaseRow = (item) => {
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item._id);
+      return {
+        sku: item._id,
+        itemName: item.itemName || '',
+        unitsPerCase,
+        totalPurchasedCases: item.totalPurchased || 0,
+        totalPurchased: (item.totalPurchased || 0) * unitsPerCase,
+        totalPurchaseValue: item.totalPurchaseValue || 0,
+        purchaseHistory: (item.purchaseHistory || []).map(order => ({
+          ...order,
+          caseQuantity: order.quantity || 0,
+          unitsPerCase,
+          quantity: (order.quantity || 0) * unitsPerCase
+        }))
+      };
+    };
+
     // Combine purchase data from both sources
     const purchaseDataMap = new Map();
 
     // Add CustomerConnect purchases
     ccPurchaseData.forEach(item => {
-      purchaseDataMap.set(item._id, {
-        sku: item._id,
-        itemName: item.itemName || '',
-        totalPurchased: item.totalPurchased || 0,
-        totalPurchaseValue: item.totalPurchaseValue || 0,
-        purchaseHistory: item.purchaseHistory || []
-      });
+      purchaseDataMap.set(item._id, scalePurchaseRow(item));
     });
 
     // Add or merge Manual purchases
     manualPurchaseData.forEach(item => {
+      const scaled = scalePurchaseRow(item);
       if (purchaseDataMap.has(item._id)) {
         // Merge with existing
         const existing = purchaseDataMap.get(item._id);
-        existing.totalPurchased += item.totalPurchased || 0;
-        existing.totalPurchaseValue += item.totalPurchaseValue || 0;
-        existing.purchaseHistory.push(...(item.purchaseHistory || []));
+        existing.totalPurchased += scaled.totalPurchased;
+        existing.totalPurchasedCases += scaled.totalPurchasedCases;
+        existing.totalPurchaseValue += scaled.totalPurchaseValue;
+        existing.purchaseHistory.push(...scaled.purchaseHistory);
       } else {
         // Add new entry
-        purchaseDataMap.set(item._id, {
-          sku: item._id,
-          itemName: item.itemName || '',
-          totalPurchased: item.totalPurchased || 0,
-          totalPurchaseValue: item.totalPurchaseValue || 0,
-          purchaseHistory: item.purchaseHistory || []
-        });
+        purchaseDataMap.set(item._id, scaled);
       }
     });
 
@@ -613,7 +641,9 @@ class StockService {
         skuData[skuUpper] = {
           sku: skuUpper,
           itemName: mapping?.notes || '',
+          unitsPerCase: itemCaseQuantityService.unitsPerCase(caseMap, skuUpper),
           totalPurchased: 0,
+          totalPurchasedCases: 0,
           totalPurchaseValue: 0,
           totalSold: 0,
           totalSalesValue: 0,
@@ -723,6 +753,7 @@ class StockService {
     const forUseItems = await RouteStarItem.find({ forUse: true }).lean();
     const allowedCategories = new Set(forUseItems.map(item => item.itemName));
     const mappings = await ModelCategory.find().lean();
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const skuToCategoryMap = {};
     mappings.forEach(mapping => {
       if (mapping.modelNumber && mapping.categoryItemName) {
@@ -748,7 +779,7 @@ class StockService {
                 totalValue: 0
               };
             }
-            categoryMap[category].totalQuantity += item.qty || 0;
+            categoryMap[category].totalQuantity += itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
             categoryMap[category].itemCount += 1;
             categoryMap[category].totalValue += item.lineTotal || 0;
           }
@@ -782,6 +813,7 @@ class StockService {
     const forSellItems = await RouteStarItem.find({ forSell: true }).lean();
     const allowedCategories = new Set(forSellItems.map(item => item.itemName));
     const mappings = await ModelCategory.find().lean();
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const skuToCategoryMap = {};
     mappings.forEach(mapping => {
       if (mapping.modelNumber && mapping.categoryItemName) {
@@ -876,7 +908,7 @@ class StockService {
               stockRemaining: 0
             };
           }
-          categoryMap[category].totalPurchased += item.qty || 0;
+          categoryMap[category].totalPurchased += itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
           categoryMap[category].totalPurchaseValue += item.lineTotal || 0;
           categoryMap[category].itemCount += 1;
         });
@@ -1212,6 +1244,9 @@ class StockService {
       this._cacheSet(cacheKey, metadata, 10); 
     }
     const { forUseItems, forSellItems, aliasData, mappings } = metadata;
+    // Case-quantity map: purchase-order quantities are per case, stock is per
+    // selling unit. Applied to every purchase total below.
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     console.timeEnd('[StockSummary] Step 1: Metadata');
     const Settings = require('../models/Settings');
     const settings = await Settings.getSettings();
@@ -1779,29 +1814,45 @@ class StockService {
     const manualUsePurchases = manualOrdersResult[0]?.usePurchases || [];
     const manualSellPurchases = manualOrdersResult[0]?.sellPurchases || [];
 
-    // Combine and merge by SKU
+    // Combine and merge by SKU, converting purchase units (cases) to selling units
     const usePurchasesMap = new Map();
     [...ccUsePurchases, ...manualUsePurchases].forEach(item => {
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item._id);
+      const totalQuantity = (item.totalQuantity || 0) * unitsPerCase;
       if (usePurchasesMap.has(item._id)) {
         const existing = usePurchasesMap.get(item._id);
-        existing.totalQuantity += item.totalQuantity || 0;
+        existing.totalQuantity += totalQuantity;
+        existing.totalQuantityCases += item.totalQuantity || 0;
         existing.totalValue += item.totalValue || 0;
         existing.itemCount += item.itemCount || 0;
       } else {
-        usePurchasesMap.set(item._id, { ...item });
+        usePurchasesMap.set(item._id, {
+          ...item,
+          unitsPerCase,
+          totalQuantityCases: item.totalQuantity || 0,
+          totalQuantity
+        });
       }
     });
     const usePurchases = Array.from(usePurchasesMap.values());
 
     const sellPurchasesMap = new Map();
     [...ccSellPurchases, ...manualSellPurchases].forEach(item => {
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item._id);
+      const totalPurchased = (item.totalPurchased || 0) * unitsPerCase;
       if (sellPurchasesMap.has(item._id)) {
         const existing = sellPurchasesMap.get(item._id);
-        existing.totalPurchased += item.totalPurchased || 0;
+        existing.totalPurchased += totalPurchased;
+        existing.totalPurchasedCases += item.totalPurchased || 0;
         existing.totalPurchaseValue += item.totalPurchaseValue || 0;
         existing.itemCount += item.itemCount || 0;
       } else {
-        sellPurchasesMap.set(item._id, { ...item });
+        sellPurchasesMap.set(item._id, {
+          ...item,
+          unitsPerCase,
+          totalPurchasedCases: item.totalPurchased || 0,
+          totalPurchased
+        });
       }
     });
     const sellPurchases = Array.from(sellPurchasesMap.values());

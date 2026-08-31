@@ -1,5 +1,6 @@
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const RouteStarInvoice = require('../models/RouteStarInvoice');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 
 class StockReconciliationService {
@@ -60,6 +61,9 @@ class StockReconciliationService {
     soldItemsBySKU.forEach(item => {
       soldMap[item.sku] = item;
     });
+    // Purchases are counted in cases, sales in single units - convert before
+    // the two are subtracted from each other.
+    const caseMap = await itemCaseQuantityService.getLookupMap();
     const reconciliation = purchasedItems.map(purchase => {
       const sold = soldMap[purchase.sku] || {
         totalSold: 0,
@@ -67,15 +71,19 @@ class StockReconciliationService {
         totalSaleValue: 0,
         saleCount: 0
       };
-      const currentStock = purchase.totalPurchased - sold.totalSold;
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, purchase.sku);
+      const purchasedUnits = (purchase.totalPurchased || 0) * unitsPerCase;
+      const currentStock = purchasedUnits - sold.totalSold;
       const profitMargin = sold.avgSalePrice > 0
         ? ((sold.avgSalePrice - purchase.avgPurchasePrice) / sold.avgSalePrice * 100).toFixed(2)
         : 0;
       return {
         sku: purchase.sku,
         name: purchase.name,
+        unitsPerCase,
         purchased: {
-          quantity: purchase.totalPurchased,
+          quantity: purchasedUnits,
+          cases: purchase.totalPurchased,
           avgPrice: purchase.avgPurchasePrice,
           totalValue: purchase.totalPurchaseValue,
           orderCount: purchase.purchaseCount
@@ -99,7 +107,8 @@ class StockReconciliationService {
       .map(sold => ({
         sku: sold.sku,
         name: 'SOLD WITHOUT PURCHASE RECORD',
-        purchased: { quantity: 0, avgPrice: 0, totalValue: 0, orderCount: 0 },
+        unitsPerCase: 1,
+        purchased: { quantity: 0, cases: 0, avgPrice: 0, totalValue: 0, orderCount: 0 },
         sold: {
           quantity: sold.totalSold,
           avgPrice: sold.avgSalePrice,

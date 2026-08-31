@@ -6,6 +6,7 @@ const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const StockMovement = require('../models/StockMovement');
 const StockSummary = require('../models/StockSummary');
 const StockProcessor = require('../services/stockProcessor');
+const itemCaseQuantityService = require('../services/itemCaseQuantity.service');
 const mongoose = require('mongoose');
 
 
@@ -277,7 +278,12 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
     await discrepancy.approve(req.user._id, notes);
     if (!discrepancy.stockProcessed) {
       const movementType = discrepancy.discrepancyType === 'Shortage' ? 'OUT' : 'IN';
-      const movementQty = Math.abs(discrepancy.discrepancyQuantity);
+      // The discrepancy is measured against purchase-order lines, so it is in
+      // purchase units (cases). Stock movements are in selling units.
+      const caseMap = await itemCaseQuantityService.getLookupMap();
+      const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, discrepancy.sku);
+      const movementCases = Math.abs(discrepancy.discrepancyQuantity);
+      const movementQty = movementCases * unitsPerCase;
       await StockMovement.create({
         sku: discrepancy.sku,
         type: movementType,
@@ -286,7 +292,9 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
         refId: discrepancy._id,
         sourceRef: `Order ${discrepancy.orderNumber} - ${discrepancy.discrepancyType}`,
         timestamp: new Date(),
-        notes: `Order discrepancy: ${discrepancy.discrepancyType} of ${movementQty} units`,
+        notes: unitsPerCase > 1
+          ? `Order discrepancy: ${discrepancy.discrepancyType} of ${movementCases} × ${unitsPerCase} = ${movementQty} units`
+          : `Order discrepancy: ${discrepancy.discrepancyType} of ${movementQty} units`,
         createdBy: req.user._id
       });
       const stockSummary = await StockSummary.findOne({ sku: discrepancy.sku });

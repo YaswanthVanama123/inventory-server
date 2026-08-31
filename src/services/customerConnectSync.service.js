@@ -4,6 +4,7 @@ const StockMovement = require('../models/StockMovement');
 const SyncLog = require('../models/SyncLog');
 const SyncCheckpoint = require('../models/SyncCheckpoint');
 const { bulkUpsert, delay } = require('./sync/streamingSync');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 
 let syncLock = false;
@@ -269,6 +270,7 @@ class CustomerConnectSyncService {
     try {
       const orders = await CustomerConnectOrder.getUnprocessedOrders();
       console.log(`✓ Found ${orders.length} unprocessed orders`);
+      const caseMap = await itemCaseQuantityService.getLookupMap();
       let processed = 0;
       let skipped = 0;
       const errors = [];
@@ -281,17 +283,19 @@ class CustomerConnectSyncService {
           }
           for (const item of order.items) {
             if (item.qty <= 0) continue;
+            // Order quantities are per case; stock movements are per selling unit.
+            const units = itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty);
             await StockMovement.create({
               sku: item.sku,
               type: 'IN',
-              qty: item.qty,
+              qty: units,
               refType: 'PURCHASE_ORDER',
               refId: order._id,
               sourceRef: order.orderNumber,
               timestamp: order.orderDate || new Date(),
               notes: `Purchase: ${order.vendor.name} - Order #${order.orderNumber}${order.poNumber ? ` (PO: ${order.poNumber})` : ''}`
             });
-            console.log(`  ✓ Stock movement created for ${item.sku}: +${item.qty}`);
+            console.log(`  ✓ Stock movement created for ${item.sku}: +${units}`);
           }
           await order.markStockProcessed();
           processed++;

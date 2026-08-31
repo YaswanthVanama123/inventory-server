@@ -400,11 +400,45 @@ class CustomerConnectService {
           ]
         }
       }] : []),
+      // Purchase lines are recorded per case. Attach each SKU's case quantity so
+      // the grouped totals below are expressed in selling units, matching Stock.
+      {
+        $lookup: {
+          from: 'itemcasequantities',
+          let: { skuUpper: { $toUpper: '$items.sku' } },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$sku', '$$skuUpper'] },
+                    { $ne: ['$isActive', false] }
+                  ]
+                }
+              }
+            },
+            { $project: { unitsPerCase: 1 } }
+          ],
+          as: 'caseMapping'
+        }
+      },
+      {
+        $addFields: {
+          'items.unitsPerCase': {
+            $let: {
+              vars: { factor: { $ifNull: [{ $arrayElemAt: ['$caseMapping.unitsPerCase', 0] }, 1] } },
+              in: { $cond: [{ $gt: ['$$factor', 0] }, '$$factor', 1] }
+            }
+          }
+        }
+      },
       {
         $group: {
           _id: '$items.sku',
           name: { $first: '$items.name' },
-          totalQuantity: { $sum: '$items.qty' },
+          unitsPerCase: { $first: '$items.unitsPerCase' },
+          totalCases: { $sum: '$items.qty' },
+          totalQuantity: { $sum: { $multiply: ['$items.qty', '$items.unitsPerCase'] } },
           totalValue: { $sum: '$items.lineTotal' },
           avgUnitPrice: { $avg: '$items.unitPrice' },
           orderCount: { $sum: 1 }
@@ -420,6 +454,8 @@ class CustomerConnectService {
           _id: 0,
           sku: '$_id',
           name: 1,
+          unitsPerCase: 1,
+          totalCases: 1,
           totalQuantity: 1,
           totalValue: { $round: ['$totalValue', 2] },
           avgUnitPrice: { $round: ['$avgUnitPrice', 2] },

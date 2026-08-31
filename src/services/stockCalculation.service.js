@@ -5,6 +5,7 @@ const RouteStarInvoice = require('../models/RouteStarInvoice');
 const TruckCheckout = require('../models/TruckCheckout');
 const StockDiscrepancy = require('../models/StockDiscrepancy');
 const ModelCategory = require('../models/ModelCategory');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 const VERBOSE = process.env.STOCK_CALC_VERBOSE === 'true';
 const dlog = (...args) => { if (VERBOSE) console.log(...args); };
@@ -93,6 +94,7 @@ class StockCalculationService {
     ]);
 
     let total = 0;
+    const caseMap = await itemCaseQuantityService.getLookupMap();
 
     // Count CustomerConnect orders
     ccOrders.forEach(order => {
@@ -105,7 +107,8 @@ class StockCalculationService {
           if (quantityToCount > 0) {
             dlog(`[_calculatePurchases] Counting ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
           }
-          total += quantityToCount || 0;
+          // Purchase quantities are per case; stock is per selling unit.
+          total += itemCaseQuantityService.toUnits(caseMap, item.sku, quantityToCount || 0);
         }
       });
     });
@@ -121,7 +124,7 @@ class StockCalculationService {
           if (quantityToCount > 0) {
             dlog(`[_calculatePurchases] Counting manual order ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
           }
-          total += quantityToCount || 0;
+          total += itemCaseQuantityService.toUnits(caseMap, item.sku, quantityToCount || 0);
         }
       });
     });
