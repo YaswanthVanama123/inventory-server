@@ -6,6 +6,34 @@ const ModelCategory = require('../models/ModelCategory');
 
 const LOOKUP_CACHE_TTL_MS = 30 * 1000;
 
+// Unit words that can appear in a purchased item's pack spec, mapped to the
+// label shown in the Purchase Unit column.
+const PURCHASE_UNIT_LABELS = {
+  CASE: 'Case', CS: 'Case',
+  PACK: 'Pack', PK: 'Pack', PKG: 'Pack',
+  BOX: 'Box', BX: 'Box',
+  CARTON: 'Carton', CTN: 'Carton',
+  BAG: 'Bag',
+  ROLL: 'Roll', RL: 'Roll',
+  DOZEN: 'Dozen', DZ: 'Dozen',
+  BUNDLE: 'Bundle', BDL: 'Bundle',
+  SLEEVE: 'Sleeve', SLV: 'Sleeve',
+  PAIR: 'Pair', PAIRS: 'Pair', PR: 'Pair', PRS: 'Pair',
+  PAIL: 'Pail', DRUM: 'Drum', TUB: 'Tub', JUG: 'Jug',
+  REAM: 'Ream', SET: 'Set', KIT: 'Kit',
+  EACH: 'Each', EA: 'Each'
+};
+const UNIT = `(${Object.keys(PURCHASE_UNIT_LABELS).join('|')})`;
+const PACK_SPEC_FORMS = [
+  `${UNIT}\\s*(?:/|\\bOF\\b)\\s*\\d+`, // PACK/4, CASE/500, BOX OF 12
+  `\\d+\\s*(?:/|\\bPER\\b)\\s*${UNIT}`, // 12/CS, 500 PER CASE
+  `(?:\\d+\\s*)?${UNIT}\\s*(?:/|\\bPER\\b)\\s*${UNIT}` // 150 PR/CS: the outer unit is bought
+];
+const PACK_SPEC_RE = new RegExp(`\\b(?:${PACK_SPEC_FORMS.join('|')})\\b`, 'gi');
+// Pairs are often written "12 PAIRS", "100 PR" or just "PAIR" instead of as a
+// pack spec, so a pair mention counts when the name has no spec.
+const PAIR_MENTION_RE = /\b(?:PAIRS?|\d+\s*PRS?)\b/i;
+
 /**
  * Case-quantity (pack size) mappings for purchased items.
  *
@@ -50,6 +78,24 @@ class ItemCaseQuantityService {
   /** Convert a purchase-order quantity (cases) into selling units. */
   toUnits(lookup, sku, qty) {
     return (qty || 0) * this.unitsPerCase(lookup, sku);
+  }
+
+  /**
+   * Purchase unit named in an item's pack spec ("..., PACK/4" -> 'Pack') or a
+   * pair mention ("12 PAIRS" -> 'Pair'), or null when the name has neither.
+   * Only the default label for SKUs without a saved mapping - stock maths
+   * never reads the label.
+   */
+  purchaseUnitFromName(itemName) {
+    if (!itemName) return null;
+    const name = String(itemName);
+    let label = null;
+    // Last spec wins: names end with the unit the item is ordered in.
+    for (const match of name.matchAll(PACK_SPEC_RE)) {
+      label = PURCHASE_UNIT_LABELS[(match[1] || match[2] || match[4]).toUpperCase()];
+    }
+    if (!label && PAIR_MENTION_RE.test(name)) label = 'Pair';
+    return label;
   }
 
   /**
@@ -203,14 +249,15 @@ class ItemCaseQuantityService {
       const isMapped = Boolean(mapping && mapping.isActive !== false);
       const unitsPerCase = isMapped && mapping.unitsPerCase > 0 ? mapping.unitsPerCase : 1;
       const sources = Array.from(entry.sources);
+      const itemName = entry.itemName || mapping?.itemName || '';
       return {
         sku: entry.sku,
-        itemName: entry.itemName || mapping?.itemName || '',
+        itemName,
         source: sources.length > 1 ? 'both' : sources[0],
         categoryItemName: categoryBySku.get(entry.sku) || null,
         isMapped,
         unitsPerCase,
-        purchaseUnitLabel: mapping?.purchaseUnitLabel || 'Case',
+        purchaseUnitLabel: mapping?.purchaseUnitLabel || this.purchaseUnitFromName(itemName) || 'Case',
         sellingUnitLabel: mapping?.sellingUnitLabel || 'Each',
         notes: mapping?.notes || '',
         orderCount: entry.orderCount,
