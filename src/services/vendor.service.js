@@ -45,11 +45,17 @@ class VendorService {
       q = q.skip((pg - 1) * lim).limit(lim);
     }
     const vendors = await q;
+    // Unfiltered counts for the Vendors page stat cards (the list is paged).
+    const [allCount, activeCount] = await Promise.all([
+      Vendor.countDocuments({}),
+      Vendor.countDocuments({ isActive: true })
+    ]);
     return {
       vendors,
       total,
       page: lim && lim > 0 ? pg : 1,
-      pages: lim && lim > 0 ? Math.ceil(total / lim) : 1
+      pages: lim && lim > 0 ? Math.ceil(total / lim) : 1,
+      stats: { total: allCount, active: activeCount, inactive: allCount - activeCount }
     };
   }
 
