@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
 const truckDiscrepancySchema = new mongoose.Schema({
-  // Truck Information
   employeeName: {
     type: String,
     required: true,
@@ -13,7 +12,6 @@ const truckDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Item Information
   itemName: {
     type: String,
     required: true,
@@ -28,7 +26,6 @@ const truckDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Truck Inventory Discrepancy
   systemTruckInventory: {
     type: Number,
     required: true,
@@ -45,27 +42,23 @@ const truckDiscrepancySchema = new mongoose.Schema({
     default: 0
   },
 
-  // Discrepancy Details
   discrepancyType: {
     type: String,
     enum: ['Overage', 'Shortage', 'Damage', 'Missing'],
     required: true
   },
 
-  // Associated Checkout
   checkoutId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'TruckCheckout'
   },
 
-  // Status
   status: {
     type: String,
     enum: ['Pending', 'Approved', 'Rejected'],
-    default: 'Approved' // Auto-approved when created during checkout
+    default: 'Approved'
   },
 
-  // Notes
   reason: {
     type: String,
     trim: true
@@ -75,7 +68,6 @@ const truckDiscrepancySchema = new mongoose.Schema({
     trim: true
   },
 
-  // Tracking
   reportedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -95,7 +87,6 @@ const truckDiscrepancySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for efficient querying
 truckDiscrepancySchema.index({ truckNumber: 1, itemName: 1 });
 truckDiscrepancySchema.index({ employeeName: 1 });
 truckDiscrepancySchema.index({ status: 1 });

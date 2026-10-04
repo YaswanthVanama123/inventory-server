@@ -3,7 +3,6 @@ const router = express.Router();
 const dataPurgeController = require('../controllers/dataPurgeController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-// Permanent, unrecoverable deletes. Admin only, no exceptions.
 router.use(authenticate);
 router.use(requireAdmin());
 

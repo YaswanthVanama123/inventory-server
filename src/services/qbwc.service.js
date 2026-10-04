@@ -5,7 +5,6 @@ const SERVER_VERSION = '1.0.0';
 const SUPPORTED_QBXML_VERSION = '13.0';
 const MAX_BATCH_SIZE = 25;
 
-// In-memory session map: ticket -> { username, claimedIds: [], startedAt }
 const sessions = new Map();
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -57,9 +56,6 @@ function todayQB() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * Build a single InventoryAdjustmentAdd block for one queue record.
- */
 function buildAdjustment(record) {
   const reqId = String(record._id);
   const useDifference = record.type === 'discrepancy_adjustment';
@@ -97,10 +93,6 @@ function buildQBXMLBatch(records) {
 </QBXML>`;
 }
 
-/**
- * Parse the response QBXML from QB Desktop. Returns array of:
- * { requestID, statusCode, statusSeverity, statusMessage, txnId }
- */
 function parseQBXMLResponse(xml) {
   if (!xml) return [];
   const results = [];
@@ -120,10 +112,6 @@ function parseQBXMLResponse(xml) {
 }
 
 class QBWCService {
-  /**
-   * Return the WSDL describing the QBWC endpoints.
-   * QBWC fetches this once to discover the service shape.
-   */
   getWSDL(serviceUrl) {
     const tns = 'http://developer.intuit.com/';
     return `<?xml version="1.0" encoding="utf-8"?>
@@ -193,17 +181,12 @@ class QBWCService {
 </wsdl:definitions>`;
   }
 
-  /**
-   * Main entry point. Routes the incoming SOAP request to the right handler.
-   * `xml` is the raw SOAP envelope body.
-   */
   async handleSoapRequest(xml, soapAction) {
     pruneSessions();
 
     const action = (soapAction || '').replace(/"/g, '').split('/').pop();
     let operation = action;
     if (!operation) {
-      // Fallback: detect by element name in body
       const m = xml.match(/<(?:[a-zA-Z0-9_]+:)?(serverVersion|clientVersion|authenticate|sendRequestXML|receiveResponseXML|connectionError|getLastError|closeConnection)\b/);
       operation = m ? m[1] : '';
     }
@@ -213,7 +196,6 @@ class QBWCService {
         return soapResponse('serverVersion', SERVER_VERSION);
 
       case 'clientVersion': {
-        // Returning empty string = no version-update warning
         return soapResponse('clientVersion', '');
       }
 
@@ -240,8 +222,6 @@ class QBWCService {
           startedAt: Date.now()
         });
 
-        // Check if there's anything to sync. Empty string = use companyfile from QWC.
-        // Returning 'none' tells QBWC there's no work right now.
         const stats = await syncService.getStats();
         const hasWork = (stats.pending || 0) > 0;
         const companyFile = hasWork ? '' : 'none';
@@ -276,7 +256,7 @@ class QBWCService {
         const responseXml = extractTag(xml, 'response') || '';
         const session = sessions.get(ticket);
         if (!session) {
-          return soapResponse('receiveResponseXML', '100'); // done
+          return soapResponse('receiveResponseXML', '100');
         }
 
         const results = parseQBXMLResponse(responseXml);
@@ -290,7 +270,6 @@ class QBWCService {
             await syncService.markSynced(r.requestID, r.txnId);
           }
         }
-        // Any claimed-but-not-acknowledged records: release back to pending
         const unacked = session.claimedIds.filter(id => !seen.has(id));
         if (unacked.length > 0) {
           await syncService.releaseInProgress(unacked);
@@ -298,7 +277,6 @@ class QBWCService {
         session.claimedIds = [];
         session.claimedById = new Map();
 
-        // Check if there's more work. Return 0-99 = percent complete, 100 = done.
         const stats = await syncService.getStats();
         const morePending = (stats.pending || 0) > 0;
         const result = morePending ? '50' : '100';

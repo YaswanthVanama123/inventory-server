@@ -7,19 +7,19 @@ class RouteStarParser {
       const invoiceDate = await this.extractText(row, 'td:nth-child(3)');
       const enteredBy = await this.extractText(row, 'td:nth-child(4)');
       const assignedTo = await this.extractText(row, 'td:nth-child(5)');
-      const customerName = await this.extractText(row, 'td:nth-child(6)'); // Customer column
-      const invoiceType = await this.extractText(row, 'td:nth-child(7)'); // Type column
-      const serviceNotes = await this.extractText(row, 'td:nth-child(8)'); // Service Notes column
+      const customerName = await this.extractText(row, 'td:nth-child(6)');
+      const invoiceType = await this.extractText(row, 'td:nth-child(7)');
+      const serviceNotes = await this.extractText(row, 'td:nth-child(8)');
 
-      const status = await this.extractStatus(row); // Status column (position 9)
-      const isComplete = await this.extractCheckbox(row, 'td:nth-child(10)'); // Complete column
-      const isPosted = await this.extractCheckbox(row, 'td:nth-child(11)'); // Posted column
-      const subtotal = await this.extractText(row, 'td:nth-child(12)'); // Subtotal column
-      const total = await this.extractText(row, 'td:nth-child(13)'); // Total column
-      const dateCompleted = await this.extractText(row, 'td:nth-child(14)'); // Date Completed column
-      const lastModified = await this.extractText(row, 'td:nth-child(15)'); // Last Modified column
+      const status = await this.extractStatus(row);
+      const isComplete = await this.extractCheckbox(row, 'td:nth-child(10)');
+      const isPosted = await this.extractCheckbox(row, 'td:nth-child(11)');
+      const subtotal = await this.extractText(row, 'td:nth-child(12)');
+      const total = await this.extractText(row, 'td:nth-child(13)');
+      const dateCompleted = await this.extractText(row, 'td:nth-child(14)');
+      const lastModified = await this.extractText(row, 'td:nth-child(15)');
       const invoiceLink = await this.extractLink(row, 'td:nth-child(2) a');
-      const customerLink = await this.extractLink(row, 'td:nth-child(6) a'); // Customer link is in column 6
+      const customerLink = await this.extractLink(row, 'td:nth-child(6) a');
       return {
         invoiceNumber,
         invoiceDate,
@@ -66,7 +66,7 @@ class RouteStarParser {
   static async extractStatus(row) {
     try {
       const statusData = await row.$eval(
-        'td:nth-child(9)', // Status column
+        'td:nth-child(9)',
         (td) => {
           const className = td.className || '';
           const textContent = td.textContent.trim();

@@ -76,9 +76,6 @@ fetchHistorySchema.virtual('calculatedDuration').get(function() {
   return null;
 });
 fetchHistorySchema.methods.markCompleted = function(results) {
-  // If the user cancelled this run, preserve that. The sync may still be
-  // mid-flight when the cancel button is hit; we don't want a delayed
-  // completion to overwrite the cancelled state.
   if (this.status === 'cancelled') {
     if (results) {
       this.results = { ...this.results, ...results };
@@ -133,21 +130,8 @@ fetchHistorySchema.statics.getActiveFetches = async function(source = null) {
   }
   return await this.find(query).lean();
 };
-/**
- * How long an 'in_progress' record may sit before we stop believing it.
- * Nothing marks a record failed when the process dies mid-scrape, so without a
- * cutoff one crash would leave the sync buttons disabled forever.
- */
 fetchHistorySchema.statics.STALE_AFTER_MS =
-  parseInt(process.env.FETCH_STALE_AFTER_MS, 10) || 2 * 60 * 60 * 1000; // 2h
-
-/**
- * Find a genuinely-running fetch, reaping any stale ones as a side effect.
- *
- * Returns the live record, or null if nothing is running. Used to stop a second
- * sync being launched on top of one already in flight — two concurrent browser
- * scrapes would fight over the same RouteStar session.
- */
+  parseInt(process.env.FETCH_STALE_AFTER_MS, 10) || 2 * 60 * 60 * 1000;
 fetchHistorySchema.statics.findActiveRun = async function(source = null, fetchType = null) {
   const query = { status: 'in_progress' };
   if (source) query.source = source;
@@ -161,8 +145,6 @@ fetchHistorySchema.statics.findActiveRun = async function(source = null, fetchTy
     if (new Date(doc.startedAt).getTime() >= cutoff) {
       if (!live) live = doc;
     } else {
-      // Stale: the process almost certainly died. Close it out so it stops
-      // blocking future runs.
       try {
         await doc.markFailed('Sync did not finish — marked stale by the server');
       } catch (e) {

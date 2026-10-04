@@ -1,5 +1,5 @@
 const { chromium, firefox, webkit } = require('playwright');
-const logger = require('../utils/Logger'); // Fixed: capital L
+const logger = require('../utils/Logger');
 const browserConfig = require('../config/browser.config');
 
 

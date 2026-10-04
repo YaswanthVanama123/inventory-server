@@ -9,23 +9,18 @@ class CustomerConnectFetcher {
   }
   async fetchOrders(limit = Infinity, options = {}) {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
-    // Streaming mode: when an onPage callback is supplied each page is handed
-    // off immediately and never accumulated, keeping memory constant.
     const stream = typeof options.onPage === 'function';
     const startPage = Math.max(0, options.startPage || 0);
     console.log(`\n📥 Fetching CustomerConnect Orders ${fetchAll ? '(ALL)' : `(limit: ${limit})`}${stream ? ' [streaming]' : ''}`);
     await this.navigator.navigateToOrders();
     const paginationInfo = await this.navigator.getPaginationInfo();
     console.log(`   Total Available: ${paginationInfo.totalOrders} orders`);
-    // In non-streaming mode `orders` accumulates everything (legacy callers).
-    // In streaming mode only `pageOrders` is held and `totalCount` tracks size.
     const orders = [];
     let totalCount = 0;
     let hasNextPage = true;
     let pageCount = 0;
     const maxPages = fetchAll ? Infinity : Math.ceil(limit / 10);
     let firstOrderLogged = false;
-    // Resume: fast-forward past pages that a previous interrupted run saved.
     if (startPage > 0) {
       console.log(`   ⏩ Resuming — skipping ${startPage} already-saved page(s)...`);
       for (let p = 0; p < startPage && hasNextPage; p++) {
@@ -86,7 +81,6 @@ class CustomerConnectFetcher {
           console.warn(`  ⊗ Skipped order: ${error.message}`);
         }
       }
-      // Stream this page straight to the caller (DB) before moving on.
       if (stream && pageOrders.length > 0) {
         await options.onPage(pageOrders, pageCount + 1);
         pageOrders.length = 0;

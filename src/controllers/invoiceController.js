@@ -299,7 +299,6 @@ const getAllInvoices = async (req, res, next) => {
 };
 const getInvoice = async (req, res, next) => {
   try {
-    // First try to find in regular Invoice collection
     let invoice = await Invoice.findOne({ _id: req.params.id, isDeleted: false })
       .populate('items.inventory', 'itemName skuCode category quantity pricing')
       .populate('createdBy', 'username fullName email')
@@ -309,7 +308,6 @@ const getInvoice = async (req, res, next) => {
     let invoiceObj;
 
     if (invoice) {
-      // Found in Invoice collection
       const stockMovements = await StockMovement.find({
         refType: 'INVOICE',
         refId: invoice._id
@@ -325,7 +323,6 @@ const getInvoice = async (req, res, next) => {
       invoiceObj.stockMovements = stockMovements;
       invoiceObj.invoiceType = 'manual';
     } else {
-      // Try to find in RouteStarInvoice collection
       const routeStarInvoice = await RouteStarInvoice.findById(req.params.id);
 
       if (!routeStarInvoice) {
@@ -338,7 +335,6 @@ const getInvoice = async (req, res, next) => {
         });
       }
 
-      // Transform RouteStarInvoice to match expected format
       invoiceObj = routeStarInvoice.toObject();
       invoiceObj.invoiceType = 'routestar';
       invoiceObj.invoiceDate = invoiceObj.invoiceDate || invoiceObj.createdAt;

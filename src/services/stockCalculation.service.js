@@ -75,17 +75,13 @@ class StockCalculationService {
     const skus = mappings.map(m => m.modelNumber);
     if (skus.length === 0) return 0;
 
-    // Query both CustomerConnect orders AND Manual purchase orders
     const PurchaseOrder = require('../models/PurchaseOrder');
 
     const [ccOrders, manualOrders] = await Promise.all([
-      // CustomerConnect orders - include all orders with matching SKUs
-      // We'll filter by receivedQuantity/itemVerified in the counting logic
       CustomerConnectOrder.find({
         status: { $in: ['Complete', 'Processing', 'Shipped'] },
         'items.sku': { $in: skus }
       }).lean(),
-      // Manual purchase orders - include all orders with matching SKUs
       PurchaseOrder.find({
         source: 'manual',
         status: { $in: ['confirmed', 'received', 'completed'] },
@@ -96,28 +92,23 @@ class StockCalculationService {
     let total = 0;
     const caseMap = await itemCaseQuantityService.getLookupMap();
 
-    // Count CustomerConnect orders
     ccOrders.forEach(order => {
       order.items?.forEach(item => {
         if (skus.includes(item.sku?.toUpperCase())) {
-          // Use receivedQuantity if partial verification is enabled, otherwise use full qty
           const quantityToCount = item.receivedQuantity !== undefined && item.receivedQuantity > 0
             ? item.receivedQuantity
             : (item.itemVerified ? item.qty : 0);
           if (quantityToCount > 0) {
             dlog(`[_calculatePurchases] Counting ${item.sku}: receivedQty=${item.receivedQuantity}, itemVerified=${item.itemVerified}, counting=${quantityToCount}`);
           }
-          // Purchase quantities are per case; stock is per selling unit.
           total += itemCaseQuantityService.toUnits(caseMap, item.sku, quantityToCount || 0);
         }
       });
     });
 
-    // Count Manual purchase orders
     manualOrders.forEach(order => {
       order.items?.forEach(item => {
         if (skus.includes(item.sku?.toUpperCase())) {
-          // Use receivedQuantity if partial verification is enabled, otherwise use full qty
           const quantityToCount = item.receivedQuantity !== undefined && item.receivedQuantity > 0
             ? item.receivedQuantity
             : (item.itemVerified ? item.qty : 0);
@@ -222,7 +213,6 @@ class StockCalculationService {
     const currentStock = await this.getCurrentStock(itemName);
     const systemCalculatedRemaining = currentStock.availableQty - quantityTaking;
 
-    // Use tolerance for floating-point comparison (allow 0.01 difference for rounding)
     const tolerance = 0.01;
     const difference = Math.abs(userRemainingQuantity - systemCalculatedRemaining);
     const hasDiscrepancy = difference > tolerance;

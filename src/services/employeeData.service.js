@@ -203,10 +203,6 @@ class EmployeeDataService {
       .sort({ truckNumber: 1 })
       .lean();
   }
-  /**
-   * Optimized combined dashboard - fetches all data in a single aggregation query
-   * Reduces database round trips from 3 to 1
-   */
   async getEmployeeCombinedDashboard(truckNumber, startDate, endDate, limit = 10) {
     const matchQuery = {
       'lineItems.class': truckNumber.toUpperCase(),

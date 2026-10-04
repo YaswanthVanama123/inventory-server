@@ -16,17 +16,16 @@ class TruckCheckoutService {
       itemName,
       quantityTaking,
       remainingQuantity,
-      actualTruckInventory, // NEW: Employee-entered truck inventory
+      actualTruckInventory,
       notes,
       checkoutDate,
       acceptDiscrepancy = false,
-      acceptTruckDiscrepancy = false // NEW: Accept truck inventory discrepancy
+      acceptTruckDiscrepancy = false
     } = checkoutData;
 
     console.log(`\n📦 Creating checkout for ${employeeName}`);
     console.log(`   Item: ${itemName}, Taking: ${quantityTaking}, Remaining: ${remainingQuantity}`);
 
-    // Validate warehouse stock
     const validation = await stockCalculationService.validateCheckoutStock(
       itemName,
       quantityTaking,
@@ -35,7 +34,6 @@ class TruckCheckoutService {
     console.log(`   Current stock: ${validation.currentStock}`);
     console.log(`   Expected remaining: ${validation.systemCalculatedRemaining}`);
 
-    // Validate truck inventory if provided
     let truckInventoryValidation = null;
     if (actualTruckInventory !== undefined && actualTruckInventory !== null && truckNumber) {
       console.log(`\n🚛 Validating truck inventory for truck ${truckNumber}...`);
@@ -62,7 +60,6 @@ class TruckCheckoutService {
       }
     }
 
-    // Return both discrepancies together if any need confirmation
     const needsStockConfirmation = validation.hasDiscrepancy && !acceptDiscrepancy;
     const needsTruckConfirmation = truckInventoryValidation?.hasTruckDiscrepancy && !acceptTruckDiscrepancy;
 
@@ -99,7 +96,6 @@ class TruckCheckoutService {
     });
     console.log(`   ✓ Checkout created: ${checkout._id}`);
 
-    // Create stock discrepancy if needed (auto-approved, no pending)
     let discrepancy = null;
     if (validation.hasDiscrepancy && acceptDiscrepancy) {
       discrepancy = await this._createDiscrepancy(checkout, validation, userId);
@@ -107,7 +103,6 @@ class TruckCheckoutService {
       await checkout.save();
     }
 
-    // Create truck discrepancy if needed (auto-approved, no pending)
     let truckDiscrepancy = null;
     if (truckInventoryValidation?.hasTruckDiscrepancy && acceptTruckDiscrepancy) {
       truckDiscrepancy = await this._createTruckDiscrepancy(checkout, truckInventoryValidation, userId);
@@ -129,7 +124,7 @@ class TruckCheckoutService {
         : 'Checkout created successfully',
       checkout,
       discrepancy,
-      truckDiscrepancy, // NEW: Return truck discrepancy info
+      truckDiscrepancy,
       stockUpdate
     };
   }
@@ -445,20 +440,13 @@ class TruckCheckoutService {
     }
   }
 
-  /**
-   * Get current truck inventory for an employee/item
-   * Truck Inventory = Total Checked Out (by employee) - Total Sold (from truck) + Truck Discrepancy Adjustments (by employee)
-   * NOTE: We track checkouts and discrepancies per employee, but sales are counted for the entire truck
-   */
   async getTruckInventory(truckNumber, itemName, employeeName = null) {
     const RouteStarInvoice = require('../models/RouteStarInvoice');
 
     console.log(`\n🚛 Getting truck inventory for truck ${truckNumber}, item: ${itemName}${employeeName ? `, employee: ${employeeName}` : ''}`);
 
-    // Get canonical name for the item
     const canonicalName = await RouteStarItemAlias.getCanonicalName(itemName);
 
-    // Get checkouts for this truck and item (optionally filtered by employee)
     const checkoutQuery = {
       truckNumber,
       itemName,
@@ -473,9 +461,6 @@ class TruckCheckoutService {
     const totalCheckedOut = checkouts.reduce((sum, co) => sum + (co.quantityTaking || 0), 0);
     console.log(`   Total checked out${employeeName ? ` by ${employeeName}` : ''}: ${totalCheckedOut}`);
 
-    // Get all sales (invoices) for this truck and item
-    // NOTE: We count ALL sales from this truck, regardless of employee,
-    // because invoices may not always have employee information
     const invoiceQuery = {
       'lineItems': { $exists: true, $ne: [] }
     };
@@ -504,7 +489,6 @@ class TruckCheckoutService {
     }
     console.log(`   Total sold from truck: ${totalSold}`);
 
-    // Get truck discrepancy adjustments (optionally filtered by employee)
     const discrepancyQuery = {
       truckNumber,
       itemName,
@@ -535,9 +519,6 @@ class TruckCheckoutService {
     };
   }
 
-  /**
-   * Create truck discrepancy when employee-entered truck inventory doesn't match system
-   */
   async _createTruckDiscrepancy(checkout, truckInventoryInfo, userId) {
     const discrepancy = await TruckDiscrepancy.create({
       employeeName: checkout.employeeName,

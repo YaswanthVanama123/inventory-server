@@ -14,9 +14,6 @@ class GoAuditsService {
     this.syncLock = null;
   }
 
-  /**
-   * Authenticate with GoAudits API and get access token
-   */
   async authenticate() {
     try {
       console.log('🔐 Authenticating with GoAudits API...');
@@ -35,7 +32,6 @@ class GoAuditsService {
         this.companyId = response.data.guid || response.data.client_id;
         this.userName = response.data.user_name;
 
-        // Set token expiry to 23 hours from now (tokens usually last 24 hours)
         this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
 
         console.log('✓ Authentication successful');
@@ -55,18 +51,12 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Ensure we have a valid token
-   */
   async ensureAuthenticated() {
     if (!this.token || !this.tokenExpiry || Date.now() >= this.tokenExpiry) {
       await this.authenticate();
     }
   }
 
-  /**
-   * Get authenticated axios instance
-   */
   async getAxiosInstance() {
     await this.ensureAuthenticated();
 
@@ -79,9 +69,6 @@ class GoAuditsService {
     });
   }
 
-  /**
-   * Get all locations from GoAudits
-   */
   async getLocations(params = {}) {
     try {
       console.log('📍 Fetching locations from GoAudits...');
@@ -97,11 +84,10 @@ class GoAuditsService {
         }
       });
 
-      // GoAudits API uses POST for locations with getlocations endpoint
       const payload = {
         user_name: this.userName || this.email,
-        active: params.active !== undefined ? params.active : '', // Empty string for all
-        client_id: this.companyId, // Add company ID to get all locations for this company
+        active: params.active !== undefined ? params.active : '',
+        client_id: this.companyId,
         ...params
       };
 
@@ -112,7 +98,6 @@ class GoAuditsService {
       console.log('   Response status:', response.status);
       console.log('   Response data:', JSON.stringify(response.data, null, 2));
 
-      // GoAudits returns: { success: true, data: [...], count: N }
       let locations = [];
 
       if (response.data && response.data.data) {
@@ -134,9 +119,6 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Get a specific location by ID
-   */
   async getLocationById(locationId) {
     try {
       const api = await this.getAxiosInstance();
@@ -149,14 +131,10 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Create a new location in GoAudits using browser automation
-   */
   async createLocation(locationData) {
     try {
       console.log(`📍 Creating location in GoAudits via browser automation: ${locationData.store_name}...`);
 
-      // Prepare location data according to GoAudits web form format
       const payload = {
         selected_clientid: locationData.selected_clientid || this.companyId,
         store_name: locationData.store_name,
@@ -171,7 +149,6 @@ class GoAuditsService {
         bccemail: locationData.bccemail || ''
       };
 
-      // Use browser automation to create location
       const result = await goAuditsBrowserService.createLocation(payload);
 
       console.log(`✓ Location created successfully: ${payload.store_name}`);
@@ -187,9 +164,6 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Update a location in GoAudits
-   */
   async updateLocation(locationId, locationData) {
     try {
       console.log(`📍 Updating location in GoAudits: ${locationId}...`);
@@ -205,9 +179,6 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Delete a location from GoAudits
-   */
   async deleteLocation(locationId) {
     try {
       console.log(`📍 Deleting location from GoAudits: ${locationId}...`);
@@ -223,12 +194,8 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Sync RouteStarCustomer to GoAudits location
-   */
   async syncCustomerToLocation(customer) {
     try {
-      // Check if customer already exists in our GoAuditsLocation mapping
       let goAuditsLocation = await GoAuditsLocation.findOne({
         routeStarCustomerId: customer.customerId
       });
@@ -243,14 +210,12 @@ class GoAuditsService {
         };
       }
 
-      // Check if location with same name exists in GoAudits
       const existingLocations = await this.getLocations({ active: '' });
       const existingLocation = existingLocations.find(loc =>
         (loc.store_name || loc.storename || loc.location || loc.Location) === customer.customerName
       );
 
       if (existingLocation) {
-        // Location exists, just create our mapping
         goAuditsLocation = await GoAuditsLocation.create({
           locationId: existingLocation.guid || existingLocation.store_id || existingLocation.id,
           routeStarCustomerId: customer.customerId,
@@ -279,7 +244,6 @@ class GoAuditsService {
         };
       }
 
-      // Create new location in GoAudits
       const locationData = {
         store_name: customer.customerName,
         location_code: customer.customerId || '',
@@ -287,7 +251,7 @@ class GoAuditsService {
         postcode: customer.serviceZip || customer.billingZip || '',
         latitude: customer.latitude ? String(customer.latitude) : '',
         longitude: customer.longitude ? String(customer.longitude) : '',
-        time_zone: 'GMT -05:00', // Eastern Time for Virginia
+        time_zone: 'GMT -05:00',
         toemail: customer.email || '',
         ccemail: '',
         bccemail: ''
@@ -295,10 +259,9 @@ class GoAuditsService {
 
       const createdLocation = await this.createLocation(locationData);
 
-      // After creating, try to find the newly created location in GoAudits to get its real ID
       let realLocationId = null;
       try {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for GoAudits to save
+        await new Promise(resolve => setTimeout(resolve, 2000));
         const allLocations = await this.getLocations({ active: '' });
         const foundLocation = allLocations.find(loc =>
           (loc.store_name || loc.storename || loc.location) === customer.customerName
@@ -311,10 +274,8 @@ class GoAuditsService {
         console.log(`   Could not fetch real location ID, using temporary ID`);
       }
 
-      // Use real ID if found, otherwise use temporary ID with random component
       const locationId = realLocationId || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Save to our database
       goAuditsLocation = await GoAuditsLocation.create({
         locationId: locationId,
         routeStarCustomerId: customer.customerId,
@@ -345,7 +306,6 @@ class GoAuditsService {
     } catch (error) {
       console.error(`✗ Failed to sync customer ${customer.customerName}:`, error.message);
 
-      // Save error status
       await GoAuditsLocation.findOneAndUpdate(
         { routeStarCustomerId: customer.customerId },
         {
@@ -367,9 +327,6 @@ class GoAuditsService {
     }
   }
 
-  /**
-   * Format customer address for GoAudits
-   */
   formatAddress(customer) {
     const parts = [];
 
@@ -388,18 +345,13 @@ class GoAuditsService {
     return parts.join('\n') || '';
   }
 
-  /**
-   * Sync multiple customers to GoAudits
-   */
   async syncCustomersToLocations(customers) {
-    // Check if sync is already in progress
     if (this.syncInProgress) {
       const error = new Error('Sync operation already in progress. Please wait for the current sync to complete.');
       console.error('⚠️ Sync blocked - another sync is already running');
       throw error;
     }
 
-    // Acquire sync lock
     this.syncInProgress = true;
     this.syncLock = Date.now();
     const lockId = this.syncLock;
@@ -415,7 +367,6 @@ class GoAuditsService {
       details: []
     };
 
-    // Initialize browser once for all creations
     let browserInitialized = false;
     try {
       console.log('🌐 Initializing browser for all location creations...');
@@ -448,7 +399,6 @@ class GoAuditsService {
             results.errors++;
           }
 
-          // Small delay between customers to avoid overwhelming the system
           await new Promise(resolve => setTimeout(resolve, 1000));
 
         } catch (error) {
@@ -464,14 +414,12 @@ class GoAuditsService {
         }
       }
     } finally {
-      // Cleanup browser resources
       if (browserInitialized) {
         console.log('🧹 Cleaning up browser resources...');
         await goAuditsBrowserService.cleanup();
         console.log('✓ Browser cleaned up');
       }
 
-      // Release sync lock
       this.syncInProgress = false;
       this.syncLock = null;
       console.log(`✓ Sync lock released (Lock ID: ${lockId})`);

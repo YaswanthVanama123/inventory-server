@@ -22,7 +22,6 @@ const cacheInvalidate = (userId) => {
   else SCREEN_CACHE.clear();
 };
 
-// Get all screens
 exports.getAllScreens = async (req, res) => {
   try {
     const { search, page, limit, category } = req.query;
@@ -40,7 +39,6 @@ exports.getAllScreens = async (req, res) => {
   }
 };
 
-// Get a single screen by ID
 exports.getScreenById = async (req, res) => {
   try {
     const { screenId } = req.params;
@@ -58,7 +56,6 @@ exports.getScreenById = async (req, res) => {
   }
 };
 
-// Create a new screen
 exports.createScreen = async (req, res) => {
   try {
     const screenData = req.body;
@@ -77,7 +74,6 @@ exports.createScreen = async (req, res) => {
   }
 };
 
-// Update a screen
 exports.updateScreen = async (req, res) => {
   try {
     const { screenId } = req.params;
@@ -97,7 +93,6 @@ exports.updateScreen = async (req, res) => {
   }
 };
 
-// Delete a screen
 exports.deleteScreen = async (req, res) => {
   try {
     const { screenId } = req.params;
@@ -115,7 +110,6 @@ exports.deleteScreen = async (req, res) => {
   }
 };
 
-// Get default screens
 exports.getDefaultScreens = async (req, res) => {
   try {
     const screens = await screenPermissionService.getDefaultScreens();
@@ -132,7 +126,6 @@ exports.getDefaultScreens = async (req, res) => {
   }
 };
 
-// Update default screens
 exports.updateDefaultScreens = async (req, res) => {
   try {
     const { screenIds } = req.body;
@@ -172,7 +165,6 @@ exports.getMyScreens = async (req, res) => {
   }
 };
 
-// Get screens for a specific user (admin only)
 exports.getUserScreens = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -191,7 +183,6 @@ exports.getUserScreens = async (req, res) => {
   }
 };
 
-// Get user-specific permissions (additional screens)
 exports.getUserSpecificPermissions = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -210,7 +201,6 @@ exports.getUserSpecificPermissions = async (req, res) => {
   }
 };
 
-// Update user-specific permissions
 exports.updateUserPermissions = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -239,7 +229,6 @@ exports.updateUserPermissions = async (req, res) => {
   }
 };
 
-// Initialize default screens
 exports.initializeScreens = async (req, res) => {
   try {
     const screens = await screenPermissionService.initializeDefaultScreens();
@@ -258,7 +247,6 @@ exports.initializeScreens = async (req, res) => {
   }
 };
 
-// Get all users with their permissions summary
 exports.getAllUsersWithPermissions = async (req, res) => {
   try {
     const { search } = req.query;

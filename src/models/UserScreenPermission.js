@@ -29,7 +29,6 @@ const userScreenPermissionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure one permission record per user-screen combination
 userScreenPermissionSchema.index({ userId: 1, screenId: 1 }, { unique: true });
 
 const UserScreenPermission = mongoose.model('UserScreenPermission', userScreenPermissionSchema);

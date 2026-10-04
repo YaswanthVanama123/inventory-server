@@ -1,9 +1,6 @@
 const { chromium } = require('playwright');
 const { screenshotsEnabled } = require('../automation/utils/screenshot');
 
-// Defaulted ON everywhere before, which meant production kept writing debug
-// PNGs to /tmp. Now it follows the same rule as the scrapers: errors only,
-// local only. GOAUDITS_DEBUG_SCREENSHOTS=false still forces it off.
 const goAuditsScreenshotsEnabled = () =>
   process.env.GOAUDITS_DEBUG_SCREENSHOTS !== 'false' && screenshotsEnabled();
 
@@ -25,11 +22,7 @@ class GoAuditsBrowserService {
     } catch (e) {}
   }
 
-  /**
-   * Initialize browser and login to GoAudits
-   */
   async initialize() {
-    // If already initialized, don't reinitialize
     if (this.browser && this.page) {
       console.log('✓ Browser already initialized, reusing existing session');
       return true;
@@ -54,7 +47,6 @@ class GoAuditsBrowserService {
 
       this.page = await this.context.newPage();
 
-      // Login to GoAudits
       await this.login();
 
       return true;
@@ -65,51 +57,40 @@ class GoAuditsBrowserService {
     }
   }
 
-  /**
-   * Login to GoAudits admin portal
-   */
   async login() {
     try {
       console.log('🔐 Logging into GoAudits admin portal...');
 
-      // Navigate to the correct signin page
       await this.page.goto(`${this.baseUrl}/#/authentication/signin`, {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       });
 
-      // Wait for Angular app to load
       await this.page.waitForTimeout(3000);
 
-      // Check if already logged in (might redirect to dashboard)
       const currentUrl = this.page.url();
       if (currentUrl.includes('/dashboard') || currentUrl.includes('/home') || currentUrl.includes('/locations') || currentUrl.includes('/templates')) {
         console.log('✓ Already logged in to GoAudits');
         return true;
       }
 
-      // Wait for login form to be visible
       await this.page.waitForSelector('input[formcontrolname="username"]', { timeout: 10000, state: 'visible' });
       console.log('   Found email field');
 
       await this.page.waitForSelector('input[formcontrolname="password"]', { timeout: 10000, state: 'visible' });
       console.log('   Found password field');
 
-      // Fill in credentials
       await this.page.fill('input[formcontrolname="username"]', this.email);
       await this.page.fill('input[formcontrolname="password"]', this.password);
 
       console.log('   Credentials filled, clicking login button...');
 
-      // Click login button
       await this.page.click('button[type="submit"]:has-text("Login")');
 
-      // Wait for navigation after login
       try {
         await this.page.waitForURL(/\/#\/(dashboard|home|locations|templates)/, { timeout: 30000 });
         console.log('✓ Successfully logged in to GoAudits');
       } catch (e) {
-        // Check if we're on a different page now (login might have succeeded)
         await this.page.waitForTimeout(3000);
         const newUrl = this.page.url();
         if (!newUrl.includes('/signin') && !newUrl.includes('/login')) {
@@ -129,11 +110,7 @@ class GoAuditsBrowserService {
     }
   }
 
-  /**
-   * Create a new location via web form (assumes browser is already initialized)
-   */
   async createLocation(locationData) {
-    // Check if browser is initialized
     if (!this.page) {
       throw new Error('Browser not initialized. Call initialize() first.');
     }
@@ -141,18 +118,15 @@ class GoAuditsBrowserService {
     try {
       console.log(`📍 Creating location via web form: ${locationData.store_name}...`);
 
-      // Navigate to add location page
       console.log('   Navigating to https://admin.goaudits.com/#/locations/add');
       await this.page.goto(`${this.baseUrl}/#/locations/add`, {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
 
-      // Wait for Angular to render - increased timeout and better wait strategy
       console.log('   Waiting for Angular to load form...');
       await this.page.waitForTimeout(3000);
 
-      // Wait for form to load with multiple retries
       console.log('   Waiting for form fields to appear...');
       try {
         await this.page.waitForSelector('input[formcontrolname="store_name"]', {
@@ -161,7 +135,6 @@ class GoAuditsBrowserService {
         });
         console.log('   ✓ Form loaded successfully');
       } catch (error) {
-        // If form doesn't load, try refreshing the page
         console.log('   Form not loaded, refreshing page...');
         await this.page.reload({ waitUntil: 'domcontentloaded' });
         await this.page.waitForTimeout(3000);
@@ -172,20 +145,14 @@ class GoAuditsBrowserService {
         console.log('   ✓ Form loaded after refresh');
       }
 
-      // Company is already selected by default (Enviro-Master Northern Virginia)
-      // No need to select it
-
-      // Fill in Location name (REQUIRED)
       console.log(`   Filling location name: ${locationData.store_name}`);
       await this.page.fill('input[formcontrolname="store_name"]', locationData.store_name);
 
-      // Fill in Location code
       if (locationData.location_code) {
         console.log(`   Filling location code: ${locationData.location_code}`);
         await this.page.fill('input[formcontrolname="location_code"]', locationData.location_code);
       }
 
-      // Time zone - keep default GMT +00:00 or change if needed
       if (locationData.time_zone && locationData.time_zone !== 'GMT +00:00') {
         console.log(`   Setting time zone: ${locationData.time_zone}`);
         try {
@@ -197,43 +164,36 @@ class GoAuditsBrowserService {
         }
       }
 
-      // Fill in Address
       if (locationData.address) {
         console.log(`   Filling address`);
         await this.page.fill('textarea[formcontrolname="address"]', locationData.address);
       }
 
-      // Fill in Postcode
       if (locationData.postcode) {
         console.log(`   Filling postcode: ${locationData.postcode}`);
         await this.page.fill('input[formcontrolname="postcode"]', locationData.postcode);
       }
 
-      // Fill in Latitude
       if (locationData.latitude) {
         console.log(`   Filling latitude: ${locationData.latitude}`);
         await this.page.fill('input[formcontrolname="latitude"]', String(locationData.latitude));
       }
 
-      // Fill in Longitude
       if (locationData.longitude) {
         console.log(`   Filling longitude: ${locationData.longitude}`);
         await this.page.fill('input[formcontrolname="longitude"]', String(locationData.longitude));
       }
 
-      // Fill in To Email
       if (locationData.toemail) {
         console.log(`   Filling email: ${locationData.toemail}`);
         await this.page.fill('input[formcontrolname="toemail"]', locationData.toemail);
       }
 
-      // Fill in CC Email
       if (locationData.ccemail) {
         console.log(`   Filling CC email: ${locationData.ccemail}`);
         await this.page.fill('input[formcontrolname="ccemail"]', locationData.ccemail);
       }
 
-      // Fill in BCC Email
       if (locationData.bccemail) {
         console.log(`   Filling BCC email: ${locationData.bccemail}`);
         await this.page.fill('input[formcontrolname="bccemail"]', locationData.bccemail);
@@ -241,17 +201,14 @@ class GoAuditsBrowserService {
 
       console.log('   All fields filled, clicking Save button...');
 
-      // Click Save button
       await this.page.click('button[color="primary"]:has-text("Save")');
 
-      // Wait for save to complete - either navigation or success message
       console.log('   Waiting for save to complete...');
       try {
         await this.page.waitForURL(/\/#\/locations$/, { timeout: 10000 });
         console.log(`✓ Location created successfully: ${locationData.store_name}`);
         return { success: true, store_name: locationData.store_name };
       } catch (e) {
-        // Check for error messages
         await this.page.waitForTimeout(2000);
         const errorMessage = await this.page.textContent('.mat-error, .error, .alert-danger').catch(() => null);
         if (errorMessage) {
@@ -259,7 +216,6 @@ class GoAuditsBrowserService {
           throw new Error(`Form validation error: ${errorMessage}`);
         }
 
-        // Check if still on the add page or moved to locations list
         const currentUrl = this.page.url();
         if (currentUrl.includes('/locations') && !currentUrl.includes('/add')) {
           console.log(`✓ Location created: ${locationData.store_name} (URL changed to ${currentUrl})`);
@@ -300,9 +256,6 @@ class GoAuditsBrowserService {
     }
   }
 
-  /**
-   * Cleanup browser resources
-   */
   async cleanup() {
     try {
       if (this.page) await this.page.close().catch(() => {});

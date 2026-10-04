@@ -303,9 +303,6 @@ invoiceSchema.pre('save', async function(next) {
     if (this.isModified('paymentStatus') && this.paymentStatus === 'paid' && !this.paymentDate) {
       this.paymentDate = Date.now();
     }
-    // Auto-promote status to 'paid' when payment is marked paid, but do NOT
-    // override an explicit approval-workflow status set in the same save
-    // (approve sends status:'approved' + paymentStatus:'paid').
     if (
       this.paymentStatus === 'paid' &&
       this.status !== 'paid' &&

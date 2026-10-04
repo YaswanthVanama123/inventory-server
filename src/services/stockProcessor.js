@@ -18,8 +18,6 @@ class StockProcessor {
       await purchaseOrder.save();
       return [];
     }
-    // Purchase lines are counted in purchase units (cases). Stock movements are
-    // always recorded in selling units, so scale by the SKU's case quantity.
     const caseMap = await itemCaseQuantityService.getLookupMap();
     const docs = purchaseOrder.items.map((item) => ({
       sku: item.sku,
@@ -192,12 +190,6 @@ class StockProcessor {
     return stockSummary.isLowStock;
   }
 
-  /**
-   * Reverse stock movements for a purchase order (used when updating or deleting manual orders)
-   * Creates OUT movements to negate the original IN movements
-   * @param {Object} purchaseOrder - The purchase order to reverse
-   * @param {String} userId - User performing the reversal
-   */
   static async reverseOrderStockMovements(purchaseOrder, userId = null) {
     if (!purchaseOrder.stockProcessed) {
       console.log(`Purchase order ${purchaseOrder.orderNumber} not processed, nothing to reverse`);
@@ -209,10 +201,8 @@ class StockProcessor {
 
     for (const item of purchaseOrder.items) {
       try {
-        // Mirror processPurchaseOrder: the original IN was in selling units.
         const units = itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty);
 
-        // Create OUT movement to reverse the original IN
         const movement = await StockMovement.create({
           sku: item.sku,
           type: 'OUT',
@@ -226,7 +216,6 @@ class StockProcessor {
 
         reversalMovements.push(movement);
 
-        // Update stock summary by removing the quantity
         await this.updateStockSummary(item.sku, units, 'OUT', userId);
 
         console.log(`Stock reversal: ${item.sku} -${units} from PO ${purchaseOrder.orderNumber}`);
@@ -240,23 +229,12 @@ class StockProcessor {
     return reversalMovements;
   }
 
-  /**
-   * Process stock for individual item verification (supports partial receipts)
-   * Creates stock movement for the received quantity and updates stock summary
-   * @param {Object} order - The order (CustomerConnectOrder or PurchaseOrder)
-   * @param {Object} item - The specific item from order.items
-   * @param {Number} receivedQty - Quantity received in this verification
-   * @param {String} verificationId - Unique ID for this verification (to track processed receipts)
-   * @param {String} userId - User performing the verification
-   */
   static async processItemVerification(order, item, receivedQty, verificationId, userId = null) {
     try {
-      // receivedQty is counted in purchase units (cases); stock is in selling units.
       const caseMap = await itemCaseQuantityService.getLookupMap();
       const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item.sku);
       const units = (receivedQty || 0) * unitsPerCase;
 
-      // Create stock movement for received quantity
       const movement = await StockMovement.create({
         sku: item.sku,
         type: 'IN',
@@ -270,7 +248,6 @@ class StockProcessor {
         createdBy: userId
       });
 
-      // Update stock summary
       await this.updateStockSummary(item.sku, units, 'IN', userId);
 
       console.log(`✓ Stock IN (Verification): ${item.sku} +${units} from Order ${order.orderNumber}`);

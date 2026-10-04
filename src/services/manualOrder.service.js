@@ -8,7 +8,6 @@ class ManualOrderService {
   async createManualOrder(orderData, userId) {
     const { vendor, orderDate, items } = orderData;
 
-    // Validate required fields
     if (!vendor || !vendor.name) {
       throw new Error('Vendor name is required');
     }
@@ -19,15 +18,12 @@ class ManualOrderService {
       throw new Error('At least one item is required');
     }
 
-    // Validate order date is not in the future
     if (new Date(orderDate) > new Date()) {
       throw new Error('Order date cannot be in the future');
     }
 
-    // Generate unique order number
     const orderNumber = await orderNumberGenerator.generateManualOrderNumber();
 
-    // Validate and process items
     const processedItems = [];
     let subtotal = 0;
 
@@ -42,7 +38,6 @@ class ManualOrderService {
         throw new Error('Item unit price must be non-negative');
       }
 
-      // Verify SKU exists in manual PO items
       const manualPoItem = await ManualPurchaseOrderItem.findOne({
         sku: item.sku.toUpperCase(),
         isActive: true
@@ -64,15 +59,13 @@ class ManualOrderService {
       });
     }
 
-    // Calculate totals
     const tax = orderData.tax || 0;
     const shipping = orderData.shipping || 0;
     const total = subtotal + tax + shipping;
 
-    // Create the order
     const order = new PurchaseOrder({
       source: 'manual',
-      sourceOrderId: orderNumber, // Use order number as source ID for manual orders
+      sourceOrderId: orderNumber,
       orderNumber,
       status: orderData.status || 'confirmed',
       orderDate: new Date(orderDate),
@@ -157,12 +150,10 @@ class ManualOrderService {
       throw new Error('Manual order not found');
     }
 
-    // If stock was already processed, reverse it before updating
     if (order.stockProcessed) {
       await StockProcessor.reverseOrderStockMovements(order, userId);
     }
 
-    // Update basic fields
     if (updateData.vendor) {
       if (updateData.vendor.name) order.vendor.name = updateData.vendor.name;
       if (updateData.vendor.email !== undefined) order.vendor.email = updateData.vendor.email;
@@ -171,7 +162,6 @@ class ManualOrderService {
     }
 
     if (updateData.orderDate) {
-      // Validate order date is not in the future
       if (new Date(updateData.orderDate) > new Date()) {
         throw new Error('Order date cannot be in the future');
       }
@@ -186,7 +176,6 @@ class ManualOrderService {
       order.notes = updateData.notes;
     }
 
-    // Update items if provided
     if (updateData.items) {
       if (updateData.items.length === 0) {
         throw new Error('At least one item is required');
@@ -206,7 +195,6 @@ class ManualOrderService {
           throw new Error('Item unit price must be non-negative');
         }
 
-        // Verify SKU exists in manual PO items
         const manualPoItem = await ManualPurchaseOrderItem.findOne({
           sku: item.sku.toUpperCase(),
           isActive: true
@@ -260,7 +248,6 @@ class ManualOrderService {
       throw new Error('Manual order not found');
     }
 
-    // If stock was processed, reverse it before deleting
     if (order.stockProcessed) {
       await StockProcessor.reverseOrderStockMovements(order, userId);
     }

@@ -21,7 +21,6 @@ const manualPurchaseOrderItemSchema = new mongoose.Schema({
   },
   mappedCategoryItemId: {
     type: mongoose.Schema.Types.ObjectId
-    // No ref specified - can be either RouteStarItemAlias or RouteStarItem
   },
   mappedCategoryItemName: {
     type: String,
@@ -54,16 +53,13 @@ const manualPurchaseOrderItemSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for query optimization
 manualPurchaseOrderItemSchema.index({ sku: 1 });
 manualPurchaseOrderItemSchema.index({ name: 1 });
 manualPurchaseOrderItemSchema.index({ isActive: 1 });
 manualPurchaseOrderItemSchema.index({ createdAt: -1 });
 manualPurchaseOrderItemSchema.index({ vendorId: 1 });
 manualPurchaseOrderItemSchema.index({ mappedCategoryItemId: 1 });
-manualPurchaseOrderItemSchema.index({ isActive: 1, name: 1 }); // Compound index for common query
-
-// Static methods
+manualPurchaseOrderItemSchema.index({ isActive: 1, name: 1 });
 manualPurchaseOrderItemSchema.statics.upsertItem = async function(sku, data, userId = null) {
   return this.findOneAndUpdate(
     { sku: sku.toUpperCase() },

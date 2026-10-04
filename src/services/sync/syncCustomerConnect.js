@@ -24,9 +24,6 @@ class SyncCustomerConnect {
       console.log('Starting CustomerConnect sync...');
       this.automation = await new CustomerConnectAutomation().init();
       await this.automation.login();
-      // CustomerConnectFetcher.fetchOrders returns { orders, pagination },
-      // unlike the RouteStar fetcher which returns a plain array. Tolerate
-      // either shape so future fetcher changes don't break the sync again.
       const fetchResult = await this.automation.fetchOrdersList(limit);
       const ordersList = Array.isArray(fetchResult)
         ? fetchResult
@@ -56,7 +53,6 @@ class SyncCustomerConnect {
         }
       }
 
-      // Stock processing removed - orders must be manually verified before stock is processed
       console.log('Orders synced. Stock will be processed after manual verification.');
 
       this.syncLog.recordsInserted = inserted;

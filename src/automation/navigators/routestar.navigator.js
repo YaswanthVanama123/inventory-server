@@ -165,21 +165,6 @@ class RouteStarNavigator {
     console.log('✓ Successfully navigated to closed invoices page');
   }
 
-  /**
-   * Set the closed-invoice grid's date window.
-   *
-   * The page ships with a narrow default range. Because the scraper never used
-   * to touch it, a "fetch all" run could only ever see that default slice —
-   * which is why recently-closed invoices were never stored. Setting the range
-   * explicitly makes each run deterministic and lets it re-scan (and therefore
-   * self-heal) any days a previous run missed.
-   *
-   * `from`/`to` are YYYY-MM-DD strings; native date inputs always take ISO
-   * regardless of the locale they display in.
-   *
-   * Returns true if the window was applied, false if the inputs weren't found
-   * (caller falls back to the page default rather than failing the whole sync).
-   */
   async setClosedInvoiceDateRange(from, to) {
     const selector = this.selectors.closedInvoicesList.dateInputs;
     console.log(`Setting closed-invoice date window: ${from} → ${to}`);
@@ -194,7 +179,6 @@ class RouteStarNavigator {
       console.log(`  ⚠️  Expected 2 date inputs, found ${inputs.length} — falling back to page default`);
       return false;
     }
-    // Set value + dispatch input/change so the grid's own listeners re-query.
     for (const [idx, value] of [[0, from], [1, to]]) {
       await inputs[idx].evaluate((el, v) => {
         el.value = v;
@@ -205,7 +189,6 @@ class RouteStarNavigator {
     }
     const applied = await Promise.all(inputs.slice(0, 2).map((i) => i.evaluate((el) => el.value)));
     console.log(`  ✓ Date inputs now: ${applied.join(' → ')}`);
-    // Give the grid time to re-fetch and re-render for the new window.
     await this.page.waitForTimeout(5000);
     try {
       await this.page.waitForSelector('div.ht_master', { timeout: 60000, state: 'attached' });

@@ -94,13 +94,11 @@ class RouteStarCustomerController {
       console.log('Starting customer sync...');
       isSyncing = true;
 
-      // Send immediate response to client
       res.json({
         success: true,
         message: 'Customer sync started. This may take several minutes.'
       });
 
-      // Run sync in completely detached background process
       setImmediate(async () => {
         const syncService = new RouteStarSyncService();
 
@@ -123,7 +121,6 @@ class RouteStarCustomerController {
       console.error('Error starting customer sync:', error);
       isSyncing = false;
 
-      // If we haven't sent a response yet, send error
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
@@ -160,13 +157,11 @@ class RouteStarCustomerController {
 
       console.log('Starting customer details sync...');
 
-      // Send immediate response to client
       res.json({
         success: true,
         message: 'Customer details sync started. This may take several minutes depending on the number of customers.'
       });
 
-      // Run sync in completely detached background process
       setImmediate(async () => {
         const syncService = new RouteStarSyncService();
 
@@ -187,7 +182,6 @@ class RouteStarCustomerController {
     } catch (error) {
       console.error('Error starting customer details sync:', error);
 
-      // If we haven't sent a response yet, send error
       if (!res.headersSent) {
         res.status(500).json({
           success: false,

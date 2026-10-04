@@ -8,7 +8,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
     trim: true
   },
 
-  // Basic Information
   customerName: {
     type: String,
     trim: true
@@ -30,7 +29,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
     trim: true
   },
 
-  // Contact Details
   email: {
     type: String,
     trim: true
@@ -52,7 +50,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
     trim: true
   },
 
-  // Billing Address
   billingAddress1: String,
   billingAddress2: String,
   billingAddress3: String,
@@ -60,7 +57,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
   billingState: String,
   billingZip: String,
 
-  // Service Address
   serviceAddress1: String,
   serviceAddress2: String,
   serviceAddress3: String,
@@ -71,7 +67,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
   longitude: Number,
   zone: String,
 
-  // Account Information
   accountNumber: String,
   balance: {
     type: Number,
@@ -80,13 +75,11 @@ const routeStarCustomerSchema = new mongoose.Schema({
   creditLimit: Number,
   accountValue: Number,
 
-  // Tax & Payment
   taxCode: String,
   taxRate: String,
   terms: String,
   preferredPaymentMethod: String,
 
-  // Customer Classification
   customerType: String,
   salesRep: String,
   grouping: String,
@@ -94,7 +87,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
   priceGrouping: String,
   status: String,
 
-  // Settings
   active: {
     type: Boolean,
     default: true
@@ -116,17 +108,14 @@ const routeStarCustomerSchema = new mongoose.Schema({
     default: false
   },
 
-  // Additional Info
   notificationMethod: String,
   parentCustomer: String,
   billAnotherCustomer: String,
   customerPopupMessage: String,
   hoaCode: String,
 
-  // Route Information
   onRoute: String,
 
-  // Custom Fields (Additional Info Tab)
   routeMaintPlan: String,
   defaultDeliveryMethod: String,
   mapBook: String,
@@ -140,14 +129,12 @@ const routeStarCustomerSchema = new mongoose.Schema({
   lastServiceDate: Date,
   drivingDirections: String,
 
-  // Timestamps
   createdDate: Date,
   lastSyncDate: {
     type: Date,
     default: Date.now
   },
 
-  // Raw data for reference
   rawData: {
     type: mongoose.Schema.Types.Mixed
   }
@@ -155,7 +142,6 @@ const routeStarCustomerSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
 routeStarCustomerSchema.index({ customerName: 1 });
 routeStarCustomerSchema.index({ email: 1 });
 routeStarCustomerSchema.index({ phone: 1 });

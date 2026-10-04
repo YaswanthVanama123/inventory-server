@@ -57,7 +57,6 @@ class QuickBooksSyncController {
     }
   }
 
-  // QBWC SOAP entry point (mounted as POST /qbwc and GET /qbwc?wsdl)
   async handleSoap(req, res, next) {
     try {
       if (req.method === 'GET' && (req.query.wsdl !== undefined || req.query.WSDL !== undefined)) {

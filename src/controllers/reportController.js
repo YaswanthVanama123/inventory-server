@@ -473,10 +473,6 @@ const getDashboard = async (req, res, next) => {
             { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
             { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalPurchaseAmount: 0, totalPurchaseOrders: 0 }] } } }
           ],
-          // Manual PurchaseOrder collection is a separate order source (source: 'manual').
-          // Include it additively in the dashboard purchase cost / order counts so
-          // manual POs are reflected alongside customerconnectorders. Uses order-level
-          // `total` (subtotal + tax + shipping) and counts one order per document.
           manualPurchaseTotals: [
             { $limit: 1 },
             {
@@ -504,8 +500,6 @@ const getDashboard = async (req, res, next) => {
             { $unwind: { path: '$totals', preserveNullAndEmptyArrays: true } },
             { $replaceRoot: { newRoot: { $ifNull: ['$totals', { totalPurchaseAmount: 0, totalPurchaseOrders: 0 }] } } }
           ],
-          // Manual PO purchase cost broken down by month, mirroring purchasesByMonth
-          // (customerconnectorders) so the monthly purchase trend includes manual POs.
           manualPurchasesByMonth: [
             { $limit: 1 },
             {
@@ -551,8 +545,6 @@ const getDashboard = async (req, res, next) => {
     const salesTotals = dashboardData.salesTotals[0] || { totalRevenue: 0, totalOrders: 0 };
     const ccPurchaseTotals = dashboardData.purchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
     const manualPurchaseTotals = dashboardData.manualPurchaseTotals[0] || { totalPurchaseAmount: 0, totalPurchaseOrders: 0 };
-    // Combine customerconnectorders + manual PurchaseOrder totals so dashboard
-    // purchase cost / order counts include the manual PO source additively.
     const purchaseTotals = {
       totalPurchaseAmount: (ccPurchaseTotals.totalPurchaseAmount || 0) + (manualPurchaseTotals.totalPurchaseAmount || 0),
       totalPurchaseOrders: (ccPurchaseTotals.totalPurchaseOrders || 0) + (manualPurchaseTotals.totalPurchaseOrders || 0)
@@ -600,8 +592,6 @@ const getDashboard = async (req, res, next) => {
         cost: p.cost || 0
       });
     });
-    // Fold manual PurchaseOrder monthly cost into the same month buckets so the
-    // purchase trend / salesTrend profit calc account for manual POs too.
     (dashboardData.manualPurchasesByMonth || []).forEach(p => {
       const key = `${p._id.year}-${p._id.month}`;
       const cost = p.cost || 0;
@@ -2297,17 +2287,10 @@ const getStockProcessingStatus = async (req, res, next) => {
   }
 };
 
-/**
- * Export customers from RouteStar closed invoices with date range
- * @route GET /api/reports/export-customers
- * @query {string} startDate - Start date (YYYY-MM-DD)
- * @query {string} endDate - End date (YYYY-MM-DD)
- */
 const exportCustomers = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
@@ -2326,7 +2309,6 @@ const exportCustomers = async (req, res, next) => {
       dateRange: { start, end }
     });
 
-    // Find closed invoices within date range
     const invoices = await RouteStarInvoice.find({
       invoiceType: 'closed',
       invoiceDate: {
@@ -2341,20 +2323,17 @@ const exportCustomers = async (req, res, next) => {
       customer: inv.customer
     })));
 
-    // Extract unique customers with case-insensitive deduplication
     const customerMap = new Map();
 
     invoices.forEach(invoice => {
       const customerName = invoice.customer?.name;
       if (customerName) {
-        // Normalize: trim whitespace and convert to lowercase for comparison
         const normalizedName = customerName.trim().toLowerCase();
 
-        // Only add if this normalized name doesn't exist yet
         if (!customerMap.has(normalizedName)) {
           customerMap.set(normalizedName, {
-            customerName: customerName.trim(), // Keep original casing
-            address: '', // RouteStar invoices don't have separate address fields
+            customerName: customerName.trim(),
+            address: '',
             city: '',
             state: '',
             pincode: '',
@@ -2369,7 +2348,6 @@ const exportCustomers = async (req, res, next) => {
 
     console.log(`Extracted ${customers.length} unique customers`);
 
-    // Define CSV columns (removed invoice-specific fields for unique customer export)
     const columns = [
       { key: 'customerName', label: 'Customer Name' },
       { key: 'address', label: 'Address' },
@@ -2380,7 +2358,6 @@ const exportCustomers = async (req, res, next) => {
       { key: 'phone', label: 'Phone' }
     ];
 
-    // Send CSV response
     CSVExporter.sendCSVResponse(res, customers, columns, 'routestar_customers');
 
   } catch (error) {

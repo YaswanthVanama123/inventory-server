@@ -1,7 +1,6 @@
 const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
 const RouteStarItem = require('../models/RouteStarItem');
 
-// In-memory cache with TTL
 const cache = {
   routeStarItems: null,
   routeStarItemsExpiry: 0,
@@ -10,14 +9,13 @@ const cache = {
 };
 
 const CACHE_TTL = {
-  ROUTESTAR_ITEMS: 5 * 60 * 1000, // 5 minutes
-  PAGE_DATA: 30 * 1000 // 30 seconds
+  ROUTESTAR_ITEMS: 5 * 60 * 1000,
+  PAGE_DATA: 30 * 1000
 };
 
 class ManualPurchaseOrderItemService {
   async generateUniqueSku() {
     try {
-      // Find the highest SKU number efficiently
       const latestItem = await ManualPurchaseOrderItem.findOne()
         .sort({ createdAt: -1 })
         .select('sku')
@@ -36,7 +34,6 @@ class ManualPurchaseOrderItemService {
       return `CUSTOM-${String(nextNumber).padStart(3, '0')}`;
     } catch (error) {
       console.error('[ERROR] SKU generation failed:', error);
-      // Fallback to random SKU
       const randomNum = Math.floor(Math.random() * 1000000);
       return `CUSTOM-${String(randomNum).padStart(6, '0')}`;
     }
@@ -50,8 +47,6 @@ class ManualPurchaseOrderItemService {
         throw new Error('Item name is required');
       }
 
-      // SKU is optional. If user supplied one, normalize and check uniqueness;
-      // otherwise auto-generate the next CUSTOM-NNN.
       let sku;
       if (itemData.sku && itemData.sku.trim()) {
         sku = itemData.sku.trim().toUpperCase();
@@ -79,8 +74,6 @@ class ManualPurchaseOrderItemService {
 
       const savedItem = await item.save();
 
-      // Mirror the mapping into the canonical ModelCategory store (see
-      // syncMappingToModelCategory) so Model Mapping agrees with this screen.
       if (savedItem.mappedCategoryItemName) {
         await this.syncMappingToModelCategory(
           savedItem.sku,
@@ -90,13 +83,10 @@ class ManualPurchaseOrderItemService {
         );
       }
 
-      // Invalidate cache after creating new item
       this.invalidateCache();
 
       return savedItem;
     } catch (error) {
-      // Handle duplicate SKU error with retry — only if SKU was auto-generated.
-      // If user supplied an SKU and it collided, surface the error directly.
       if (error.code === 11000 && error.keyPattern?.sku && !itemData.sku) {
         const randomNum = Math.floor(Math.random() * 1000000);
         const newSku = `CUSTOM-${String(randomNum).padStart(6, '0')}`;
@@ -161,23 +151,16 @@ class ManualPurchaseOrderItemService {
 
     const items = await itemsQuery.lean();
 
-    // Resolve Model→Category mappings for THESE items by their exact SKU. The
-    // mapping lives in ModelCategory keyed by modelNumber === the manual item's
-    // SKU (uppercased). We uppercase on BOTH sides — matching how the Stock
-    // module resolves the mapping (item.sku.toUpperCase()) — so a case
-    // discrepancy can never hide a mapping that Stock happily shows.
     const skusUpper = [...new Set(items.map(i => (i.sku || '').toUpperCase()).filter(Boolean))];
     const modelMappings = skusUpper.length
       ? await ModelCategory.find({ modelNumber: { $in: skusUpper } }).lean()
       : [];
 
-    // Build lookup of ModelCategory mappings by (uppercased) modelNumber
     const modelMappingLookup = new Map();
     for (const mapping of modelMappings) {
       modelMappingLookup.set((mapping.modelNumber || '').toUpperCase(), mapping);
     }
 
-    // Enrich items: if item has no mappedCategoryItemName but ModelCategory has a mapping, use it
     for (const item of items) {
       if (!item.mappedCategoryItemName) {
         const mapping = modelMappingLookup.get((item.sku || '').toUpperCase());
@@ -219,13 +202,6 @@ class ManualPurchaseOrderItemService {
     return item;
   }
 
-  /**
-   * Mirror a manual item's category mapping into ModelCategory, which is the
-   * canonical Model→Category store keyed by modelNumber (=== the SKU,
-   * uppercased). Mapping an item from the Manual PO Items screen must land
-   * here too, otherwise Model Mapping reports it as Unmapped.
-   * Clearing the mapping removes the ModelCategory row.
-   */
   async syncMappingToModelCategory(sku, categoryItemName, categoryItemId, userId) {
     if (!sku) return;
     const ModelCategory = require('../models/ModelCategory');
@@ -239,9 +215,33 @@ class ManualPurchaseOrderItemService {
         userId
       );
     } else {
-      // Mapping cleared here — drop the canonical row so the two agree.
       await ModelCategory.findOneAndDelete({ modelNumber });
     }
+  }
+
+  async removeStockLinkage(skus) {
+    const ModelCategory = require('../models/ModelCategory');
+    const CustomerConnectOrder = require('../models/CustomerConnectOrder');
+    const upper = [...new Set((skus || []).filter(Boolean).map(s => String(s).toUpperCase()))];
+    if (upper.length === 0) return { removed: 0, keptShared: [] };
+
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const shared = await CustomerConnectOrder.aggregate([
+      { $match: { 'items.sku': { $in: upper.map(s => new RegExp(`^${escape(s)}$`, 'i')) } } },
+      { $unwind: '$items' },
+      { $project: { sku: { $toUpper: '$items.sku' } } },
+      { $match: { sku: { $in: upper } } },
+      { $group: { _id: '$sku' } }
+    ]);
+    const keptShared = shared.map(s => s._id);
+    const toUnlink = upper.filter(s => !keptShared.includes(s));
+    const result = toUnlink.length
+      ? await ModelCategory.deleteMany({ modelNumber: { $in: toUnlink } })
+      : { deletedCount: 0 };
+    if (keptShared.length) {
+      console.log(`[ManualPOItems] Kept RouteStar mapping for ${keptShared.join(', ')}: CustomerConnect orders use the same SKU`);
+    }
+    return { removed: result.deletedCount, keptShared };
   }
 
   async updateItem(sku, updateData, userId) {
@@ -250,10 +250,6 @@ class ManualPurchaseOrderItemService {
       throw new Error('Item not found');
     }
 
-    // SKU change: validate uniqueness, then cascade rename across linked
-    // manual PurchaseOrder line items so existing orders keep referencing
-    // the same logical product. The Mongo _id remains the stable internal
-    // identifier — SKU is just the user-facing label.
     let skuRenamedFrom = null;
     let skuRenamedTo = null;
     if (
@@ -278,7 +274,6 @@ class ManualPurchaseOrderItemService {
       }
     }
 
-    // Update other fields
     if (updateData.name) item.name = updateData.name.trim();
     if (updateData.description !== undefined) item.description = updateData.description?.trim() || null;
     if (updateData.mappedCategoryItemId !== undefined) {
@@ -299,10 +294,6 @@ class ManualPurchaseOrderItemService {
 
     const updated = await item.save();
 
-    // Mirror the mapping into ModelCategory (the canonical Model→Category
-    // store) so Model Mapping, Stock, and every other consumer keyed on
-    // modelNumber see it too. Without this, an item mapped here shows as
-    // "Unmapped" on the Model Mapping screen. saveMapping() does the reverse.
     if (
       updateData.mappedCategoryItemName !== undefined ||
       updateData.mappedCategoryItemId !== undefined
@@ -315,29 +306,15 @@ class ManualPurchaseOrderItemService {
       );
     }
 
-    // Cascade SKU rename across every collection that stores the SKU as a
-    // foreign key. Done after save() so the master record is updated first;
-    // if the cascade fails we surface the error but the item record reflects
-    // the new SKU. The Mongo _id is the stable internal identifier — SKU is
-    // just the user-facing label and should be safe to rename.
     if (skuRenamedFrom && skuRenamedTo) {
       await this.cascadeSkuRename(skuRenamedFrom, skuRenamedTo);
     }
 
-    // Invalidate cache after update
     this.invalidateCache();
 
     return updated;
   }
 
-  /**
-   * Rename a SKU everywhere it's referenced. Manual PO items are only ever
-   * referenced from manual purchase orders (source: 'manual'), but the rest
-   * of the inventory pipeline stores the SKU directly on stock summaries,
-   * stock movements, model-category mappings, discrepancies, and truck
-   * checkouts. All of those need to follow the rename or the Stock page,
-   * dashboards, and history views will keep showing the old SKU.
-   */
   async cascadeSkuRename(oldSku, newSku) {
     const PurchaseOrder = require('../models/PurchaseOrder');
     const StockSummary = require('../models/StockSummary');
@@ -347,23 +324,15 @@ class ManualPurchaseOrderItemService {
     const TruckCheckout = require('../models/TruckCheckout');
 
     const tasks = [
-      // Manual purchase orders: rename the SKU inside line items.
       PurchaseOrder.updateMany(
         { source: 'manual', 'items.sku': oldSku },
         { $set: { 'items.$[item].sku': newSku } },
         { arrayFilters: [{ 'item.sku': oldSku }] }
       ),
-      // Stock summary keyed by SKU.
       StockSummary.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
-      // Stock movement history.
       StockMovement.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
-      // ModelCategory uses `modelNumber` for the SKU-to-category mapping.
-      // This is what drives the Stock Management category folders — without
-      // updating it, the renamed item shows up under the old SKU label.
       ModelCategory.updateMany({ modelNumber: oldSku }, { $set: { modelNumber: newSku } }),
-      // Order discrepancy records.
       OrderDiscrepancy.updateMany({ sku: oldSku }, { $set: { sku: newSku } }),
-      // Truck checkouts: SKU appears in several nested arrays.
       TruckCheckout.updateMany(
         { 'itemsTaken.sku': oldSku },
         { $set: { 'itemsTaken.$[item].sku': newSku } },
@@ -391,8 +360,6 @@ class ManualPurchaseOrderItemService {
       ),
     ];
 
-    // Run them concurrently; a failure in one shouldn't roll back the others
-    // (those still represent valid state). Surface errors so the caller can log.
     const results = await Promise.allSettled(tasks);
     const failures = results
       .map((r, i) => (r.status === 'rejected' ? `${i}: ${r.reason?.message || r.reason}` : null))
@@ -406,15 +373,21 @@ class ManualPurchaseOrderItemService {
   }
 
   async deleteItem(sku) {
+    const normalizedSku = sku.toUpperCase();
+    if (!(await ManualPurchaseOrderItem.exists({ sku: normalizedSku }))) {
+      throw new Error('Item not found');
+    }
+
+    await this.removeStockLinkage([normalizedSku]);
+
     const result = await ManualPurchaseOrderItem.findOneAndDelete({
-      sku: sku.toUpperCase()
+      sku: normalizedSku
     });
 
     if (!result) {
       throw new Error('Item not found');
     }
 
-    // Invalidate cache after delete
     this.invalidateCache();
 
     return result;
@@ -424,8 +397,6 @@ class ManualPurchaseOrderItemService {
     const { search, page, limit } = options;
     const hasParams = search !== undefined || page !== undefined || limit !== undefined;
 
-    // The blob cache only covers the parameterless default call. Any paginated /
-    // filtered request bypasses it (the shape depends on the params).
     const now = Date.now();
     if (!hasParams && cache.pageData && now < cache.pageDataExpiry) {
       return cache.pageData;
@@ -436,8 +407,6 @@ class ManualPurchaseOrderItemService {
     try {
       const Vendor = require('../models/Vendor');
 
-      // Fetch the (paginated) items, the full dropdown sources, and full-set
-      // stats in parallel. Dropdowns (routeStarItems, vendors) stay FULL.
       const [itemsResult, routeStarResult, vendorsResult, stats] = await Promise.all([
         this.getAllItems(search, page, limit),
         this.getRouteStarItems(),
@@ -468,7 +437,6 @@ class ManualPurchaseOrderItemService {
         }
       };
 
-      // Only cache the parameterless default response.
       if (!hasParams) {
         cache.pageData = result;
         cache.pageDataExpiry = now + CACHE_TTL.PAGE_DATA;
@@ -484,10 +452,6 @@ class ManualPurchaseOrderItemService {
     }
   }
 
-  /**
-   * Dashboard stats computed over the FULL item set (respecting the same search
-   * filter as the list, so the counts match what the user is looking at).
-   */
   async getItemStats(search) {
     const ModelCategory = require('../models/ModelCategory');
     const match = {};
@@ -501,11 +465,6 @@ class ManualPurchaseOrderItemService {
       ];
     }
 
-    // Load the matched items' sku + persisted mapping so the "mapped" count
-    // mirrors the list display: an item is considered mapped if it has a
-    // persisted mappedCategoryItemId OR a live ModelCategory mapping keyed by
-    // its SKU (the same resolution getAllItems uses). This keeps the stat
-    // accurate for legacy mappings that predate the write-back sync.
     const [items, active] = await Promise.all([
       ManualPurchaseOrderItem.find(match).select('sku mappedCategoryItemId').lean(),
       ManualPurchaseOrderItem.countDocuments({ ...match, isActive: true })
@@ -530,7 +489,6 @@ class ManualPurchaseOrderItemService {
   }
 
   async getRouteStarItems() {
-    // Check cache first
     const now = Date.now();
     if (cache.routeStarItems && now < cache.routeStarItemsExpiry) {
       return cache.routeStarItems;
@@ -541,7 +499,6 @@ class ManualPurchaseOrderItemService {
     try {
       const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
-      // Fetch both datasets in parallel with optimized queries
       const [allMappings, allRouteStarItems] = await Promise.all([
         RouteStarItemAlias.find({ isActive: true })
           .select('_id canonicalName description aliases')
@@ -556,25 +513,21 @@ class ManualPurchaseOrderItemService {
           .maxTimeMS(8000)
       ]);
 
-      // Build a Set of mapped item names (lowercase for case-insensitive comparison)
       const mappedItemNames = new Set();
       for (const mapping of allMappings) {
         if (mapping.aliases && Array.isArray(mapping.aliases)) {
           for (const alias of mapping.aliases) {
             if (alias && alias.name) {
-              // Add both the exact name and lowercase version for matching
               mappedItemNames.add(alias.name.toLowerCase().trim());
             }
           }
         }
       }
 
-      // Filter unmapped items efficiently
       const unmappedItems = [];
       for (const item of allRouteStarItems) {
         if (item.itemName) {
           const itemNameLower = item.itemName.toLowerCase().trim();
-          // Only include if NOT mapped to any canonical name
           if (!mappedItemNames.has(itemNameLower)) {
             unmappedItems.push({
               _id: item._id,
@@ -587,7 +540,6 @@ class ManualPurchaseOrderItemService {
         }
       }
 
-      // Format canonical items (these should always appear)
       const canonicalItems = allMappings.map(mapping => ({
         _id: mapping._id,
         itemName: mapping.canonicalName,
@@ -596,7 +548,6 @@ class ManualPurchaseOrderItemService {
         aliasCount: mapping.aliases?.length || 0
       }));
 
-      // Combine and sort alphabetically
       const allItems = [...canonicalItems, ...unmappedItems].sort((a, b) =>
         a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' })
       );
@@ -606,7 +557,6 @@ class ManualPurchaseOrderItemService {
         total: allItems.length
       };
 
-      // Cache the result
       cache.routeStarItems = result;
       cache.routeStarItemsExpiry = now + CACHE_TTL.ROUTESTAR_ITEMS;
 

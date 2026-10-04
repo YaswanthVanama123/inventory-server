@@ -1,4 +1,4 @@
-const logger = require('../utils/Logger'); // Fixed: capital L
+const logger = require('../utils/Logger');
 
 
 class BaseParser {

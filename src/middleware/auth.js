@@ -50,7 +50,6 @@ const authenticate = async (req, res, next) => {
         }
       }
       const dbTime = Date.now() - dbStartTime;
-      // console.log(`[TIMING] Auth - JWT verify: ${jwtTime}ms, DB lookup: ${dbTime}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -82,7 +81,7 @@ const authenticate = async (req, res, next) => {
         }
       }
       req.user = {
-        _id: user._id,  // Add _id for compatibility with controllers that use req.user._id
+        _id: user._id,
         id: user._id,
         username: user.username,
         email: user.email,

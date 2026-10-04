@@ -130,7 +130,6 @@ auditLogSchema.index(
   { expireAfterSeconds: parseInt(process.env.AUDIT_LOG_TTL_SECONDS) || 7776000 }
 );
 
-// Virtual for formatted timestamp
 auditLogSchema.virtual('formattedTimestamp').get(function() {
   return this.timestamp.toLocaleString('en-US', {
     year: 'numeric',
@@ -142,21 +141,15 @@ auditLogSchema.virtual('formattedTimestamp').get(function() {
   });
 });
 
-// Static methods
 auditLogSchema.statics.logActivity = async function(logData) {
   try {
-    // If performedBy is present, limit to 10 most recent logs per user
     if (logData.performedBy) {
       const userId = logData.performedBy;
 
-      // Count existing logs for this user
       const count = await this.countDocuments({ performedBy: userId });
 
-      // If user has 10 or more logs, delete the oldest ones
       if (count >= 10) {
-        const logsToDelete = count - 9; // Keep 9, so new one makes 10
-
-        // Find the oldest logs to delete
+        const logsToDelete = count - 9;
         const oldestLogs = await this.find({ performedBy: userId })
           .sort({ timestamp: 1 })
           .limit(logsToDelete)
@@ -164,16 +157,13 @@ auditLogSchema.statics.logActivity = async function(logData) {
 
         const idsToDelete = oldestLogs.map(log => log._id);
 
-        // Delete the oldest logs
         await this.deleteMany({ _id: { $in: idsToDelete } });
       }
     }
 
-    // Create the new log entry
     return await this.create(logData);
   } catch (error) {
     console.error('Failed to log activity:', error);
-    // Don't throw error - logging should not break the application
     return null;
   }
 };

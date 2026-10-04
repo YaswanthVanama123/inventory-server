@@ -28,7 +28,6 @@ class RouteStarCustomerParser {
     const customer = {
       customerId,
 
-      // Basic Info
       customerName: details.basicInfo.customerName || null,
       company: details.basicInfo.company || null,
       contact: details.basicInfo.contact || null,
@@ -40,7 +39,6 @@ class RouteStarCustomerParser {
       altPhone: details.basicInfo.altPhone || null,
       mobilePhone: details.basicInfo.mobilePhone || null,
 
-      // Billing Address
       billingAddress1: details.billingAddress.billingAddress1 || null,
       billingAddress2: details.billingAddress.billingAddress2 || null,
       billingAddress3: details.billingAddress.billingAddress3 || null,
@@ -48,7 +46,6 @@ class RouteStarCustomerParser {
       billingState: details.billingAddress.billingState || null,
       billingZip: details.billingAddress.billingZip || null,
 
-      // Service Address
       serviceAddress1: details.serviceAddress.serviceAddress1 || null,
       serviceAddress2: details.serviceAddress.serviceAddress2 || null,
       serviceAddress3: details.serviceAddress.serviceAddress3 || null,
@@ -59,19 +56,16 @@ class RouteStarCustomerParser {
       longitude: details.serviceAddress.longitude || null,
       zone: details.serviceAddress.zone || null,
 
-      // Account Info
       accountNumber: details.accountInfo.accountNumber || null,
       balance: details.accountInfo.balance || 0,
       creditLimit: details.accountInfo.creditLimit || null,
       accountValue: details.accountInfo.accountValue || null,
 
-      // Tax & Payment
       taxCode: details.taxAndPayment.taxCode || null,
       taxRate: details.taxAndPayment.taxRate || null,
       terms: details.taxAndPayment.terms || null,
       preferredPaymentMethod: details.taxAndPayment.preferredPaymentMethod || null,
 
-      // Classification
       customerType: details.classification.customerType || null,
       salesRep: details.classification.salesRep || null,
       grouping: details.classification.grouping || null,
@@ -79,14 +73,12 @@ class RouteStarCustomerParser {
       priceGrouping: details.classification.priceGrouping || null,
       status: details.classification.status || null,
 
-      // Settings
       active: details.settings.active !== null ? details.settings.active : true,
       paperless: details.settings.paperless || false,
       proofOfService: details.settings.proofOfService || false,
       hideMobileEmailOption: details.settings.hideMobileEmailOption || false,
       addChargeOnBatchBilling: details.settings.addChargeOnBatchBilling || false,
 
-      // Additional Info
       notificationMethod: details.additionalInfo.notificationMethod || null,
       parentCustomer: details.additionalInfo.parentCustomer || null,
       billAnotherCustomer: details.additionalInfo.billAnotherCustomer || null,

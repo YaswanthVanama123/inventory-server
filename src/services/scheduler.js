@@ -134,7 +134,6 @@ class SyncScheduler {
   startDailyAutoFetch() {
     const timezone = process.env.TZ || 'America/New_York';
 
-    // Pending Invoices - Daily at 1:00 AM
     this.pendingInvoicesTask = cron.schedule(
       '0 1 * * *',
       () => withCronLock('scheduler:pendingInvoices', SIX_HOURS, async () => {

@@ -240,11 +240,6 @@ class BaseAutomation {
     }
     return results;
   }
-  /**
-   * Capture a failure screenshot. Routed through the shared helper so the
-   * "errors only, local only" rules apply here too — returns null when
-   * screenshots are disabled (e.g. in production).
-   */
   async takeScreenshot(name) {
     const { captureScreenshot } = require('../utils/screenshot');
     return captureScreenshot(this.page, name);
@@ -266,11 +261,6 @@ class BaseAutomation {
     }
   }
   async close() {
-    // Close each handle independently and force-kill the browser process as a
-    // last resort. A single try/catch around all three steps used to skip
-    // context/browser cleanup when page.close() threw on a crashed Playwright
-    // target, leaving orphan Chromium processes that eventually exhausted RAM
-    // on the droplet and brought down the whole server.
     const withTimeout = async (label, fn, ms = 10000) => {
       try {
         await Promise.race([
@@ -293,8 +283,6 @@ class BaseAutomation {
     }
     if (this.browser) {
       await withTimeout('browser.close', () => this.browser.close());
-      // Force-kill the underlying Chromium process if .close() didn't (e.g.
-      // when the browser was already crashed and close() rejected/timed out).
       try {
         const proc = typeof this.browser.process === 'function' ? this.browser.process() : null;
         if (proc && !proc.killed) {

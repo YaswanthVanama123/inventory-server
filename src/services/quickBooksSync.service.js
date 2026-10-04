@@ -3,10 +3,6 @@ const StockDiscrepancy = require('../models/StockDiscrepancy');
 const stockService = require('./stock.service');
 
 class QuickBooksSyncService {
-  /**
-   * Snapshot current stock for all categories and enqueue stock_update records.
-   * Called by the hourly cron. Skips items with no canonical mapping.
-   */
   async enqueueHourlySnapshot() {
     const startedAt = Date.now();
     const batchId = `SNAP-${Date.now()}`;
@@ -20,7 +16,6 @@ class QuickBooksSyncService {
         ...(summary.sellStock?.items || [])
       ];
 
-      // Deduplicate by categoryName (sell + use can overlap)
       const seen = new Set();
       const ops = [];
 
@@ -77,10 +72,6 @@ class QuickBooksSyncService {
     }
   }
 
-  /**
-   * Enqueue any new (Approved) discrepancies that haven't been queued yet.
-   * Uses sourceRef.discrepancyId for idempotency.
-   */
   async enqueueRecentDiscrepancies({ since } = {}) {
     const startedAt = Date.now();
     let enqueued = 0;
@@ -89,7 +80,7 @@ class QuickBooksSyncService {
     try {
       const cutoff = since instanceof Date
         ? since
-        : new Date(Date.now() - 25 * 60 * 60 * 1000); // last 25 hours by default
+        : new Date(Date.now() - 25 * 60 * 60 * 1000);
 
       const discrepancies = await StockDiscrepancy.find({
         status: 'Approved',
@@ -139,10 +130,6 @@ class QuickBooksSyncService {
     }
   }
 
-  /**
-   * Fetch up to `limit` pending records and atomically mark them as in_progress.
-   * QBWC calls this each polling cycle. Returns the records to build QBXML from.
-   */
   async claimPending(limit = 25) {
     const claimed = [];
     for (let i = 0; i < limit; i++) {
@@ -162,10 +149,6 @@ class QuickBooksSyncService {
     return claimed;
   }
 
-  /**
-   * Release in_progress records back to pending without incrementing retries.
-   * Called when QBWC reports it has no QB session or wants to defer.
-   */
   async releaseInProgress(ids) {
     if (!ids || ids.length === 0) return 0;
     const result = await QuickBooksSyncQueue.updateMany(

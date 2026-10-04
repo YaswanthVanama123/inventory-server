@@ -16,12 +16,10 @@ const quickBooksSyncQueueSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  // For stock_update: absolute current stock (used as NewQuantity in QB)
   newQuantity: {
     type: Number,
     default: null
   },
-  // For discrepancy_adjustment: signed delta (used as QuantityDifference in QB)
   quantityDifference: {
     type: Number,
     default: null
@@ -52,7 +50,6 @@ const quickBooksSyncQueueSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  // Reference to source object (discrepancy _id, stock snapshot batch id, etc.)
   sourceRef: {
     type: mongoose.Schema.Types.Mixed,
     default: null

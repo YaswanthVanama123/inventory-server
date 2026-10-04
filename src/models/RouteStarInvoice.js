@@ -173,7 +173,6 @@ routeStarInvoiceSchema.index({ lastSyncedAt: -1 });
 routeStarInvoiceSchema.index({ 'lineItems.name': 1 });
 routeStarInvoiceSchema.index({ 'lineItems.sku': 1 });
 routeStarInvoiceSchema.index({ status: 1, 'lineItems.name': 1 });
-// Compound index for employee dashboard queries (truck-based filtering)
 routeStarInvoiceSchema.index({ 'lineItems.class': 1, invoiceDate: -1 });
 routeStarInvoiceSchema.virtual('shouldProcessStock').get(function() {
   return !this.stockProcessed &&

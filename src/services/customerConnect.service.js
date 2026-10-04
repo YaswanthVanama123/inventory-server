@@ -360,9 +360,7 @@ class CustomerConnectService {
     const sortField = sortBy === 'quantity' ? 'totalQuantity' : sortBy === 'value' ? 'totalValue' : 'name';
     const minQty = parseInt(minQuantity);
 
-    // Combine orders from both CustomerConnectOrder and PurchaseOrder (manual orders)
     const result = await CustomerConnectOrder.aggregate([
-      // Match synced orders from CustomerConnect
       {
         $match: {
           status: { $in: ['Complete', 'Processing', 'Shipped'] }
@@ -373,7 +371,6 @@ class CustomerConnectService {
           items: 1
         }
       },
-      // Union with manual PurchaseOrders
       {
         $unionWith: {
           coll: 'purchaseorders',
@@ -400,8 +397,6 @@ class CustomerConnectService {
           ]
         }
       }] : []),
-      // Purchase lines are recorded per case. Attach each SKU's case quantity so
-      // the grouped totals below are expressed in selling units, matching Stock.
       {
         $lookup: {
           from: 'itemcasequantities',
@@ -491,7 +486,6 @@ class CustomerConnectService {
   async bulkDeleteBySKUs(skus) {
     console.log(`[Bulk Delete] Deleting orders with SKUs: ${skus.join(', ')}`);
 
-    // Delete from both CustomerConnectOrder and PurchaseOrder (manual orders)
     const [ccResult, poResult] = await Promise.all([
       CustomerConnectOrder.deleteMany({
         'items.sku': { $in: skus }
@@ -514,7 +508,6 @@ class CustomerConnectService {
   async bulkDeleteByOrderNumbers(orderNumbers) {
     console.log(`[Bulk Delete Orders] Deleting orders with numbers: ${orderNumbers.join(', ')}`);
 
-    // Delete from both CustomerConnectOrder and PurchaseOrder (manual orders)
     const [ccResult, poResult] = await Promise.all([
       CustomerConnectOrder.deleteMany({
         orderNumber: { $in: orderNumbers }
@@ -537,7 +530,6 @@ class CustomerConnectService {
   async getOrdersBySKU(sku) {
     console.log(`[getOrdersBySKU] Looking for SKU: ${sku}`);
 
-    // Query both CustomerConnectOrder and PurchaseOrder (manual orders)
     const [ccOrders, poOrders] = await Promise.all([
       CustomerConnectOrder.find({
         'items.sku': { $regex: new RegExp(`^${sku}$`, 'i') }
@@ -556,9 +548,7 @@ class CustomerConnectService {
 
     console.log(`[getOrdersBySKU] Found ${ccOrders.length} CustomerConnect orders and ${poOrders.length} manual orders`);
 
-    // Extract matching entries from CustomerConnect orders
     const ccEntries = ccOrders.map(order => {
-      // Find matching items and their indices
       const entries = [];
       order.items.forEach((item, itemIndex) => {
         if (item.sku.toLowerCase() === sku.toLowerCase()) {
@@ -580,22 +570,20 @@ class CustomerConnectService {
             receivedQuantity: item.receivedQuantity || 0,
             remainingQuantity: item.remainingQuantity !== undefined ? item.remainingQuantity : item.qty,
             verificationHistory: item.verificationHistory || [],
-            itemIndex: itemIndex // Add the actual index within the order's items array
+            itemIndex: itemIndex
           });
         }
       });
       return entries;
     }).flat();
 
-    // Extract matching entries from manual PurchaseOrders
     const poEntries = poOrders.map(order => {
-      // Find matching items and their indices
       const entries = [];
       order.items.forEach((item, itemIndex) => {
         if (item.sku.toLowerCase() === sku.toLowerCase()) {
           entries.push({
             orderNumber: order.orderNumber,
-            poNumber: null, // Manual orders don't have PO number from CustomerConnect
+            poNumber: null,
             orderDate: order.orderDate,
             status: order.status,
             vendor: order.vendor?.name || 'N/A',
@@ -611,14 +599,13 @@ class CustomerConnectService {
             receivedQuantity: item.receivedQuantity || 0,
             remainingQuantity: item.remainingQuantity !== undefined ? item.remainingQuantity : item.qty,
             verificationHistory: item.verificationHistory || [],
-            itemIndex: itemIndex // Add the actual index within the order's items array
+            itemIndex: itemIndex
           });
         }
       });
       return entries;
     }).flat();
 
-    // Combine and sort all entries by order date (newest first)
     const orderEntries = [...ccEntries, ...poEntries].sort((a, b) =>
       new Date(b.orderDate) - new Date(a.orderDate)
     );
@@ -662,11 +649,9 @@ class CustomerConnectService {
   async verifyOrderItem(orderNumber, itemIndex, userId, receivedQty = null, notes = '') {
     const StockProcessor = require('./stockProcessor');
 
-    // Try to find order in CustomerConnectOrder first
     let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
     let isManualOrder = false;
 
-    // If not found, try PurchaseOrder (manual orders)
     if (!order) {
       order = await PurchaseOrder.findOne({ orderNumber });
       isManualOrder = true;
@@ -684,7 +669,6 @@ class CustomerConnectService {
     const expectedQuantity = item.qty;
     const previouslyReceived = item.receivedQuantity || 0;
 
-    // If receivedQty is not provided, assume full quantity
     const receivingNow = receivedQty !== null ? parseFloat(receivedQty) : (expectedQuantity - previouslyReceived);
 
     if (receivingNow <= 0) {
@@ -694,7 +678,6 @@ class CustomerConnectService {
     const newTotalReceived = previouslyReceived + receivingNow;
     const newRemaining = Math.max(0, expectedQuantity - newTotalReceived);
 
-    // Add to verification history
     if (!item.verificationHistory) item.verificationHistory = [];
     const verificationEntry = {
       receivedQty: receivingNow,
@@ -706,7 +689,6 @@ class CustomerConnectService {
     };
     item.verificationHistory.push(verificationEntry);
 
-    // Update cumulative totals
     item.receivedQuantity = newTotalReceived;
     item.remainingQuantity = newRemaining;
 
@@ -718,7 +700,6 @@ class CustomerConnectService {
       verificationHistoryLength: item.verificationHistory.length
     });
 
-    // Only mark as fully verified if all quantity received
     if (newTotalReceived >= expectedQuantity) {
       item.itemVerified = true;
       item.itemVerifiedAt = new Date();
@@ -730,7 +711,6 @@ class CustomerConnectService {
     await order.save();
     console.log(`[verifyOrderItem] Order saved successfully. Item receivedQuantity: ${item.receivedQuantity}`);
 
-    // Process stock immediately for this receipt
     try {
       const verificationIndex = item.verificationHistory.length - 1;
       const verificationId = `${Date.now()}-${verificationIndex}`;
@@ -743,7 +723,6 @@ class CustomerConnectService {
         userId
       );
 
-      // Mark this verification as stock processed
       item.verificationHistory[verificationIndex].stockProcessed = true;
       item.verificationHistory[verificationIndex].stockProcessedAt = new Date();
       await order.save();
@@ -751,10 +730,8 @@ class CustomerConnectService {
       console.log(`✓ Stock processed for ${item.sku}: +${receivingNow} units`);
     } catch (stockError) {
       console.error(`✗ Failed to process stock for ${item.sku}:`, stockError.message);
-      // Don't throw error - verification is saved, stock processing can be retried
     }
 
-    // Check if ALL items in the order are fully verified
     const allItemsVerified = order.items.every(orderItem => orderItem.itemVerified === true);
 
     if (allItemsVerified && !order.verified) {
@@ -782,11 +759,9 @@ class CustomerConnectService {
   async reprocessFailedVerifications(orderNumber) {
     const StockProcessor = require('./stockProcessor');
 
-    // Try to find order in CustomerConnectOrder first
     let order = await CustomerConnectOrder.findByOrderNumber(orderNumber);
     let isManualOrder = false;
 
-    // If not found, try PurchaseOrder (manual orders)
     if (!order) {
       order = await PurchaseOrder.findOne({ orderNumber });
       isManualOrder = true;
@@ -799,7 +774,6 @@ class CustomerConnectService {
     let processedCount = 0;
     let failedCount = 0;
 
-    // Loop through all items
     for (let itemIndex = 0; itemIndex < order.items.length; itemIndex++) {
       const item = order.items[itemIndex];
 
@@ -807,11 +781,9 @@ class CustomerConnectService {
         continue;
       }
 
-      // Loop through verification history
       for (let historyIndex = 0; historyIndex < item.verificationHistory.length; historyIndex++) {
         const verification = item.verificationHistory[historyIndex];
 
-        // Skip if already processed
         if (verification.stockProcessed) {
           continue;
         }
@@ -827,7 +799,6 @@ class CustomerConnectService {
             verification.verifiedBy
           );
 
-          // Mark this verification as stock processed
           verification.stockProcessed = true;
           verification.stockProcessedAt = new Date();
           processedCount++;

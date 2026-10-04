@@ -1,28 +1,14 @@
 const AuditLog = require('../models/AuditLog');
 
-/**
- * Activity Log Service
- * Handles business logic for activity logs
- */
-
 class ActivityLogService {
-  /**
-   * Get activity logs with filtering and pagination
-   */
   async getActivityLogs(filters = {}) {
     return await AuditLog.getActivityLogs(filters);
   }
 
-  /**
-   * Get activity statistics
-   */
   async getActivityStats(filters = {}) {
     return await AuditLog.getActivityStats(filters);
   }
 
-  /**
-   * Get user's own activity logs
-   */
   async getUserActivityLogs(userId, filters = {}) {
     const userFilters = {
       ...filters,
@@ -31,9 +17,6 @@ class ActivityLogService {
     return await AuditLog.getActivityLogs(userFilters);
   }
 
-  /**
-   * Get recent activities
-   */
   async getRecentActivities(limit = 20) {
     try {
       const logs = await AuditLog.find()
@@ -49,9 +32,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Get activity timeline for a resource
-   */
   async getResourceTimeline(resource, resourceId) {
     try {
       const logs = await AuditLog.find({ resource, resourceId })
@@ -66,9 +46,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Get activity breakdown by time period
-   */
   async getActivityBreakdown(filters = {}) {
     const { startDate, endDate, groupBy = 'day' } = filters;
 
@@ -142,9 +119,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Get top active users
-   */
   async getTopActiveUsers(limit = 10, filters = {}) {
     const { startDate, endDate } = filters;
     const query = {};
@@ -179,9 +153,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Get failed activities
-   */
   async getFailedActivities(filters = {}) {
     const { page = 1, limit = 50 } = filters;
 
@@ -200,9 +171,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Export activity logs
-   */
   async exportActivityLogs(filters = {}, format = 'json') {
     try {
       const { logs } = await this.getActivityLogs({ ...filters, limit: 10000 });
@@ -218,9 +186,6 @@ class ActivityLogService {
     }
   }
 
-  /**
-   * Convert logs to CSV format
-   */
   _convertToCSV(logs) {
     if (!logs || logs.length === 0) {
       return '';
@@ -270,9 +235,6 @@ class ActivityLogService {
     return csvContent;
   }
 
-  /**
-   * Delete old activity logs (cleanup)
-   */
   async deleteOldLogs(daysToKeep = 90) {
     try {
       const cutoffDate = new Date();

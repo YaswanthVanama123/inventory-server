@@ -1,7 +1,3 @@
-/**
- * Test script to fetch a single invoice's details for debugging
- * Usage: node test-invoice-details.js
- */
 
 require('dotenv').config();
 const RouteStarAutomation = require('./src/automation/routestar');
@@ -12,14 +8,12 @@ async function testInvoiceDetails() {
   try {
     console.log('🚀 Starting invoice details test...\n');
 
-    // Initialize browser and login
     console.log('📱 Initializing browser...');
     await automation.init();
 
     console.log('🔐 Logging in...');
     await automation.login();
 
-    // Test with the original problem invoices
     const testInvoices = [
       'https://emnrv.routestar.online/web/invoicedetails/NRV5289',
       'https://emnrv.routestar.online/web/invoicedetails/NRV5488',
@@ -80,5 +74,4 @@ async function testInvoiceDetails() {
   }
 }
 
-// Run the test
 testInvoiceDetails().catch(console.error);

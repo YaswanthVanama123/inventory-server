@@ -1,5 +1,5 @@
 const BasePage = require('./BasePage');
-const logger = require('../utils/Logger'); // Fixed: capital L
+const logger = require('../utils/Logger');
 const { retry } = require('../utils/retry');
 
 

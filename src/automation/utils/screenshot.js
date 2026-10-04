@@ -1,22 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
-const logger = require('./Logger'); // Fixed: capital L
+const logger = require('./Logger');
 const timeoutConfig = require('../config/timeout.config');
 
 const screenshotsDir = path.join(__dirname, '../../../screenshots');
 
-/**
- * Screenshots are a LOCAL DEBUGGING AID ONLY.
- *
- * Two rules, enforced here so no call site can bypass them:
- *   1. Only on failure. Nothing is captured on the happy path — a successful
- *      sync should leave the screenshots folder untouched.
- *   2. Only outside production. On the production server the disk fills up
- *      with full-page PNGs nobody looks at, so capture is off by default.
- *
- * `ENABLE_SCREENSHOTS=true|false` overrides the environment check either way.
- */
 function screenshotsEnabled() {
   const override = process.env.ENABLE_SCREENSHOTS;
   if (override !== undefined) {
@@ -25,10 +14,6 @@ function screenshotsEnabled() {
   return process.env.NODE_ENV !== 'production';
 }
 
-/**
- * Create the folder on first write instead of at import time, so a production
- * process never creates a directory it will never use.
- */
 function ensureScreenshotsDir() {
   if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -41,10 +26,6 @@ function buildFilePath(name) {
   return path.join(ensureScreenshotsDir(), `${name}-${timestamp}.png`);
 }
 
-/**
- * Capture a full-page screenshot for an ERROR. No-ops on the happy path
- * environments (production) and returns null so callers can stay unchanged.
- */
 async function captureScreenshot(page, name) {
   if (!screenshotsEnabled()) return null;
   if (!page) return null;
@@ -88,18 +69,12 @@ async function captureElementScreenshot(page, selector, name) {
   }
 }
 
-/**
- * Delete every screenshot currently on disk. Used by the nightly cleanup cron
- * so the folder never accumulates — whatever an error produced today is gone
- * by tomorrow.
- */
 async function clearScreenshots() {
   const result = { deleted: 0, freedBytes: 0, failed: 0 };
   let entries;
   try {
     entries = await fsp.readdir(screenshotsDir);
   } catch (error) {
-    // No folder means nothing was ever captured — that is a success, not an error.
     if (error.code === 'ENOENT') return result;
     throw error;
   }

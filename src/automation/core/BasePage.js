@@ -1,4 +1,4 @@
-const logger = require('../utils/Logger'); // Fixed: capital L
+const logger = require('../utils/Logger');
 const { wait, waitForNetworkIdle } = require('../utils/wait');
 const { captureScreenshot } = require('../utils/screenshot');
 const timeoutConfig = require('../config/timeout.config');

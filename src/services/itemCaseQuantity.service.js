@@ -6,8 +6,6 @@ const ModelCategory = require('../models/ModelCategory');
 
 const LOOKUP_CACHE_TTL_MS = 30 * 1000;
 
-// Unit words that can appear in a purchased item's pack spec, mapped to the
-// label shown in the Purchase Unit column.
 const PURCHASE_UNIT_LABELS = {
   CASE: 'Case', CS: 'Case',
   PACK: 'Pack', PK: 'Pack', PKG: 'Pack',
@@ -25,25 +23,13 @@ const PURCHASE_UNIT_LABELS = {
 };
 const UNIT = `(${Object.keys(PURCHASE_UNIT_LABELS).join('|')})`;
 const PACK_SPEC_FORMS = [
-  `${UNIT}\\s*(?:/|\\bOF\\b)\\s*\\d+`, // PACK/4, CASE/500, BOX OF 12
-  `\\d+\\s*(?:/|\\bPER\\b)\\s*${UNIT}`, // 12/CS, 500 PER CASE
-  `(?:\\d+\\s*)?${UNIT}\\s*(?:/|\\bPER\\b)\\s*${UNIT}` // 150 PR/CS: the outer unit is bought
+  `${UNIT}\\s*(?:/|\\bOF\\b)\\s*\\d+`,
+  `\\d+\\s*(?:/|\\bPER\\b)\\s*${UNIT}`,
+  `(?:\\d+\\s*)?${UNIT}\\s*(?:/|\\bPER\\b)\\s*${UNIT}`
 ];
 const PACK_SPEC_RE = new RegExp(`\\b(?:${PACK_SPEC_FORMS.join('|')})\\b`, 'gi');
-// Pairs are often written "12 PAIRS", "100 PR" or just "PAIR" instead of as a
-// pack spec, so a pair mention counts when the name has no spec.
 const PAIR_MENTION_RE = /\b(?:PAIRS?|\d+\s*PRS?)\b/i;
 
-/**
- * Case-quantity (pack size) mappings for purchased items.
- *
- * Two responsibilities:
- *  1. The lookup map used by every stock calculation to convert a purchase
- *     quantity (cases) into selling units. Cached briefly because the stock
- *     aggregations call it on every request.
- *  2. The data behind the Case Quantity Mapping screen: every unique SKU that
- *     has ever appeared on a purchase order, with its current pack size.
- */
 class ItemCaseQuantityService {
   constructor() {
     this._lookupCache = null;
@@ -55,9 +41,6 @@ class ItemCaseQuantityService {
     this._lookupCacheExpiry = 0;
   }
 
-  /**
-   * { [SKU]: unitsPerCase }. Missing SKUs mean "1 unit per purchase unit".
-   */
   async getLookupMap() {
     if (this._lookupCache && Date.now() < this._lookupCacheExpiry) {
       return this._lookupCache;
@@ -68,29 +51,20 @@ class ItemCaseQuantityService {
     return lookup;
   }
 
-  /** Units contained in one purchase unit of `sku`. Always >= 1. */
   unitsPerCase(lookup, sku) {
     if (!sku || !lookup) return 1;
     const factor = lookup[String(sku).toUpperCase()];
     return factor > 0 ? factor : 1;
   }
 
-  /** Convert a purchase-order quantity (cases) into selling units. */
   toUnits(lookup, sku, qty) {
     return (qty || 0) * this.unitsPerCase(lookup, sku);
   }
 
-  /**
-   * Purchase unit named in an item's pack spec ("..., PACK/4" -> 'Pack') or a
-   * pair mention ("12 PAIRS" -> 'Pair'), or null when the name has neither.
-   * Only the default label for SKUs without a saved mapping - stock maths
-   * never reads the label.
-   */
   purchaseUnitFromName(itemName) {
     if (!itemName) return null;
     const name = String(itemName);
     let label = null;
-    // Last spec wins: names end with the unit the item is ordered in.
     for (const match of name.matchAll(PACK_SPEC_RE)) {
       label = PURCHASE_UNIT_LABELS[(match[1] || match[2] || match[4]).toUpperCase()];
     }
@@ -98,15 +72,6 @@ class ItemCaseQuantityService {
     return label;
   }
 
-  /**
-   * Every unique SKU that appears on a purchase order (CustomerConnect or
-   * manual), plus manual PO catalog items that have not been ordered yet.
-   *
-   * `countedQty` mirrors the rule the stock aggregations use - the received
-   * quantity when a partial receipt was recorded, otherwise the full ordered
-   * quantity once the line is verified - so this screen shows the same numbers
-   * that Stock will multiply by the case quantity.
-   */
   async getPurchasedItems(options = {}) {
     const [ccItems, manualOrderItems, manualCatalogItems, mappings, categoryMappings] =
       await Promise.all([
@@ -207,8 +172,6 @@ class ItemCaseQuantityService {
     addSource(ccItems, 'customerconnect');
     addSource(manualOrderItems, 'manual');
 
-    // Manual PO catalog items that have never been ordered still need a pack
-    // size, otherwise their first order lands in stock un-converted.
     manualCatalogItems.forEach(item => {
       const sku = (item.sku || '').toUpperCase();
       if (!sku) return;
@@ -263,10 +226,8 @@ class ItemCaseQuantityService {
         orderCount: entry.orderCount,
         lastOrderDate: entry.lastOrderDate,
         lastUnitPrice: entry.lastUnitPrice,
-        // Quantities as recorded on the orders (purchase units / cases)
         orderedCases: entry.orderedQty,
         countedCases: entry.countedQty,
-        // The same quantities converted to selling units
         orderedUnits: entry.orderedQty * unitsPerCase,
         countedUnits: entry.countedQty * unitsPerCase
       };
@@ -274,7 +235,6 @@ class ItemCaseQuantityService {
 
     result.sort((a, b) => a.sku.localeCompare(b.sku));
 
-    // ----- Filtering / stats / pagination (server-side, like Model Mapping) -----
     const { search, status } = options;
     let filtered = result;
 
@@ -295,7 +255,6 @@ class ItemCaseQuantityService {
       filtered = filtered.filter(item => item.unitsPerCase > 1);
     }
 
-    // Stats always cover the full (unfiltered) set.
     const mappedCount = result.filter(item => item.isMapped).length;
     const bulkCount = result.filter(item => item.unitsPerCase > 1).length;
     const stats = {

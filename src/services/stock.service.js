@@ -152,15 +152,12 @@ class StockService {
     skuAggregation.forEach(item => {
       console.log(`[getCategorySkus] SKU ${item.sku}: totalQuantity=${item.totalQuantity}, purchaseHistory count=${item.purchaseHistory?.length || 0}`);
 
-      // Filter out purchase history entries with quantity <= 0 (defensive filter)
       const filteredPurchaseHistory = (item.purchaseHistory || []).filter(order => (order.quantity || 0) > 0);
 
       if (filteredPurchaseHistory.length > 0) {
         console.log(`[getCategorySkus] First purchase history entry:`, JSON.stringify(filteredPurchaseHistory[0]));
       }
 
-      // Purchase quantities are recorded in purchase units (cases); stock is
-      // tracked in selling units, so scale by the SKU's case quantity.
       const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item.sku);
 
       skuData[item.sku] = {
@@ -204,25 +201,19 @@ class StockService {
     console.time(`[getCategorySales] Total for ${categoryName}`);
     console.time('[getCategorySales] Step 1: Load aliases');
 
-    // Fetch alias mappings to get original case-sensitive names
     const aliasMappings = await RouteStarItemAlias.find({ isActive: true })
       .select('canonicalName aliases')
       .lean();
 
-    // Build variations including all case-sensitive alias names
     const variations = [categoryName, categoryName.toLowerCase(), categoryName.toUpperCase()];
 
-    // Find the mapping that contains this category as canonical OR as an alias
     for (const mapping of aliasMappings) {
       const canonicalLower = mapping.canonicalName.toLowerCase();
       const categoryLower = categoryName.toLowerCase();
 
-      // Check if this category IS the canonical name
       if (canonicalLower === categoryLower) {
-        // Add canonical name variations
         variations.push(mapping.canonicalName);
 
-        // Add all aliases with their original case
         if (mapping.aliases && Array.isArray(mapping.aliases)) {
           mapping.aliases.forEach(alias => {
             if (alias && alias.name) {
@@ -235,19 +226,16 @@ class StockService {
         break;
       }
 
-      // Check if this category is an alias of this canonical name
       if (mapping.aliases && Array.isArray(mapping.aliases)) {
         const isAlias = mapping.aliases.some(alias =>
           alias && alias.name && alias.name.toLowerCase() === categoryLower
         );
 
         if (isAlias) {
-          // Add canonical name variations
           variations.push(mapping.canonicalName);
           variations.push(mapping.canonicalName.toLowerCase());
           variations.push(mapping.canonicalName.toUpperCase());
 
-          // Add all aliases
           mapping.aliases.forEach(alias => {
             if (alias && alias.name) {
               variations.push(alias.name);
@@ -260,14 +248,12 @@ class StockService {
       }
     }
 
-    // Remove duplicates
     const uniqueVariations = [...new Set(variations)];
 
     console.timeEnd('[getCategorySales] Step 1: Load aliases');
     console.log(`Finding data for category: ${categoryName}, variations:`, uniqueVariations);
     console.time('[getCategorySales] Step 2: Get mappings');
 
-    // Find SKUs mapped to this category OR any of its aliases
     const mappings = await ModelCategory.find({
       categoryItemName: { $in: uniqueVariations }
     }).lean();
@@ -284,7 +270,6 @@ class StockService {
     console.log(`[getCategorySales] Found ${skus.length} SKUs`);
     console.time('[getCategorySales] Step 3: Parallel aggregations');
     const [ccPurchaseData, manualPurchaseData, salesData, checkoutData, discrepancies] = await Promise.all([
-      // CustomerConnect purchases
       CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -369,7 +354,6 @@ class StockService {
           }
         }
       ]),
-      // Manual purchases
       PurchaseOrder.aggregate([
         {
           $match: {
@@ -554,9 +538,6 @@ class StockService {
     ]);
     console.timeEnd('[getCategorySales] Step 3: Parallel aggregations');
 
-    // Purchase quantities are in purchase units (cases). Convert to selling
-    // units before they are compared with sales / checkouts, which are always
-    // recorded per single unit.
     const caseMap = await itemCaseQuantityService.getLookupMap();
     const scalePurchaseRow = (item) => {
       const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item._id);
@@ -576,34 +557,27 @@ class StockService {
       };
     };
 
-    // Combine purchase data from both sources
     const purchaseDataMap = new Map();
 
-    // Add CustomerConnect purchases
     ccPurchaseData.forEach(item => {
       purchaseDataMap.set(item._id, scalePurchaseRow(item));
     });
 
-    // Add or merge Manual purchases
     manualPurchaseData.forEach(item => {
       const scaled = scalePurchaseRow(item);
       if (purchaseDataMap.has(item._id)) {
-        // Merge with existing
         const existing = purchaseDataMap.get(item._id);
         existing.totalPurchased += scaled.totalPurchased;
         existing.totalPurchasedCases += scaled.totalPurchasedCases;
         existing.totalPurchaseValue += scaled.totalPurchaseValue;
         existing.purchaseHistory.push(...scaled.purchaseHistory);
       } else {
-        // Add new entry
         purchaseDataMap.set(item._id, scaled);
       }
     });
 
-    // Convert Map to object for SKU data
     const skuData = {};
     purchaseDataMap.forEach((data, sku) => {
-      // Filter out purchase history entries with quantity <= 0
       const filteredPurchaseHistory = (data.purchaseHistory || []).filter(order => (order.quantity || 0) > 0);
 
       skuData[sku] = {
@@ -630,7 +604,6 @@ class StockService {
       checkoutHistory: [...oldCheckoutData.checkoutHistory, ...newCheckoutData.checkoutHistory]
     };
 
-    // Calculate total purchases to distribute sales proportionally
     const totalPurchased = Array.from(purchaseDataMap.values()).reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
 
     const skuCount = skus.length || 1;
@@ -660,13 +633,11 @@ class StockService {
       const skuDiscrepancies = discrepancies.filter(d => d.itemSku === sku);
       skuData[skuUpper].discrepancyHistory = skuDiscrepancies;
 
-      // Calculate total discrepancy difference for this SKU
       skuData[skuUpper].totalDiscrepancyDifference = skuDiscrepancies
         .filter(d => d.status === 'Approved')
         .reduce((sum, d) => sum + (d.difference || 0), 0);
     });
 
-    // Distribute sales using remainder distribution to avoid rounding errors
     const salesDistribution = [];
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -677,18 +648,15 @@ class StockService {
       salesDistribution.push({ sku: skuUpper, floorValue, fractionalPart, purchaseRatio });
     });
 
-    // Sort by fractional part descending to distribute remainder
     salesDistribution.sort((a, b) => b.fractionalPart - a.fractionalPart);
     const totalSalesFloored = salesDistribution.reduce((sum, item) => sum + item.floorValue, 0);
     const salesRemainder = categorySalesData.totalSold - totalSalesFloored;
 
-    // Distribute the remainder to SKUs with largest fractional parts
     salesDistribution.forEach((item, index) => {
       skuData[item.sku].totalSold = item.floorValue + (index < salesRemainder ? 1 : 0);
       skuData[item.sku].totalSalesValue = categorySalesData.totalSalesValue * item.purchaseRatio;
     });
 
-    // Distribute checkouts using remainder distribution to avoid rounding errors
     const checkoutDistribution = [];
     skus.forEach(sku => {
       const skuUpper = sku.toUpperCase();
@@ -699,12 +667,10 @@ class StockService {
       checkoutDistribution.push({ sku: skuUpper, floorValue, fractionalPart });
     });
 
-    // Sort by fractional part descending to distribute remainder
     checkoutDistribution.sort((a, b) => b.fractionalPart - a.fractionalPart);
     const totalCheckoutsFloored = checkoutDistribution.reduce((sum, item) => sum + item.floorValue, 0);
     const checkoutRemainder = categoryCheckoutData.totalCheckedOut - totalCheckoutsFloored;
 
-    // Distribute the remainder to SKUs with largest fractional parts
     checkoutDistribution.forEach((item, index) => {
       skuData[item.sku].totalCheckedOut = item.floorValue + (index < checkoutRemainder ? 1 : 0);
     });
@@ -712,7 +678,6 @@ class StockService {
       a.sku.localeCompare(b.sku)
     );
 
-    // Calculate category-level discrepancy adjustment (discrepancies not assigned to any specific SKU)
     const skuSet = new Set(skus.map(s => s.toUpperCase()));
     const categoryLevelDiscrepancyAdjustment = discrepancies
       .filter(d => d.status === 'Approved' && (!d.itemSku || !skuSet.has(d.itemSku.toUpperCase())))
@@ -845,10 +810,8 @@ class StockService {
       RouteStarItemAlias.find({ isActive: true }).select('canonicalName aliases').lean()
     ]);
 
-    // Build a set of all canonical names for allowed categories
     const canonicalNames = new Set();
     aliasMappings.forEach(mapping => {
-      // Check if any alias of this canonical name is in allowedCategories
       const hasAllowedAlias = mapping.aliases.some(alias =>
         allowedCategories.has(alias.name)
       );
@@ -857,7 +820,6 @@ class StockService {
       }
     });
 
-    // Create an expanded allowed set that includes both aliases and canonical names
     const expandedAllowedCategories = new Set([...allowedCategories, ...canonicalNames]);
 
     const categoryMap = {};
@@ -871,16 +833,13 @@ class StockService {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const originalCategory = skuToCategoryMap[sku];
 
-          // Skip if no mapping
           if (!originalCategory) {
             return;
           }
 
-          // Convert to canonical name if mapped
           const categoryLower = originalCategory.toLowerCase();
           const category = aliasMap[categoryLower] || originalCategory;
 
-          // Check if either the original OR canonical name is in our allowed sets
           const isAllowed = allowedCategories.has(originalCategory) || expandedAllowedCategories.has(category);
 
           if (!isAllowed) {
@@ -921,12 +880,10 @@ class StockService {
         invoice.lineItems.forEach(item => {
           const rawItemName = item.name ? item.name.trim() : '';
 
-          // Check if original item name is in allowedCategories
           if (!allowedCategories.has(rawItemName)) {
             return;
           }
 
-          // Convert to canonical name
           const itemNameLower = rawItemName.toLowerCase();
           const canonicalName = aliasMap[itemNameLower] || rawItemName;
 
@@ -1060,11 +1017,9 @@ class StockService {
       const rawCategory = discrepancy.categoryName;
       if (!rawCategory) return;
 
-      // Convert to canonical name
       const categoryLower = rawCategory.toLowerCase();
       const matchedCategory = aliasMap[categoryLower] || rawCategory;
 
-      // Check if EITHER the raw category OR canonical name is in allowedCategories
       const isAllowed = allowedCategories.has(rawCategory) ||
                         allowedCategories.has(matchedCategory) ||
                         expandedAllowedCategories.has(matchedCategory);
@@ -1094,7 +1049,6 @@ class StockService {
       delete category.discrepancyAdjustment;
       console.log(`[getSellStock] ${category.categoryName}: Purchased=${category.totalPurchased}, Sold=${category.totalSold} (NOT subtracted), CheckedOut=${category.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${category.stockRemaining}`);
     });
-    // Add canonical names that don't have any data yet
     canonicalNames.forEach(canonicalName => {
       if (!categoryMap[canonicalName]) {
         categoryMap[canonicalName] = {
@@ -1116,7 +1070,6 @@ class StockService {
       }
     });
 
-    // Also add any unmapped items from forSellItems
     forSellItems.forEach(item => {
       const itemName = item.itemName;
       const itemNameLower = itemName.toLowerCase();
@@ -1142,7 +1095,6 @@ class StockService {
       }
     });
 
-    // CONSOLIDATION: Merge all items by their canonical names
     const consolidatedMap = new Map();
     Object.values(categoryMap).forEach(item => {
       const itemNameLower = item.categoryName.toLowerCase();
@@ -1170,7 +1122,6 @@ class StockService {
 
       const target = consolidatedMap.get(canonical);
 
-      // Track aliases that were merged into this canonical name
       if (item.categoryName !== canonical && !target.aliases.includes(item.categoryName)) {
         target.aliases.push(item.categoryName);
       }
@@ -1191,7 +1142,6 @@ class StockService {
       }
     });
 
-    // Recalculate stockRemaining for each consolidated item
     consolidatedMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
                           - item.totalCheckedOut
@@ -1244,8 +1194,6 @@ class StockService {
       this._cacheSet(cacheKey, metadata, 10); 
     }
     const { forUseItems, forSellItems, aliasData, mappings } = metadata;
-    // Case-quantity map: purchase-order quantities are per case, stock is per
-    // selling unit. Applied to every purchase total below.
     const caseMap = await itemCaseQuantityService.getLookupMap();
     console.timeEnd('[StockSummary] Step 1: Metadata');
     const Settings = require('../models/Settings');
@@ -1256,7 +1204,6 @@ class StockService {
     const sellAllowedSet = new Set(forSellItems.map(item => item.itemName));
     console.time('[StockSummary] Step 1.5: Build SKU maps');
 
-    // Build canonical names FIRST before building SKU lists
     const aliasToCanonicalMap = new Map();
     const sellVariationsSet = new Set();
     const canonicalNamesForSell = new Set();
@@ -1279,7 +1226,6 @@ class StockService {
       }
     });
 
-    // Create expanded allowed set that includes canonical names
     const expandedSellAllowedSet = new Set([...sellAllowedSet, ...canonicalNamesForSell]);
 
     const skuToCategoryMap = new Map();
@@ -1291,14 +1237,12 @@ class StockService {
         if (useAllowedSet.has(m.categoryItemName)) {
           useSKUs.push(m.modelNumber);
         }
-        // Use expanded set that includes canonical names
         if (expandedSellAllowedSet.has(m.categoryItemName)) {
           sellSKUs.push(m.modelNumber);
         }
       }
     });
 
-    // Add any unmapped items from sellAllowedSet
     sellAllowedSet.forEach(c => {
       if (!aliasToCanonicalMap.has(c.toLowerCase())) {
         sellVariationsSet.add(c);
@@ -1307,7 +1251,6 @@ class StockService {
     });
     const sellVariationsArray = Array.from(sellVariationsSet);
 
-    // Build use variations similar to sell variations
     const useVariationsSet = new Set();
     const canonicalNamesForUse = new Set();
 
@@ -1330,7 +1273,6 @@ class StockService {
       }
     });
 
-    // Add direct useAllowedSet items
     useAllowedSet.forEach(c => {
       useVariationsSet.add(c);
       useVariationsSet.add(c.toLowerCase());
@@ -1338,7 +1280,6 @@ class StockService {
 
     const useVariationsArray = Array.from(useVariationsSet);
 
-    // Create expanded use allowed set that includes canonical names
     const expandedUseAllowedSet = new Set([...useAllowedSet, ...canonicalNamesForUse]);
 
     console.timeEnd('[StockSummary] Step 1.5: Build SKU maps');
@@ -1350,7 +1291,6 @@ class StockService {
       const skuToItemNameMap = new Map();
       const salesKeywordsSet = new Set();
 
-      // Query both CustomerConnect and Manual orders
       const [ccSkuOrders, manualSkuOrders] = await Promise.all([
         CustomerConnectOrder.aggregate([
           {
@@ -1417,7 +1357,6 @@ class StockService {
         ])
       ]);
 
-      // Combine and process keywords from both sources
       [...ccSkuOrders, ...manualSkuOrders].forEach(item => {
         if (item.sku && item.name) {
           skuToItemNameMap.set(item.sku, item.name);
@@ -1453,7 +1392,6 @@ class StockService {
     console.log(`[StockSummary] Total variations for checkout matching: ${finalSellVariationsArray.length}`);
     console.time('[StockSummary] Step 2: Mega query');
     const [ccOrdersResult, manualOrdersResult, invoicesResult, checkoutsResult, discrepanciesResult] = await Promise.all([
-      // CustomerConnect orders
       (useSKUs.length > 0 || sellSKUs.length > 0) ? CustomerConnectOrder.aggregate([
         {
           $match: {
@@ -1553,7 +1491,6 @@ class StockService {
           }
         }
       ], { allowDiskUse: true, maxTimeMS: 5000 }) : Promise.resolve([{ usePurchases: [], sellPurchases: [] }]),
-      // Manual orders
       (useSKUs.length > 0 || sellSKUs.length > 0) ? PurchaseOrder.aggregate([
         {
           $match: {
@@ -1808,13 +1745,11 @@ class StockService {
       }).lean() : Promise.resolve([])
     ]);
 
-    // Merge CustomerConnect and Manual order results
     const ccUsePurchases = ccOrdersResult[0]?.usePurchases || [];
     const ccSellPurchases = ccOrdersResult[0]?.sellPurchases || [];
     const manualUsePurchases = manualOrdersResult[0]?.usePurchases || [];
     const manualSellPurchases = manualOrdersResult[0]?.sellPurchases || [];
 
-    // Combine and merge by SKU, converting purchase units (cases) to selling units
     const usePurchasesMap = new Map();
     [...ccUsePurchases, ...manualUsePurchases].forEach(item => {
       const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, item._id);
@@ -2027,7 +1962,6 @@ class StockService {
     });
     const useStockMap = new Map();
 
-    // Add purchases from usePurchases
     usePurchases.forEach(p => {
       const originalCategory = skuToCategoryMap.get(p._id);
       if (!originalCategory) return;
@@ -2060,7 +1994,6 @@ class StockService {
       stock.itemCount += p.itemCount || 0;
     });
 
-    // Add sales for use items
     const useLowercaseMap = new Map();
     useAllowedSet.forEach(category => {
       useLowercaseMap.set(category.toLowerCase(), category);
@@ -2101,7 +2034,6 @@ class StockService {
       }
     });
 
-    // Add checkouts for use items
     allCheckoutsData.forEach(c => {
       const itemNameLower = c.itemName ? c.itemName.toLowerCase() : '';
       let targetCategory = useLowercaseMap.get(itemNameLower);
@@ -2134,7 +2066,6 @@ class StockService {
       }
     });
 
-    // Add discrepancies for use items
     rawDiscrepancies.forEach(disc => {
       let targetCategory = null;
       if (disc.itemSku && skuToCategoryMap.has(disc.itemSku)) {
@@ -2164,7 +2095,6 @@ class StockService {
       }
     });
 
-    // Ensure all forUse items appear even without data
     forUseItems.forEach(item => {
       const itemName = item.itemName;
       const canonical = aliasToCanonicalMap.get(itemName.toLowerCase()) || itemName;
@@ -2180,10 +2110,8 @@ class StockService {
       }
     });
 
-    // Calculate stockRemaining and add aliases for use items
     useStockMap.forEach(item => {
       item.stockRemaining = item.totalPurchased - item.totalCheckedOut + item.totalDiscrepancyDifference;
-      // Add aliases from aliasData
       item.aliases = [];
       aliasData.forEach(mapping => {
         if (mapping.canonicalName === item.categoryName) {
@@ -2200,16 +2128,13 @@ class StockService {
     sellPurchases.forEach(p => {
       const originalCategory = skuToCategoryMap.get(p._id);
 
-      // Skip if no mapping
       if (!originalCategory) {
         return;
       }
 
-      // Convert to canonical name if mapped
       const categoryLower = originalCategory.toLowerCase();
       const category = aliasToCanonicalMap.get(categoryLower) || originalCategory;
 
-      // Check if either the original OR canonical name is in our allowed sets
       const isAllowed = sellAllowedSet.has(originalCategory) || expandedSellAllowedSet.has(category);
 
       if (!isAllowed) {
@@ -2239,7 +2164,6 @@ class StockService {
       stock.itemCount += p.itemCount || 0;
     });
     salesByCategory.forEach((saleData, category) => {
-      // category is already canonical from earlier processing
       if (!sellStockMap.has(category)) {
         sellStockMap.set(category, {
           categoryName: category,
@@ -2263,7 +2187,6 @@ class StockService {
       stock.invoiceCount += saleData.invoiceCount || 0;
     });
     salesBeforeCutoffByCategory.forEach((saleData, category) => {
-      // category is already canonical from earlier processing
       if (!sellStockMap.has(category)) {
         sellStockMap.set(category, {
           categoryName: category,
@@ -2357,7 +2280,6 @@ class StockService {
       stock.totalCheckedOutAfterCutoff += c.totalCheckedOutAfterCutoff || 0;
     });
     discrepancies.forEach(d => {
-      // d.categoryName is already canonical from earlier processing
       const canonical = d.categoryName;
       if (!sellStockMap.has(canonical)) {
         sellStockMap.set(canonical, {
@@ -2389,7 +2311,6 @@ class StockService {
       console.log(`[StockSummary] ${category}: Purchased=${item.totalPurchased}, Sold=${item.totalSold} (NOT subtracted), CheckedOut=${item.totalCheckedOut}, Adjustment=${adjustment}, Remaining=${item.stockRemaining}`);
     });
 
-    // Add canonical names that don't have any data yet
     canonicalNamesForSell.forEach(canonicalName => {
       if (!sellStockMap.has(canonicalName)) {
         sellStockMap.set(canonicalName, {
@@ -2410,7 +2331,6 @@ class StockService {
       }
     });
 
-    // Also add any unmapped items from forSellItems
     forSellItems.forEach(item => {
       const itemName = item.itemName;
       const itemNameLower = itemName.toLowerCase();
@@ -2435,7 +2355,6 @@ class StockService {
       }
     });
 
-    // CONSOLIDATION: Merge all sell stock items by their canonical names
     const consolidatedSellMap = new Map();
     Array.from(sellStockMap.values()).forEach(item => {
       const itemNameLower = item.categoryName.toLowerCase();
@@ -2462,7 +2381,6 @@ class StockService {
 
       const target = consolidatedSellMap.get(canonical);
 
-      // Track aliases that were merged into this canonical name
       if (item.categoryName !== canonical && !target.aliases.includes(item.categoryName)) {
         target.aliases.push(item.categoryName);
       }
@@ -2480,7 +2398,6 @@ class StockService {
       target.invoiceCount += item.invoiceCount || 0;
     });
 
-    // Recalculate stockRemaining for each consolidated item
     consolidatedSellMap.forEach(item => {
       item.stockRemaining = item.totalPurchased
                           - item.totalCheckedOut

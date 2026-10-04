@@ -1,9 +1,3 @@
-/**
- * Script to clear invoice details for invoices with 0 items
- * This allows them to be re-fetched with the fixed scraper
- *
- * Usage: node clear-empty-invoice-details.js
- */
 
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -17,7 +11,6 @@ async function clearEmptyInvoiceDetails() {
 
     console.log('🔍 Finding invoices with empty or missing line items...');
 
-    // Find invoices that have 0 items or missing lineItems
     const emptyInvoices = await RouteStarInvoice.find({
       $or: [
         { lineItems: { $exists: false } },
@@ -33,7 +26,6 @@ async function clearEmptyInvoiceDetails() {
       return;
     }
 
-    // Show sample of invoices that will be cleared
     console.log('Sample invoices that will be cleared:');
     emptyInvoices.slice(0, 10).forEach(inv => {
       console.log(`   - ${inv.invoiceNumber} (${inv.status})`);
@@ -44,7 +36,6 @@ async function clearEmptyInvoiceDetails() {
 
     console.log('\n🗑️  Clearing lineItems field to force re-fetch...');
 
-    // Unset the lineItems, subtotal, tax, total fields so they'll be re-fetched
     const result = await RouteStarInvoice.updateMany(
       {
         $or: [
@@ -80,5 +71,4 @@ async function clearEmptyInvoiceDetails() {
   }
 }
 
-// Run the script
 clearEmptyInvoiceDetails();

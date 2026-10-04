@@ -13,10 +13,6 @@ const { authValidation, validate } = require('../middleware/validation');
 const { setActivityMeta } = require('../middleware/activityLogger');
 
 
-// Note: setup/admin, admin/login and login intentionally skip setActivityMeta
-// because the controllers already call AuditLog.create with the proper
-// performedBy (which the middleware can't supply — it runs before
-// authentication, so req.user is undefined).
 router.post('/setup/admin', createInitialAdmin);
 router.post('/admin/login', authValidation.login, validate, adminLogin);
 router.post('/login', authValidation.login, validate, login);

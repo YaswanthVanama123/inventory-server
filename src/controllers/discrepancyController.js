@@ -20,7 +20,6 @@ exports.getDiscrepancies = async (req, res, next) => {
       includeSummary = 'true'
     } = req.query;
     console.time('[Discrepancies] Query time');
-    // Employees only ever see THEIR OWN discrepancies; admins can opt in with ?mine=true.
     const scopeToMe = req.user?.role === 'employee' || req.query.mine === 'true';
     const myId = req.user?.id ? new mongoose.Types.ObjectId(req.user.id) : null;
     const matchQuery = {};
@@ -31,7 +30,6 @@ exports.getDiscrepancies = async (req, res, next) => {
       matchQuery.discrepancyType = type;
     }
     if (scopeToMe && myId) {
-      // Stock discrepancies the employee personally reported.
       matchQuery.reportedBy = myId;
     }
     if (startDate || endDate) {
@@ -110,7 +108,6 @@ exports.getDiscrepancies = async (req, res, next) => {
       { $facet: facetStages }
     ]);
 
-    // Also fetch TruckDiscrepancy records
     const truckMatchQuery = {};
     if (status) truckMatchQuery.status = status;
     if (type) truckMatchQuery.discrepancyType = type;
@@ -120,13 +117,10 @@ exports.getDiscrepancies = async (req, res, next) => {
       if (endDate) truckMatchQuery.reportedAt.$lte = new Date(endDate);
     }
     if (scopeToMe) {
-      // Truck discrepancies that belong to this employee: ones they reported,
-      // or that are on their truck / under their name.
       const or = [];
       if (myId) or.push({ reportedBy: myId });
       if (req.user?.fullName) or.push({ employeeName: req.user.fullName });
       if (req.user?.truckNumber) or.push({ truckNumber: req.user.truckNumber });
-      // If we have no way to identify the employee, return nothing rather than all.
       truckMatchQuery.$or = or.length ? or : [{ _id: null }];
     }
     const truckDiscrepancies = await TruckDiscrepancy.find(truckMatchQuery)
@@ -135,7 +129,6 @@ exports.getDiscrepancies = async (req, res, next) => {
       .populate('resolvedBy', 'username fullName')
       .lean();
 
-    // Normalize truck discrepancies to match stock discrepancy shape
     const normalizedTruckDiscrepancies = truckDiscrepancies.map(td => ({
       ...td,
       _discrepancySource: 'truck',
@@ -163,7 +156,6 @@ exports.getDiscrepancies = async (req, res, next) => {
       );
     }
 
-    // Paginate the combined list
     const totalCombined = search
       ? allDiscrepancies.length
       : (result[0]?.metadata[0]?.total || 0) + truckDiscrepancies.length;
@@ -178,15 +170,12 @@ exports.getDiscrepancies = async (req, res, next) => {
           total: totalCombined,
           page: pageNum,
           limit: limitNum,
-          // `pages` is the convention across the other list endpoints;
-          // `totalPages` is kept for existing callers.
           pages: Math.ceil(totalCombined / limitNum),
           totalPages: Math.ceil(totalCombined / limitNum)
         }
       }
     };
     if (shouldIncludeSummary) {
-      // Merge summaries from both sources
       const stockByStatus = result[0]?.summaryByStatus || [];
       const truckByStatus = truckDiscrepancies.reduce((acc, td) => {
         const existing = acc.find(s => s._id === td.status);
@@ -225,7 +214,6 @@ exports.getDiscrepancySummary = async (req, res, next) => {
     const { startDate, endDate } = req.query;
     const summary = await StockDiscrepancy.getSummary(startDate, endDate);
 
-    // Also count truck discrepancies
     const truckQuery = {};
     if (startDate || endDate) {
       truckQuery.reportedAt = {};
@@ -237,7 +225,6 @@ exports.getDiscrepancySummary = async (req, res, next) => {
     const truckApproved = truckDiscrepancies.filter(d => d.status === 'Approved').length;
     const truckRejected = truckDiscrepancies.filter(d => d.status === 'Rejected').length;
 
-    // Merge counts
     summary.total = (summary.total || 0) + truckDiscrepancies.length;
     summary.pending = (summary.pending || 0) + truckPending;
     summary.approved = (summary.approved || 0) + truckApproved;
@@ -377,7 +364,6 @@ exports.approveDiscrepancy = async (req, res, next) => {
     const { id } = req.params;
     const { notes } = req.body;
 
-    // Try StockDiscrepancy first
     const discrepancy = await StockDiscrepancy.findById(id);
     if (discrepancy) {
       await discrepancy.approve(req.user.id, notes);
@@ -389,7 +375,6 @@ exports.approveDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // Try TruckDiscrepancy
     const truckDiscrepancy = await TruckDiscrepancy.findById(id);
     if (truckDiscrepancy) {
       truckDiscrepancy.status = 'Approved';
@@ -419,7 +404,6 @@ exports.rejectDiscrepancy = async (req, res, next) => {
     const { id } = req.params;
     const { notes } = req.body;
 
-    // Try StockDiscrepancy first
     const discrepancy = await StockDiscrepancy.findById(id);
     if (discrepancy) {
       await discrepancy.reject(req.user.id, notes);
@@ -431,7 +415,6 @@ exports.rejectDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // Try TruckDiscrepancy
     const truckDiscrepancy = await TruckDiscrepancy.findById(id);
     if (truckDiscrepancy) {
       truckDiscrepancy.status = 'Rejected';
@@ -491,10 +474,8 @@ exports.deleteDiscrepancy = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Try StockDiscrepancy first
     const discrepancy = await StockDiscrepancy.findById(id);
     if (discrepancy) {
-      // Revert stock adjustment if this was an approved discrepancy
       if (discrepancy.status === 'Approved' && discrepancy.difference !== 0) {
         const canonicalName = await RouteStarItemAlias.getCanonicalName(discrepancy.itemName);
         const sku = (canonicalName || discrepancy.categoryName || discrepancy.itemName).toUpperCase();
@@ -511,7 +492,6 @@ exports.deleteDiscrepancy = async (req, res, next) => {
         }
       }
 
-      // If this is a truck checkout discrepancy, also delete the linked TruckDiscrepancy
       if (discrepancy.invoiceNumber && discrepancy.invoiceNumber.startsWith('CHECKOUT-')) {
         const checkoutId = discrepancy.invoiceNumber.replace('CHECKOUT-', '');
         const deletedTruck = await TruckDiscrepancy.deleteMany({ checkoutId });
@@ -527,7 +507,6 @@ exports.deleteDiscrepancy = async (req, res, next) => {
       });
     }
 
-    // Try TruckDiscrepancy if not found in StockDiscrepancy
     const truckDiscrepancy = await TruckDiscrepancy.findById(id);
     if (truckDiscrepancy) {
       await truckDiscrepancy.deleteOne();

@@ -78,15 +78,14 @@ class RouteStarCustomerFetcher {
         break;
       }
 
-      // Map visible column headers -> cell index (robust to RouteStar column reorder/hide)
       const colMap = {};
       try {
         const headerThs = await masterTable.$$('table.htCore thead tr th');
         for (let h = 0; h < headerThs.length; h++) {
           const label = (await headerThs[h].evaluate((el) => (el.textContent || '').trim())).toLowerCase();
-          if (label) colMap[label] = h - 1; // minus the leading row-header/corner th
+          if (label) colMap[label] = h - 1;
         }
-      } catch (e) { /* fall back to name/link extraction if header read fails */ }
+      } catch (e) { }
 
       for (let i = 0; i < customerRows.length; i++) {
         const row = customerRows[i];
@@ -113,7 +112,6 @@ class RouteStarCustomerFetcher {
 
       console.log(`   Page ${pageCount + 1} complete: ${totalCount} total customers collected so far`);
 
-      // Stream this page straight to the caller (DB) before moving on.
       if (stream && pageCustomers.length > 0) {
         await options.onPage(pageCustomers, pageCount + 1);
         pageCustomers.length = 0;
@@ -164,8 +162,6 @@ class RouteStarCustomerFetcher {
         return t || null;
       };
 
-      // customerId comes from the customer-detail link (in the Customer column) — found
-      // anywhere in the row so it survives column reordering/hiding.
       const customerLink = await row.$eval('a[href*="customerdetail/"]', (el) => el.href).catch(() => null);
       let customerId = null;
       if (customerLink) {
@@ -464,8 +460,7 @@ class RouteStarCustomerFetcher {
   async extractSettings() {
     try {
       console.log(`    ⚙️  Extracting Settings...`);
-      // Active checkbox - need to find the actual checkbox (might not be visible in provided HTML)
-      const active = await this.page.$eval('input[type="checkbox"][name*="active"]', el => el.checked).catch(() => true); // Default to true if not found
+      const active = await this.page.$eval('input[type="checkbox"][name*="active"]', el => el.checked).catch(() => true);
 
       const paperless = await this.page.$eval('#txt_paperless', el => {
         const selectedOption = el.options[el.selectedIndex];
@@ -553,7 +548,6 @@ class RouteStarCustomerFetcher {
       console.log(`      ✓ Last Service Date: ${lastServiceDate || '(empty)'}`);
       console.log(`      ✓ Driving Directions: ${drivingDirections ? '(set)' : '(empty)'}`);
 
-      // Parse lastServiceDate properly - only convert to Date if it's a valid date string
       let parsedLastServiceDate = null;
       if (lastServiceDate && lastServiceDate !== 'Empty' && lastServiceDate.trim() !== '') {
         const dateObj = new Date(lastServiceDate);
@@ -591,7 +585,6 @@ class RouteStarCustomerFetcher {
   async extractAdditionalContacts() {
     try {
       console.log(`    👥 Extracting Additional Contacts...`);
-      // Click Additional Contacts tab if needed
       const contactsTab = await this.page.$('a[href="#additional-contacts"]');
       if (contactsTab) {
         await contactsTab.click();
@@ -624,7 +617,6 @@ class RouteStarCustomerFetcher {
   async extractEquipment() {
     try {
       console.log(`    🔧 Extracting Equipment...`);
-      // Click Equipment tab if needed
       const equipmentTab = await this.page.$('a[href="#equipment"]');
       if (equipmentTab) {
         await equipmentTab.click();
@@ -656,7 +648,6 @@ class RouteStarCustomerFetcher {
   async extractRoutes() {
     try {
       console.log(`    🚚 Extracting Routes...`);
-      // Click Routes tab if needed
       const routesTab = await this.page.$('a[href="#routes"]');
       if (routesTab) {
         await routesTab.click();
@@ -688,7 +679,6 @@ class RouteStarCustomerFetcher {
   async extractNotes() {
     try {
       console.log(`    📌 Extracting Notes...`);
-      // Click Notes tab if needed
       const notesTab = await this.page.$('a[href="#notes"]');
       if (notesTab) {
         await notesTab.click();
@@ -720,7 +710,6 @@ class RouteStarCustomerFetcher {
   async extractActivities() {
     try {
       console.log(`    📊 Extracting Activities...`);
-      // Click Activity tab if needed
       const activityTab = await this.page.$('a[href="#activity"]');
       if (activityTab) {
         await activityTab.click();
@@ -758,7 +747,6 @@ class RouteStarCustomerFetcher {
   async extractAttachments() {
     try {
       console.log(`    📎 Extracting Attachments...`);
-      // Click Attachments tab if needed
       const attachmentsTab = await this.page.$('a[href="#attachments"]');
       if (attachmentsTab) {
         await attachmentsTab.click();
@@ -790,7 +778,6 @@ class RouteStarCustomerFetcher {
   async extractPricing() {
     try {
       console.log(`    💲 Extracting Pricing...`);
-      // Click Pricing tab if needed
       const pricingTab = await this.page.$('a[href="#pricing"]');
       if (pricingTab) {
         await pricingTab.click();
@@ -826,7 +813,6 @@ class RouteStarCustomerFetcher {
   async extractBillingInfo() {
     try {
       console.log(`    🧾 Extracting Billing Info...`);
-      // Click Billing Info tab if needed
       const billingTab = await this.page.$('a[href="#billing-info"]');
       if (billingTab) {
         await billingTab.click();

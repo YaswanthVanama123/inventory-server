@@ -1,17 +1,5 @@
 const mongoose = require('mongoose');
 
-/**
- * Case-quantity mapping for purchased items.
- *
- * Purchase orders (CustomerConnect + manual) record quantities in PURCHASE
- * units - usually cases/boxes. Sales, truck checkouts and discrepancies all
- * happen in SELLING units (a single piece). Without a conversion, buying one
- * case of 200 pieces adds 1 to stock while selling one piece removes 1.
- *
- * This collection stores, per purchased SKU, how many selling units come in
- * one purchase unit. Everything that turns a purchase quantity into stock
- * multiplies by `unitsPerCase` (default 1 = the item is bought one-for-one).
- */
 const itemCaseQuantitySchema = new mongoose.Schema({
   sku: {
     type: String,
@@ -70,10 +58,6 @@ itemCaseQuantitySchema.statics.getUnitsPerCase = async function(sku) {
   return mapping && mapping.unitsPerCase > 0 ? mapping.unitsPerCase : 1;
 };
 
-/**
- * { [SKU]: unitsPerCase } for every active mapping. Consumers default to 1
- * for any SKU that is missing, so unmapped items keep today's behaviour.
- */
 itemCaseQuantitySchema.statics.buildLookupMap = async function() {
   const mappings = await this.find({ isActive: true })
     .select('sku unitsPerCase')

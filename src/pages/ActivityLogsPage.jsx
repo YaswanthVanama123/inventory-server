@@ -56,7 +56,6 @@ const ActivityLogsPage = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
 
-  // Filters
   const [filters, setFilters] = useState({
     resource: '',
     action: '',
@@ -267,7 +266,6 @@ const ActivityLogsPage = () => {
         Activity Logs
       </Typography>
 
-      {/* Stats Cards */}
       {stats && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
@@ -333,7 +331,6 @@ const ActivityLogsPage = () => {
         </Grid>
       )}
 
-      {/* Filters */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2}>
@@ -434,7 +431,6 @@ const ActivityLogsPage = () => {
         </CardContent>
       </Card>
 
-      {/* Logs Table */}
       <Card>
         <TableContainer>
           <Table>

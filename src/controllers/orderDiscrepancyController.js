@@ -30,8 +30,6 @@ exports.getOrderDiscrepancies = async (req, res, next) => {
       if (startDate) query.reportedAt.$gte = new Date(startDate);
       if (endDate) query.reportedAt.$lte = new Date(endDate);
     }
-    // Employees only ever see THEIR OWN order discrepancies; admins can opt in
-    // with ?mine=true.
     if ((req.user?.role === 'employee' || req.query.mine === 'true') && req.user?.id) {
       query.reportedBy = new mongoose.Types.ObjectId(req.user.id);
     }
@@ -278,8 +276,6 @@ exports.approveOrderDiscrepancy = async (req, res, next) => {
     await discrepancy.approve(req.user._id, notes);
     if (!discrepancy.stockProcessed) {
       const movementType = discrepancy.discrepancyType === 'Shortage' ? 'OUT' : 'IN';
-      // The discrepancy is measured against purchase-order lines, so it is in
-      // purchase units (cases). Stock movements are in selling units.
       const caseMap = await itemCaseQuantityService.getLookupMap();
       const unitsPerCase = itemCaseQuantityService.unitsPerCase(caseMap, discrepancy.sku);
       const movementCases = Math.abs(discrepancy.discrepancyQuantity);

@@ -101,8 +101,6 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === 'development',
 });
-// Rate limiting is DISABLED by default (clients behind a shared office IP/NAT
-// were tripping the per-IP limits). To re-enable, set ENABLE_RATE_LIMIT=true.
 const rateLimitEnabled = process.env.ENABLE_RATE_LIMIT === 'true';
 if (rateLimitEnabled) {
   app.use('/api', generalLimiter);
@@ -210,9 +208,6 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on http://${HOST}:${PORT}`);
   console.log(`Access locally at: http://127.0.0.1:${PORT}`);
 
-  // Nightly screenshot cleanup (11:30 PM). Started unconditionally — unlike the
-  // sync schedulers it needs no DB or browser, and screenshots are written on
-  // dev machines where AUTO_START_SCHEDULER is usually off.
   try {
     const { getScreenshotCleanupScheduler } = require('./services/screenshotCleanup.service');
     getScreenshotCleanupScheduler().start();

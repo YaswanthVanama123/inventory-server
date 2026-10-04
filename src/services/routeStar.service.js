@@ -147,20 +147,7 @@ class RouteStarService {
       throw error;
     }
   }
-  /**
-   * Sync closed invoices.
-   *
-   * A full scrape takes minutes, which is far longer than any browser or
-   * reverse proxy will hold a request open (the API client gives up at 30s and
-   * the proxy returns 504 at ~60s). So when `options.background` is set we
-   * create the FetchHistory record, kick the work off, and return the fetchId
-   * immediately — callers track progress by polling Fetch History instead of
-   * holding the connection.
-   */
   async syncClosed(limit, direction = 'new', triggeredBy = 'manual', userId = null, options = {}) {
-    // Refuse to start a second scrape on top of a live one — two Playwright
-    // sessions would fight over the same RouteStar login. Stale records are
-    // reaped by findActiveRun, so a crashed run can't block this forever.
     const active = await FetchHistory.findActiveRun('routestar_invoices', 'closed');
     if (active) {
       const err = new Error('A closed invoices sync is already running. Wait for it to finish.');
@@ -180,8 +167,6 @@ class RouteStarService {
     const work = this._runClosedSync(fetchRecord, limit, direction, options);
 
     if (options.background) {
-      // Failures are already recorded on the fetch record by _runClosedSync;
-      // swallow here so the rejection never becomes an unhandled promise.
       work.catch((error) => {
         console.error('Background closed invoices sync failed:', error.message);
       });
@@ -586,24 +571,16 @@ class RouteStarService {
         query['customer.name'] = new RegExp(customer, 'i');
       }
       if (stockProcessed !== undefined) query.stockProcessed = stockProcessed === 'true';
-      // Closed invoices are filtered by when the work was COMPLETED — the date
-      // users actually care about. Other types keep invoiceDate.
       const allowedDateFields = ['invoiceDate', 'dateCompleted', 'createdAt'];
       const defaultDateField = invoiceType === 'closed' ? 'dateCompleted' : 'invoiceDate';
       const filterField = allowedDateFields.includes(dateField) ? dateField : defaultDateField;
 
       if (startDate || endDate) {
-        // Date-only inputs are Virginia calendar days. Resolving them to
-        // ET midnight .. ET 23:59:59.999 keeps a same-day range meaningful — a
-        // raw `new Date('2026-08-09')` is midnight UTC (8 PM the previous day in
-        // Virginia), which made "from the 9th to the 9th" match nothing.
         const { start, end } = virginiaDateRange(startDate, endDate);
         const range = {};
         if (start) range.$gte = start;
         if (end) range.$lte = end;
         query[filterField] = range;
-        // An invoice with no completion date cannot satisfy a completion-date
-        // filter — exclude nulls explicitly rather than relying on comparison.
         if (filterField === 'dateCompleted') {
           query[filterField].$ne = null;
         }
@@ -612,8 +589,6 @@ class RouteStarService {
       const [invoices, total] = await Promise.all([
         RouteStarInvoice.find(query)
           .select('_id invoiceNumber invoiceDate dateCompleted customer.name customer.email assignedTo subtotal tax total status stockProcessed isComplete source createdAt updatedAt lastSyncedAt lineItems')
-          // Order by the same field the list is filtered on, so the ordering
-          // matches the dates the user is looking at.
           .sort({ [filterField]: -1, invoiceNumber: -1 })
           .skip(skip)
           .limit(parseInt(limit))

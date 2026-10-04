@@ -1,4 +1,4 @@
-const logger = require('./Logger'); // Fixed: capital L
+const logger = require('./Logger');
 const { wait } = require('./wait');
 
 

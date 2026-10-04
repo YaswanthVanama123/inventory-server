@@ -49,7 +49,6 @@ const screenSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for efficient queries
 screenSchema.index({ isDefault: 1, isActive: 1 });
 screenSchema.index({ category: 1, order: 1 });
 

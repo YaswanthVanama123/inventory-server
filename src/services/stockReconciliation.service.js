@@ -61,8 +61,6 @@ class StockReconciliationService {
     soldItemsBySKU.forEach(item => {
       soldMap[item.sku] = item;
     });
-    // Purchases are counted in cases, sales in single units - convert before
-    // the two are subtracted from each other.
     const caseMap = await itemCaseQuantityService.getLookupMap();
     const reconciliation = purchasedItems.map(purchase => {
       const sold = soldMap[purchase.sku] || {

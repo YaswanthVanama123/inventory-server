@@ -1,15 +1,6 @@
 const activityLogService = require('../services/activityLogService');
 const { logActivity } = require('../middleware/activityLogger');
 
-/**
- * Activity Log Controller
- * Handles HTTP requests for activity logs
- */
-
-/**
- * Get activity logs with filtering
- * GET /api/activity-logs
- */
 const getActivityLogs = async (req, res, next) => {
   try {
     const {
@@ -44,7 +35,6 @@ const getActivityLogs = async (req, res, next) => {
 
     const result = await activityLogService.getActivityLogs(filters);
 
-    // Log this view action
     await logActivity(
       {
         action: 'VIEW',
@@ -66,10 +56,6 @@ const getActivityLogs = async (req, res, next) => {
   }
 };
 
-/**
- * Get activity statistics
- * GET /api/activity-logs/stats
- */
 const getActivityStats = async (req, res, next) => {
   try {
     const { startDate, endDate, performedBy } = req.query;
@@ -92,10 +78,6 @@ const getActivityStats = async (req, res, next) => {
   }
 };
 
-/**
- * Get current user's activity logs
- * GET /api/activity-logs/my-activities
- */
 const getMyActivities = async (req, res, next) => {
   try {
     const {
@@ -132,10 +114,6 @@ const getMyActivities = async (req, res, next) => {
   }
 };
 
-/**
- * Get recent activities
- * GET /api/activity-logs/recent
- */
 const getRecentActivities = async (req, res, next) => {
   try {
     const { limit } = req.query;
@@ -151,10 +129,6 @@ const getRecentActivities = async (req, res, next) => {
   }
 };
 
-/**
- * Get resource timeline
- * GET /api/activity-logs/resource/:resource/:resourceId
- */
 const getResourceTimeline = async (req, res, next) => {
   try {
     const { resource, resourceId } = req.params;
@@ -170,10 +144,6 @@ const getResourceTimeline = async (req, res, next) => {
   }
 };
 
-/**
- * Get activity breakdown
- * GET /api/activity-logs/breakdown
- */
 const getActivityBreakdown = async (req, res, next) => {
   try {
     const { startDate, endDate, groupBy } = req.query;
@@ -196,10 +166,6 @@ const getActivityBreakdown = async (req, res, next) => {
   }
 };
 
-/**
- * Get top active users
- * GET /api/activity-logs/top-users
- */
 const getTopActiveUsers = async (req, res, next) => {
   try {
     const { limit, startDate, endDate } = req.query;
@@ -224,10 +190,6 @@ const getTopActiveUsers = async (req, res, next) => {
   }
 };
 
-/**
- * Get failed activities
- * GET /api/activity-logs/failed
- */
 const getFailedActivities = async (req, res, next) => {
   try {
     const { page, limit, startDate, endDate } = req.query;
@@ -251,10 +213,6 @@ const getFailedActivities = async (req, res, next) => {
   }
 };
 
-/**
- * Export activity logs
- * GET /api/activity-logs/export
- */
 const exportActivityLogs = async (req, res, next) => {
   try {
     const {
@@ -281,7 +239,6 @@ const exportActivityLogs = async (req, res, next) => {
     const exportFormat = format || 'json';
     const data = await activityLogService.exportActivityLogs(filters, exportFormat);
 
-    // Log export action
     await logActivity(
       {
         action: 'EXPORT',
@@ -311,17 +268,12 @@ const exportActivityLogs = async (req, res, next) => {
   }
 };
 
-/**
- * Delete old logs (admin only)
- * DELETE /api/activity-logs/cleanup
- */
 const deleteOldLogs = async (req, res, next) => {
   try {
     const { daysToKeep } = req.body;
 
     const result = await activityLogService.deleteOldLogs(parseInt(daysToKeep) || 90);
 
-    // Log cleanup action
     await logActivity(
       {
         action: 'DELETE',

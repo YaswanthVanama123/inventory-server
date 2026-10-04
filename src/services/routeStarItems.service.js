@@ -4,9 +4,6 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarSyncService = require('./routeStarSync.service');
 const ModelCategory = require('../models/ModelCategory');
 
-// Escape regex metacharacters so a search term (e.g. an item/canonical name with
-// "(", "+", "/", "," etc.) is matched LITERALLY. Without this, `new RegExp(search)`
-// either throws (unbalanced "(" / "[") or silently mismatches.
 const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 
@@ -137,9 +134,6 @@ class RouteStarItemsService {
   }
   async updateItemFlags(itemId, updates) {
     const { forUse, forSell, itemCategory } = updates;
-    // Purchased-only canonical groups carry a synthetic `purchased:<name>` id —
-    // there is no RouteStarItem to write flags to. Fail with a clear message
-    // rather than an ObjectId cast error.
     if (typeof itemId === 'string' && itemId.startsWith('purchased:')) {
       const err = new Error(
         'This item is not in the RouteStar master list, so usage flags cannot be set. Sync it from RouteStar first.'
@@ -283,8 +277,6 @@ class RouteStarItemsService {
         searchRegex.test(item.description || '')
       );
     }
-    // Totals reflect the (search-filtered) set so the report footer/stat cards
-    // stay consistent with what's shown — identical to before when no search.
     const totals = {
       totalItems: reportItems.length,
       totalSoldQuantity: reportItems.reduce((sum, s) => sum + (s.soldQuantity || 0), 0),
@@ -357,7 +349,6 @@ class RouteStarItemsService {
       RouteStarItem.distinct('itemParent'),
       RouteStarItem.distinct('type'),
       ModelCategory.distinct('categoryItemName'),
-      // UNFILTERED master name list — used to dedupe purchased-only names.
       RouteStarItem.distinct('itemName'),
       CustomerConnectOrder.aggregate([
         { $unwind: '$items' },
@@ -368,12 +359,6 @@ class RouteStarItemsService {
     ]);
     const mappedCategorySet = new Set(mappedCategories.map(name => name?.toLowerCase()).filter(Boolean));
 
-    // Item Alias Mapping lets you alias names that exist ONLY in
-    // CustomerConnect orders / Manual PO items — not in the RouteStar master
-    // list. Those must be represented here too, otherwise a canonical group
-    // built purely from such names can never form a row and the mapping looks
-    // like it silently vanished. They carry no master record, so their usage
-    // flags are not editable (flagsEditable: false).
     const masterNameSet = new Set(
       (masterItemNames || []).filter(Boolean).map(n => n.toLowerCase().trim())
     );
@@ -398,8 +383,6 @@ class RouteStarItemsService {
     for (const o of orderItemNames) addPurchased(o.name, 'CustomerConnect Order');
     for (const p of manualPOItems) addPurchased(p.name, `Manual PO (${p.sku})`);
 
-    // Apply the same filters the Mongo query applies to master items. Purchased
-    // items have no type/category/flags, so those filters exclude them.
     const filteredPurchased = purchasedItems.filter(item => {
       if (itemParent && itemParent !== 'all' && item.itemParent !== itemParent) return false;
       if (type && type !== 'all') return false;
@@ -437,15 +420,10 @@ class RouteStarItemsService {
       if (item.forSell) groupedByCanonical[canonicalName].forSell = true;
     });
 
-    // Fold purchased-only names into the same canonical groups. When a group
-    // already exists from a master item we only contribute the variation name
-    // (flags stay editable); otherwise we create a group with no master record
-    // behind it, so the client can show it read-only.
     filteredPurchased.forEach(item => {
       const canonicalName = aliasMap[item.itemName.toLowerCase()] || item.itemName;
       if (!groupedByCanonical[canonicalName]) {
         groupedByCanonical[canonicalName] = {
-          // Synthetic id — there is no RouteStarItem document to reference.
           _id: `purchased:${canonicalName}`,
           itemName: canonicalName,
           itemParent: item.itemParent,
@@ -466,7 +444,6 @@ class RouteStarItemsService {
     });
 
     let mergedItems = Object.values(groupedByCanonical);
-    // Groups built from master items are flag-editable; purchased-only are not.
     mergedItems.forEach(g => {
       if (g.hasMasterRecord === undefined) g.hasMasterRecord = true;
       g.flagsEditable = g.hasMasterRecord;
@@ -510,8 +487,6 @@ class RouteStarItemsService {
         pages: Math.ceil(total / parseInt(limit))
       },
       filters: {
-        // Include the synthetic parents of purchased-only rows so they can be
-        // filtered from the dropdown like any other parent.
         itemParents: [
           ...new Set([
             ...itemParents.filter(p => p),

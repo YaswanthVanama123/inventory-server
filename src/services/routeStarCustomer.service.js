@@ -70,7 +70,6 @@ class RouteStarCustomerService {
       throw new Error('Customer not found');
     }
 
-    // Fetch related data
     const [contacts, equipment, routes, notes, activities, attachments, pricing, billingInfo] = await Promise.all([
       RouteStarCustomerContact.find({ customerId }).lean(),
       RouteStarCustomerEquipment.find({ customerId }).lean(),
@@ -128,7 +127,6 @@ class RouteStarCustomerService {
 
   async syncCustomerDetails(customerId, details) {
     try {
-      // Parse and save main customer data
       const parsedCustomer = RouteStarCustomerParser.parseCustomerDetails(customerId, details);
       await RouteStarCustomer.updateOne(
         { customerId },
@@ -136,7 +134,6 @@ class RouteStarCustomerService {
         { upsert: true }
       );
 
-      // Delete existing related records
       await Promise.all([
         RouteStarCustomerContact.deleteMany({ customerId }),
         RouteStarCustomerEquipment.deleteMany({ customerId }),
@@ -148,7 +145,6 @@ class RouteStarCustomerService {
         RouteStarCustomerBillingInfo.deleteMany({ customerId })
       ]);
 
-      // Insert new related records
       const insertPromises = [];
 
       if (details.contacts && details.contacts.length > 0) {
@@ -253,7 +249,6 @@ class RouteStarCustomerService {
   async getCustomersFromClosedInvoices(startDate, endDate) {
     const RouteStarInvoice = require('../models/RouteStarInvoice');
 
-    // Build query for date range
     const query = { invoiceType: 'closed' };
 
     if (startDate || endDate) {
@@ -262,27 +257,21 @@ class RouteStarCustomerService {
         query.invoiceDate.$gte = startDate;
       }
       if (endDate) {
-        // Set end date to end of day
         const endOfDay = new Date(endDate);
         endOfDay.setHours(23, 59, 59, 999);
         query.invoiceDate.$lte = endOfDay;
       }
     }
 
-    // Get unique customer names from closed invoices
     const customerNames = await RouteStarInvoice.distinct('customer.name', query);
 
-    // Get full customer details for each customer
     const customers = await Promise.all(
       customerNames.map(async (customerName) => {
-        // Find customer by name
         const customer = await RouteStarCustomer.findOne({
           customerName: customerName
         }).lean();
 
         if (!customer) {
-          // If customer not found in RouteStarCustomer collection,
-          // return basic info from invoices
           const invoice = await RouteStarInvoice.findOne({
             'customer.name': customerName,
             ...query
@@ -304,7 +293,6 @@ class RouteStarCustomerService {
           };
         }
 
-        // Get invoice stats for this customer
         const [invoiceCount, totalAmount] = await Promise.all([
           RouteStarInvoice.countDocuments({
             'customer.name': customerName,
@@ -324,9 +312,8 @@ class RouteStarCustomerService {
       })
     );
 
-    // Sort by customer name
     return customers
-      .filter(c => c) // Remove null entries
+      .filter(c => c)
       .sort((a, b) => (a.customerName || '').localeCompare(b.customerName || ''));
   }
 }

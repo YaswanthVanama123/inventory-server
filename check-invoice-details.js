@@ -1,8 +1,3 @@
-/**
- * Diagnostic script to check invoice details status
- *
- * Usage: node check-invoice-details.js
- */
 
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -16,23 +11,19 @@ async function checkInvoiceDetails() {
 
     console.log('📊 Analyzing invoice details status...\n');
 
-    // Total invoices
     const totalInvoices = await RouteStarInvoice.countDocuments();
     console.log(`Total invoices in database: ${totalInvoices}`);
 
-    // Invoices without lineItems field
     const withoutLineItems = await RouteStarInvoice.countDocuments({
       lineItems: { $exists: false }
     });
     console.log(`Invoices without lineItems field: ${withoutLineItems}`);
 
-    // Invoices with empty lineItems array
     const emptyLineItems = await RouteStarInvoice.countDocuments({
       lineItems: { $size: 0 }
     });
     console.log(`Invoices with empty lineItems array: ${emptyLineItems}`);
 
-    // Invoices with lineItems data
     const withLineItems = await RouteStarInvoice.countDocuments({
       lineItems: { $exists: true, $ne: [] }
     });
@@ -40,7 +31,6 @@ async function checkInvoiceDetails() {
 
     console.log('\n📝 Sample invoices with different statuses:\n');
 
-    // Sample without lineItems
     const sampleWithout = await RouteStarInvoice.findOne({
       lineItems: { $exists: false }
     }).select('invoiceNumber status');
@@ -48,7 +38,6 @@ async function checkInvoiceDetails() {
       console.log(`Without lineItems field: ${sampleWithout.invoiceNumber} (${sampleWithout.status})`);
     }
 
-    // Sample with empty array
     const sampleEmpty = await RouteStarInvoice.findOne({
       lineItems: { $size: 0 }
     }).select('invoiceNumber status lineItems');
@@ -56,7 +45,6 @@ async function checkInvoiceDetails() {
       console.log(`With empty array: ${sampleEmpty.invoiceNumber} (${sampleEmpty.status}) - lineItems: ${JSON.stringify(sampleEmpty.lineItems)}`);
     }
 
-    // Sample with data
     const sampleWith = await RouteStarInvoice.findOne({
       lineItems: { $exists: true, $ne: [] }
     }).select('invoiceNumber status lineItems');
@@ -76,5 +64,4 @@ async function checkInvoiceDetails() {
   }
 }
 
-// Run the script
 checkInvoiceDetails();

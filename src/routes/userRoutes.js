@@ -15,8 +15,6 @@ const { userValidation, validate } = require('../middleware/validation');
 
 
 router.put('/me/truck-number', authenticate, updateOwnTruckNumber);
-// Self-service account deactivation. Open to any authenticated user (admin
-// or employee) so it must sit BEFORE the requireAdmin() gate below.
 router.post('/me/deactivate', authenticate, deactivateOwnAccount);
 router.use(authenticate);
 router.use(requireAdmin());

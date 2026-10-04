@@ -5,8 +5,6 @@ const AuditLog = require('../models/AuditLog');
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, role, search, isActive } = req.query;
-    // Base query = search only. The role/isActive facets narrow the page but NOT
-    // the stats, so the stat cards keep showing totals across the whole search.
     const baseQuery = { isDeleted: false };
     if (search) {
       baseQuery.$or = [
@@ -148,7 +146,6 @@ const updateUser = async (req, res, next) => {
   try {
     const { email, fullName, role, isActive, truckNumber, password } = req.body;
 
-    // If password is being updated, we need to select it
     const selectFields = password ? '+password' : '';
     const user = await User.findOne({ _id: req.params.id, isDeleted: false }).select(selectFields);
 
@@ -167,10 +164,8 @@ const updateUser = async (req, res, next) => {
     if (typeof isActive === 'boolean') user.isActive = isActive;
     if (truckNumber !== undefined) user.truckNumber = truckNumber || null;
 
-    // Admin can reset password without knowing current password
     if (password) {
       user.password = password;
-      // Mark password as modified to ensure the pre-save hook runs
       user.markModified('password');
     }
 
@@ -258,7 +253,6 @@ const resetPassword = async (req, res, next) => {
   try {
     const { newPassword } = req.body;
 
-    // Need to select password field to update it
     const user = await User.findById(req.params.id).select('+password');
 
     if (!user || user.isDeleted) {
@@ -271,13 +265,10 @@ const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Set the new password - pre-save hook will hash it automatically
     user.password = newPassword;
 
-    // Save the user - pre-save hook will trigger
     await user.save();
 
-    // Log the password reset activity
     await AuditLog.create({
       action: 'PASSWORD_RESET',
       resource: 'USER',
@@ -340,11 +331,6 @@ const updateOwnTruckNumber = async (req, res, next) => {
     next(error);
   }
 };
-// Self-service account deactivation. Available to any authenticated user
-// (admin or employee) so they can disable their own account from the app.
-// We deactivate (isActive = false) rather than hard-delete so audit history
-// and any owned records stay intact and an admin can reactivate later if
-// requested.
 const deactivateOwnAccount = async (req, res, next) => {
   try {
     const user = await User.findOne({ _id: req.user.id, isDeleted: false });

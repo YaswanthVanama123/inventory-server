@@ -1,14 +1,12 @@
 const mongoose = require('mongoose');
 
 const goAuditsLocationSchema = new mongoose.Schema({
-  // GoAudits location ID
   locationId: {
     type: String,
     required: true,
     unique: true
   },
 
-  // Mapping to RouteStarCustomer
   routeStarCustomerId: {
     type: String,
     index: true
@@ -18,7 +16,6 @@ const goAuditsLocationSchema = new mongoose.Schema({
     type: String
   },
 
-  // Location details (synced from GoAudits)
   locationName: {
     type: String,
     required: true
@@ -46,7 +43,6 @@ const goAuditsLocationSchema = new mongoose.Schema({
 
   bccEmail: String,
 
-  // Sync metadata
   lastSyncedAt: {
     type: Date,
     default: Date.now
@@ -69,7 +65,6 @@ const goAuditsLocationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for efficient querying
 goAuditsLocationSchema.index({ routeStarCustomerId: 1 });
 goAuditsLocationSchema.index({ locationName: 1 });
 goAuditsLocationSchema.index({ companyId: 1 });

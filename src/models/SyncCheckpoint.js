@@ -1,19 +1,5 @@
 const mongoose = require('mongoose');
 
-/**
- * SyncCheckpoint
- * -------------------------------------------------------------------------
- * Tracks the per-page progress of a streaming scraper so a crashed or
- * interrupted run can resume from the last fully-saved page instead of
- * starting over from page 1.
- *
- * One document per (scraper, entity). It is upserted on every page so the
- * "lastCompletedPage" always reflects data that is already durably stored
- * in MongoDB. When a sync finishes normally it is marked 'completed', which
- * makes the next scheduled run start fresh (data on the source changes over
- * time, so a clean re-scan is desired). If a run is found still
- * 'in_progress' (i.e. the process died mid-run) the next run resumes it.
- */
 const syncCheckpointSchema = new mongoose.Schema({
   scraper: {
     type: String,
@@ -34,8 +20,6 @@ const syncCheckpointSchema = new mongoose.Schema({
     default: 'in_progress',
     index: true
   },
-  // Number of the last page whose records were fully written to MongoDB.
-  // 0 means nothing has been saved yet (start from the first page).
   lastCompletedPage: {
     type: Number,
     default: 0
@@ -48,9 +32,6 @@ const syncCheckpointSchema = new mongoose.Schema({
   failed: { type: Number, default: 0 },
   startedAt: { type: Date, default: Date.now },
   errorMessage: { type: String },
-  // Signature of the source-side filter this run scanned (e.g. the closed
-  // invoice date window). Page N of one window is NOT page N of another, so a
-  // crashed run may only be resumed when the scope is identical.
   scope: { type: String }
 }, {
   timestamps: true
@@ -58,15 +39,6 @@ const syncCheckpointSchema = new mongoose.Schema({
 
 syncCheckpointSchema.index({ scraper: 1, entity: 1 }, { unique: true });
 
-/**
- * Begin (or resume) a checkpoint for a scraper/entity.
- *
- * @param {string} scraper  'customerconnect' | 'routestar'
- * @param {string} entity   'orders' | 'pending_invoices' | ...
- * @param {object} [options]
- * @param {boolean} [options.resume=true]  Resume an interrupted run if one exists.
- * @returns {Promise<{ doc, startPage }>}  startPage = pages to skip on the source.
- */
 syncCheckpointSchema.statics.begin = async function (scraper, entity, options = {}) {
   const { resume = true, scope = null } = options;
   let doc = await this.findOne({ scraper, entity });
@@ -76,10 +48,8 @@ syncCheckpointSchema.statics.begin = async function (scraper, entity, options = 
     resume &&
     doc.status === 'in_progress' &&
     doc.lastCompletedPage > 0 &&
-    // Only resume when the previous run scanned the same source-side window.
     (doc.scope || null) === (scope || null)
   ) {
-    // A previous run died mid-flight — resume after the last saved page.
     return { doc, startPage: doc.lastCompletedPage };
   }
 
@@ -87,7 +57,6 @@ syncCheckpointSchema.statics.begin = async function (scraper, entity, options = 
     doc = new this({ scraper, entity });
   }
   doc.scope = scope || undefined;
-  // Fresh run: reset counters.
   doc.status = 'in_progress';
   doc.lastCompletedPage = 0;
   doc.totalProcessed = 0;
@@ -102,9 +71,6 @@ syncCheckpointSchema.statics.begin = async function (scraper, entity, options = 
   return { doc, startPage: 0 };
 };
 
-/**
- * Record that a page has been fully persisted. Increments running counters.
- */
 syncCheckpointSchema.methods.recordPage = async function (pageNumber, counts = {}) {
   this.lastCompletedPage = Math.max(this.lastCompletedPage, pageNumber);
   this.totalProcessed += counts.processed || 0;

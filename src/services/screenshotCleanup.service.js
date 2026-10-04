@@ -1,21 +1,8 @@
 const cron = require('node-cron');
 const { clearScreenshots, screenshotsEnabled, screenshotsDir } = require('../automation/utils/screenshot');
 
-// 11:30 PM, business timezone (Virginia) — same convention as the sync crons.
 const DEFAULT_CRON = '30 23 * * *';
 
-/**
- * Nightly screenshot cleanup.
- *
- * Scrapers only write screenshots when something FAILS, and only outside
- * production. This wipes whatever today's failures produced so the folder
- * never accumulates — nothing is kept overnight.
- *
- * Deliberately standalone rather than part of the sync scheduler: that one
- * only starts when AUTO_START_SCHEDULER=true, which is usually off on a dev
- * machine — precisely where screenshots are written. This task is filesystem
- * only (no DB, no browser), so it is safe to always run.
- */
 class ScreenshotCleanupScheduler {
   constructor() {
     this.task = null;
@@ -47,7 +34,6 @@ class ScreenshotCleanupScheduler {
     console.log(`Screenshot cleanup scheduled: ${cronExpression} (${timezone}) — deletes all screenshots in ${screenshotsDir}`);
   }
 
-  /** Delete everything now. Safe to call repeatedly; deleting is idempotent. */
   async runNow() {
     try {
       const result = await clearScreenshots();

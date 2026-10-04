@@ -8,7 +8,7 @@ const selectors = require('./selectors/customerconnect.selectors');
 const CustomerConnectNavigator = require('./navigators/customerconnect.navigator');
 const CustomerConnectFetcher = require('./fetchers/CustomerConnectFetcher');
 const CustomerConnectParser = require('./parsers/customerconnect.parser');
-const logger = require('./utils/Logger'); // Fixed: capital L
+const logger = require('./utils/Logger');
 const { retry } = require('./utils/retry');
 const { LoginError, NavigationError, ParsingError } = require('./errors');
 class CustomerConnectAutomation {
@@ -103,10 +103,6 @@ class CustomerConnectAutomation {
     if (!this.isLoggedIn) {
       await this.login();
     }
-    // Streaming mode writes each page to the DB as it is scraped. We call the
-    // fetcher directly (not through the whole-list retry wrapper) so a retry
-    // can't restart pagination and re-stream pages that are already saved;
-    // the fetcher still retries per-page content loads internally.
     if (typeof options.onPage === 'function') {
       return await this.fetcher.fetchOrders(limit, options);
     }
@@ -242,8 +238,6 @@ class CustomerConnectAutomation {
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
-      // Returns null when screenshots are disabled (production) — callers
-      // store the path on the sync log, so hand it back.
       const filepath = await captureScreenshot(this.page, name);
       if (filepath) this.logger.info('Error screenshot captured', { name });
       return filepath;

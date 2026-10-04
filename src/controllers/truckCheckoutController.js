@@ -35,8 +35,6 @@ class TruckCheckoutController {
         startDate: req.query.startDate,
         endDate: req.query.endDate
       };
-      // Employees can only ever see THEIR OWN checkouts — force the name filter
-      // regardless of any client-supplied employeeName.
       if (req.user?.role === 'employee') {
         filters.employeeName = req.user.fullName || req.user.username;
       }
@@ -241,7 +239,6 @@ class TruckCheckoutController {
   async getCheckoutSalesTracking(req, res, next) {
     try {
       const query = {...req.query};
-      // Employees only see their own sales tracking.
       if (req.user?.role === 'employee') {
         query.employeeName = req.user.fullName || req.user.username;
       }
@@ -257,7 +254,6 @@ class TruckCheckoutController {
   }
   async getAllEmployeesWithStats(req, res, next) {
     try {
-      // Admin-only aggregation; an employee hitting this only gets themselves.
       if (req.user?.role === 'employee') {
         return res.status(200).json({success: true, data: []});
       }
@@ -277,10 +273,6 @@ class TruckCheckoutController {
     }
   }
 
-  /**
-   * Get current truck inventory for a specific truck and item
-   * GET /api/truck-checkouts/truck-inventory/:truckNumber/:itemName
-   */
   async getTruckInventory(req, res, next) {
     try {
       const { truckNumber, itemName } = req.params;
@@ -327,7 +319,6 @@ class TruckCheckoutController {
         });
       }
 
-      // 1. All my checkouts on my truck — sum quantityTaking per itemName
       const checkouts = await TruckCheckout.find({
         employeeName,
         truckNumber,
@@ -361,7 +352,6 @@ class TruckCheckoutController {
         }
       }
 
-      // 2. All approved truck discrepancies on my truck — sum signed difference
       const discrepancies = await TruckDiscrepancy.find({
         truckNumber,
         employeeName,
@@ -372,7 +362,6 @@ class TruckCheckoutController {
         addToItem(d.itemName, 'discrepancyAdjustment', d.difference);
       }
 
-      // 3. All invoices assigned to my truck — count lineItem quantities as sales
       const invoices = await RouteStarInvoice.find({
         assignedTo: new RegExp(`^${truckNumber}$`, 'i'),
         'lineItems.0': { $exists: true }
@@ -386,13 +375,11 @@ class TruckCheckoutController {
         }
       }
 
-      // 4. Compute remaining for every item
       const items = Array.from(byItem.values())
         .map(it => ({
           ...it,
           remainingInTruck: (it.totalCheckedOut || 0) - (it.totalSold || 0) + (it.discrepancyAdjustment || 0)
         }))
-        // Only include items the user actually checked out (skip pure sales of items they never loaded)
         .filter(it => it.totalCheckedOut > 0)
         .sort((a, b) => a.itemName.localeCompare(b.itemName));
 

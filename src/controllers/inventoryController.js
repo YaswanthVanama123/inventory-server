@@ -333,8 +333,6 @@ const getEnrichedStockHistory = async (skuCode, stockHistory = []) => {
 const getInventoryItems = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, category, search, lowStock, includeSyncStatus } = req.query;
-    // Purchase lines are recorded per case; the quantities shown here are in
-    // selling units, so every purchased qty is scaled by its case quantity.
     const caseMap = await itemCaseQuantityService.getLookupMap();
     const ccOrders = await CustomerConnectOrder.find({}).lean();
     const ccItemsMap = new Map();
@@ -428,9 +426,6 @@ const getInventoryItems = async (req, res, next) => {
         });
       }
     });
-    // Aggregate manual purchase orders (PurchaseOrder with source: 'manual').
-    // Without this, items only present in manual orders never show up in the
-    // inventory list, even though the per-SKU expand endpoint includes them.
     const manualOrders = await PurchaseOrder.find({ source: 'manual' }).lean();
     const manualItemsMap = new Map();
     manualOrders.forEach(order => {
@@ -611,9 +606,6 @@ const getInventoryItems = async (req, res, next) => {
       }
     });
     let mergedItems = Array.from(mergedItemsMap.values());
-    // Merge in manual-order items. If an SKU already exists from CC/RS, fold
-    // the manual order data into it (add quantities, bump orderCount); else
-    // emit a fresh inventory row sourced from the manual order.
     manualItemsMap.forEach((manualItem, sku) => {
       const stockSummary = stockSummaryMap.get(sku);
       if (mergedItemsMap.has(sku)) {
@@ -1728,7 +1720,6 @@ const getInventoryItemsForTruckCheckout = async (req, res, next) => {
           const sku = item.sku ? item.sku.toUpperCase() : '';
           const category = skuToCategoryMap[sku];
           if (category && groupedItems[category]) {
-            // Order quantities are per case; checkout stock is per selling unit.
             groupedItems[category].totalPurchased += itemCaseQuantityService.toUnits(caseMap, sku, item.qty);
           }
         });

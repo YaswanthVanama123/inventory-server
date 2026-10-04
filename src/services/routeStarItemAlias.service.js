@@ -43,24 +43,20 @@ class RouteStarItemAliasService {
         .lean()
     ]);
 
-    // Create a Set of RouteStarItem names that are already mapped in ModelCategory
     const mappedInModelCategory = new Set(
       modelCategoryMappings
         .filter(mc => mc.categoryItemName)
         .map(mc => mc.categoryItemName.toLowerCase())
     );
 
-    // Filter out items that are already mapped in ModelCategory
     const availableRouteStarItems = routeStarItems.filter(item =>
       !mappedInModelCategory.has(item.itemName.toLowerCase())
     );
 
-    // Build a Set of all RouteStarItem names (lowercase) to avoid duplicates
     const routeStarItemNamesSet = new Set(
       routeStarItems.map(item => item.itemName.toLowerCase())
     );
 
-    // Collect purchased item names that are NOT already in RouteStarItems
     const purchasedItems = [];
     const seenPurchasedNames = new Set();
 
@@ -94,7 +90,6 @@ class RouteStarItemAliasService {
       }
     }
 
-    // Combine RouteStarItems + purchased items
     const allAvailableItems = [...availableRouteStarItems, ...purchasedItems];
 
     const itemsWithMappingStatus = allAvailableItems.map(item => ({
@@ -108,7 +103,6 @@ class RouteStarItemAliasService {
       totalQuantity: item.qtyOnHand || 0
     }));
 
-    // Sort alphabetically
     itemsWithMappingStatus.sort((a, b) => a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' }));
 
     const stats = {
@@ -266,24 +260,20 @@ class RouteStarItemAliasService {
         .lean()
     ]);
 
-    // Create a Set of RouteStarItem names that are already mapped in ModelCategory
     const mappedInModelCategory = new Set(
       modelCategoryMappings
         .filter(mc => mc.categoryItemName)
         .map(mc => mc.categoryItemName.toLowerCase())
     );
 
-    // Filter out items that are already mapped in ModelCategory
     const availableRouteStarItems = routeStarItems.filter(item =>
       !mappedInModelCategory.has(item.itemName.toLowerCase())
     );
 
-    // Build a Set of all RouteStarItem names (lowercase) to avoid duplicates
     const routeStarItemNamesSet = new Set(
       routeStarItems.map(item => item.itemName.toLowerCase())
     );
 
-    // Collect purchased item names that are NOT already in RouteStarItems
     const purchasedItems = [];
     const seenPurchasedNames = new Set();
 
@@ -317,7 +307,6 @@ class RouteStarItemAliasService {
       }
     }
 
-    // Combine RouteStarItems + purchased items
     const allAvailableItems = [...availableRouteStarItems, ...purchasedItems];
 
     const itemsWithMappingStatus = allAvailableItems.map(item => ({
@@ -331,7 +320,6 @@ class RouteStarItemAliasService {
       totalQuantity: item.qtyOnHand || 0
     }));
 
-    // Sort alphabetically
     itemsWithMappingStatus.sort((a, b) => a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' }));
 
     const totalAliases = Object.keys(lookupMap).length;
@@ -347,10 +335,6 @@ class RouteStarItemAliasService {
       excludedByModelMapping: mappedInModelCategory.size
     };
 
-    // ----- Server-side filter / pagination for the item-names table -----
-    // NOTE: `allItems` (below) stays the FULL set — it feeds alias suggestions,
-    // the quick-map picker, and "select all unmapped" on the client. Only the
-    // table `items` slice is paginated.
     const { search, status } = options;
     let filteredItems = itemsWithMappingStatus;
 
@@ -381,9 +365,7 @@ class RouteStarItemAliasService {
         total: mappings.length
       },
       uniqueItems: {
-        // paginated slice for the table
         items: pageItems,
-        // FULL set for suggestions / quick-map / select-all
         allItems: itemsWithMappingStatus,
         pagination: {
           total: filteredTotal,

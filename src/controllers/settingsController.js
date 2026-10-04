@@ -204,7 +204,6 @@ exports.getStockCutoffDate = async (req, res) => {
     });
   }
 };
-// Combined endpoint for general settings (cutoff date + low stock threshold)
 exports.getGeneralSettings = async (req, res) => {
   try {
     const settings = await Settings.getSettings();

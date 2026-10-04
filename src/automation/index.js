@@ -20,12 +20,12 @@ const CustomerConnectNavigator = require('./navigators/customerconnect.navigator
 const RouteStarNavigator = require('./navigators/routestar.navigator');
 const CustomerConnectFetcher = require('./fetchers/CustomerConnectFetcher');
 const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
-const logger = require('./utils/Logger'); // Fixed: capital L (instance)
+const logger = require('./utils/Logger');
 const { retry } = require('./utils/retry');
 const { wait, waitForNetworkIdle, waitForCondition } = require('./utils/wait');
 const { captureScreenshot } = require('./utils/screenshot');
 const RetryHandler = require('./utils/RetryHandler');
-const Logger = require('./utils/Logger'); // Class export
+const Logger = require('./utils/Logger');
 const errors = require('./errors');
 module.exports = {
   BaseBrowser,

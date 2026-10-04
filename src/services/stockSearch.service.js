@@ -3,17 +3,9 @@ const ModelCategory = require('../models/ModelCategory');
 const ManualPurchaseOrderItem = require('../models/ManualPurchaseOrderItem');
 const Inventory = require('../models/Inventory');
 
-// ─────────────────────────────────────────────────────────────────────────
-// Strong stock search: partial (substring/prefix) + fuzzy (typo-tolerant)
-// matching across category names, aliases (Enviromaster / order item names),
-// SKUs, manual-PO item names and inventory item names. Every hit is resolved
-// back to its canonical category name (what the stock summary is keyed by).
-// ─────────────────────────────────────────────────────────────────────────
-
 const INDEX_TTL_MS = 60 * 1000;
 let indexCache = {data: null, builtAt: 0};
 
-// Classic Levenshtein edit distance.
 function levenshtein(a, b) {
   if (a === b) return 0;
   if (!a.length) return b.length;
@@ -33,8 +25,6 @@ function levenshtein(a, b) {
   return prev[b.length];
 }
 
-// Score a single indexed term against the query. Returns {score, matchType}.
-// exact > prefix > substring > word-prefix > fuzzy. 0 means "no match".
 function scoreTerm(q, termRaw) {
   const t = (termRaw || '').toLowerCase().trim();
   if (!t) return {score: 0, matchType: null};
@@ -46,7 +36,6 @@ function scoreTerm(q, termRaw) {
   if (words.some(w => w.startsWith(q))) return {score: 0.82, matchType: 'prefix'};
   if (words.some(w => w.includes(q))) return {score: 0.72, matchType: 'partial'};
 
-  // Fuzzy: best similarity of the query against the whole string or any word.
   let bestSim = 0;
   for (const candidate of [t, ...words]) {
     const maxLen = Math.max(q.length, candidate.length);
@@ -58,7 +47,6 @@ function scoreTerm(q, termRaw) {
   return {score: 0, matchType: null};
 }
 
-// Build (and cache) the flat term index: [{term, category, source}].
 async function buildIndex() {
   const now = Date.now();
   if (indexCache.data && now - indexCache.builtAt < INDEX_TTL_MS) {
@@ -78,7 +66,6 @@ async function buildIndex() {
       .lean(),
   ]);
 
-  // Resolve any name to its canonical category via the alias map.
   const lookup = new Map();
   for (const a of aliases) {
     if (a.canonicalName) lookup.set(a.canonicalName.toLowerCase(), a.canonicalName);
@@ -127,7 +114,6 @@ async function searchStock(rawQuery, limit = 50) {
 
   const terms = await buildIndex();
 
-  // Best hit per canonical category.
   const byCategory = new Map();
   for (const {term, category, source} of terms) {
     const {score, matchType} = scoreTerm(q, term);

@@ -74,7 +74,6 @@ class RouteStarSyncService {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Items to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} [streaming]`);
     await this.createSyncLog('routestar_items');
-    // Resume an interrupted full run; partial runs always start fresh.
     const { doc: checkpoint, startPage } = await SyncCheckpoint.begin('routestar', 'items', { resume: fetchAll });
     let created = 0;
     let updated = 0;
@@ -82,7 +81,6 @@ class RouteStarSyncService {
     let failed = 0;
     let total = 0;
     try {
-      // Stream each page to MongoDB then discard it — memory stays flat.
       const onPage = async (pageItems, pageNumber) => {
         const docs = pageItems.map((it) => ({
           ...it,
@@ -99,7 +97,7 @@ class RouteStarSyncService {
           updated: res.updated
         });
         console.log(`  💾 Page ${pageNumber}: +${res.created} new, ${res.updated} updated (running total: ${total})`);
-        pageItems.length = 0; // release the page
+        pageItems.length = 0;
       };
 
       const summary = await this.automation.fetchItemsList(limit, { onPage, startPage });
@@ -225,18 +223,14 @@ class RouteStarSyncService {
         throw new Error(`Customer ${customerId} not found in database`);
       }
 
-      // Fetch details from RouteStar
       const details = await this.automation.fetchCustomerDetails(customerId);
 
-      // Parse customer details
       const customerData = RouteStarCustomerParser.parseCustomerDetails(customerId, details);
 
       console.log(`\n  💾 Saving customer details to database...`);
       let updatedFields = 0;
       let preservedFields = 0;
 
-      // Only update fields that have actual values (not null/undefined)
-      // This preserves data from the list sync
       Object.keys(customerData).forEach(key => {
         if (customerData[key] !== null && customerData[key] !== undefined && customerData[key] !== '') {
           customer[key] = customerData[key];
@@ -253,9 +247,8 @@ class RouteStarSyncService {
       await customer.save();
       console.log(`    ✓ Updated customer details for ${customerId}`);
 
-      // Parse and save additional contacts
       if (details.contacts && details.contacts.length > 0) {
-        await RouteStarCustomerContact.deleteMany({ customerId }); // Clear old contacts
+        await RouteStarCustomerContact.deleteMany({ customerId });
         const contacts = RouteStarCustomerParser.parseContacts(customerId, details.contacts);
         if (contacts.length > 0) {
           await RouteStarCustomerContact.insertMany(contacts);
@@ -263,9 +256,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save equipment
       if (details.equipment && details.equipment.length > 0) {
-        await RouteStarCustomerEquipment.deleteMany({ customerId }); // Clear old equipment
+        await RouteStarCustomerEquipment.deleteMany({ customerId });
         const equipment = RouteStarCustomerParser.parseEquipment(customerId, details.equipment);
         if (equipment.length > 0) {
           await RouteStarCustomerEquipment.insertMany(equipment);
@@ -273,9 +265,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save routes
       if (details.routes && details.routes.length > 0) {
-        await RouteStarCustomerRoute.deleteMany({ customerId }); // Clear old routes
+        await RouteStarCustomerRoute.deleteMany({ customerId });
         const routes = RouteStarCustomerParser.parseRoutes(customerId, details.routes);
         if (routes.length > 0) {
           await RouteStarCustomerRoute.insertMany(routes);
@@ -283,9 +274,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save notes
       if (details.notes && details.notes.length > 0) {
-        await RouteStarCustomerNote.deleteMany({ customerId }); // Clear old notes
+        await RouteStarCustomerNote.deleteMany({ customerId });
         const notes = RouteStarCustomerParser.parseNotes(customerId, details.notes);
         if (notes.length > 0) {
           await RouteStarCustomerNote.insertMany(notes);
@@ -293,9 +283,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save activities
       if (details.activities && details.activities.length > 0) {
-        await RouteStarCustomerActivity.deleteMany({ customerId }); // Clear old activities
+        await RouteStarCustomerActivity.deleteMany({ customerId });
         const activities = RouteStarCustomerParser.parseActivities(customerId, details.activities);
         if (activities.length > 0) {
           await RouteStarCustomerActivity.insertMany(activities);
@@ -303,9 +292,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save attachments
       if (details.attachments && details.attachments.length > 0) {
-        await RouteStarCustomerAttachment.deleteMany({ customerId }); // Clear old attachments
+        await RouteStarCustomerAttachment.deleteMany({ customerId });
         const attachments = RouteStarCustomerParser.parseAttachments(customerId, details.attachments);
         if (attachments.length > 0) {
           await RouteStarCustomerAttachment.insertMany(attachments);
@@ -313,9 +301,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save pricing
       if (details.pricing && details.pricing.length > 0) {
-        await RouteStarCustomerPricing.deleteMany({ customerId }); // Clear old pricing
+        await RouteStarCustomerPricing.deleteMany({ customerId });
         const pricing = RouteStarCustomerParser.parsePricing(customerId, details.pricing);
         if (pricing.length > 0) {
           await RouteStarCustomerPricing.insertMany(pricing);
@@ -323,9 +310,8 @@ class RouteStarSyncService {
         }
       }
 
-      // Parse and save billing info
       if (details.billingInfo) {
-        await RouteStarCustomerBillingInfo.deleteMany({ customerId }); // Clear old billing info
+        await RouteStarCustomerBillingInfo.deleteMany({ customerId });
         const billingInfo = RouteStarCustomerParser.parseBillingInfo(customerId, details.billingInfo);
         await RouteStarCustomerBillingInfo.create(billingInfo);
         console.log(`    ✓ Saved billing info`);
@@ -347,7 +333,6 @@ class RouteStarSyncService {
     try {
       let queryFilter = {};
       if (!forceAll) {
-        // Only sync customers that don't have detailed info yet (basic fields are null)
         queryFilter = {
           $or: [
             { billingAddress1: null },
@@ -370,7 +355,6 @@ class RouteStarSyncService {
         try {
           await this.syncCustomerDetails(customer.customerId);
           synced++;
-          // Add delay to avoid overwhelming the server
           await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
           errors.push({
@@ -453,8 +437,6 @@ class RouteStarSyncService {
     let total = 0;
     let deleted = 0;
     const errors = [];
-    // Only the invoice NUMBERS are retained across pages (for the delete-diff),
-    // never the full invoice objects — this keeps memory flat.
     const fetchedInvoiceNumbers = [];
     try {
       const onPage = async (pageInvoices, pageNumber) => {
@@ -494,9 +476,6 @@ class RouteStarSyncService {
         total += pageInvoices.length;
         for (const inv of pageInvoices) fetchedInvoiceNumbers.push(inv.invoiceNumber);
 
-        // Fetch line-item details only for the invoices on THIS page that
-        // still lack them (idempotent + resume-safe: re-running a page whose
-        // details are already saved skips them).
         const pageNumbers = pageInvoices.map((inv) => inv.invoiceNumber);
         const needDetails = await RouteStarInvoice.find({
           invoiceNumber: { $in: pageNumbers },
@@ -533,7 +512,6 @@ class RouteStarSyncService {
         console.log(`ℹ️  No pending invoices found - this is normal if all work is complete and invoices have moved to closed`);
       }
 
-      // Reconcile deletions: any pending invoice no longer present upstream.
       if (fetchAll && total > 0) {
         console.log(`\n🗑️  Checking for pending invoices to delete...`);
         const invoicesToDelete = await RouteStarInvoice.find({
@@ -583,12 +561,6 @@ class RouteStarSyncService {
     const fetchAll = limit === Infinity || limit === null || limit === 0;
     console.log(`\n📦 Syncing RouteStar Closed Invoices to Database ${fetchAll ? '(ALL)' : `(limit: ${limit})`} - Direction: ${direction} [streaming]`);
 
-    // Date window. RouteStar's grid defaults to a narrow range, so without an
-    // explicit window a "fetch all" run only ever saw that slice — which is why
-    // recently-closed invoices never got stored. A rolling look-back re-scans
-    // the recent past every run, so anything a previous run missed is picked up
-    // (upserts are keyed on invoiceNumber, so re-scans are cheap no-ops).
-    // `fullBackfill: true` scans without a window for a one-off full catch-up.
     const fullBackfill = options.fullBackfill === true;
     let window = null;
     if (!fullBackfill) {
@@ -757,7 +729,6 @@ class RouteStarSyncService {
       invoice.tax = parseFloat(details.tax) || 0;
       invoice.total = parseFloat(details.total) || 0;
 
-      // Update customer email and phone if available
       if (details.customerEmail) {
         invoice.customer.email = details.customerEmail;
       }

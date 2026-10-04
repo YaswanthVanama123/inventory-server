@@ -3,7 +3,6 @@ const UserScreenPermission = require('../models/UserScreenPermission');
 const User = require('../models/User');
 
 class ScreenPermissionService {
-  // Get all screens
   async getAllScreens(search, page, limit, category) {
     try {
       const query = { isActive: true };
@@ -20,7 +19,6 @@ class ScreenPermissionService {
       const sort = { category: 1, order: 1, displayName: 1 };
       const lim = parseInt(limit, 10);
       const pg = parseInt(page, 10) || 1;
-      // No limit → keep the legacy array shape (other callers depend on it).
       if (!lim || lim <= 0) {
         return await Screen.find(query).sort(sort);
       }
@@ -34,7 +32,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Get default screens
   async getDefaultScreens() {
     try {
       const screens = await Screen.find({ isDefault: true, isActive: true })
@@ -45,13 +42,10 @@ class ScreenPermissionService {
     }
   }
 
-  // Update default screens
   async updateDefaultScreens(screenIds, adminId) {
     try {
-      // Remove isDefault from all screens
       await Screen.updateMany({}, { isDefault: false });
 
-      // Set isDefault for selected screens
       if (screenIds && screenIds.length > 0) {
         await Screen.updateMany(
           { _id: { $in: screenIds } },
@@ -65,15 +59,12 @@ class ScreenPermissionService {
     }
   }
 
-  // Get screens for a specific user (default + user-specific)
   async getUserScreens(userId) {
     try {
-      // Get default screens
       const defaultScreens = await Screen.find({ isDefault: true, isActive: true })
         .sort({ category: 1, order: 1, displayName: 1 })
         .lean();
 
-      // Get user-specific permissions
       const userPermissions = await UserScreenPermission.find({
         userId,
         hasAccess: true
@@ -81,7 +72,6 @@ class ScreenPermissionService {
         .populate('screenId')
         .lean();
 
-      // Combine default screens and user-specific screens
       const defaultScreenIds = defaultScreens.map(s => s._id.toString());
       const userScreens = userPermissions
         .filter(p => p.screenId && p.screenId.isActive)
@@ -90,7 +80,6 @@ class ScreenPermissionService {
 
       const allScreens = [...defaultScreens, ...userScreens];
 
-      // Sort by category and order
       allScreens.sort((a, b) => {
         if (a.category !== b.category) {
           return a.category.localeCompare(b.category);
@@ -107,7 +96,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Get user-specific permissions (additional screens beyond default)
   async getUserSpecificPermissions(userId) {
     try {
       const permissions = await UserScreenPermission.find({ userId, hasAccess: true })
@@ -126,20 +114,15 @@ class ScreenPermissionService {
     }
   }
 
-  // Update user-specific permissions
   async updateUserPermissions(userId, screenIds, adminId) {
     try {
-      // Get default screen IDs to exclude them
       const defaultScreens = await Screen.find({ isDefault: true, isActive: true });
       const defaultScreenIds = defaultScreens.map(s => s._id.toString());
 
-      // Filter out default screens from the provided screenIds
       const additionalScreenIds = screenIds.filter(id => !defaultScreenIds.includes(id.toString()));
 
-      // Remove all existing user-specific permissions
       await UserScreenPermission.deleteMany({ userId });
 
-      // Add new permissions for additional screens
       if (additionalScreenIds.length > 0) {
         const permissions = additionalScreenIds.map(screenId => ({
           userId,
@@ -158,7 +141,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Create or update a screen
   async createOrUpdateScreen(screenData) {
     try {
       const { name, ...updateData } = screenData;
@@ -175,10 +157,8 @@ class ScreenPermissionService {
     }
   }
 
-  // Create a new screen
   async createScreen(screenData) {
     try {
-      // Check if screen with same name or path already exists
       const existingScreen = await Screen.findOne({
         $or: [
           { name: screenData.name },
@@ -199,10 +179,8 @@ class ScreenPermissionService {
     }
   }
 
-  // Update a screen
   async updateScreen(screenId, updateData) {
     try {
-      // If updating name or path, check for duplicates
       if (updateData.name || updateData.path) {
         const existingScreen = await Screen.findOne({
           _id: { $ne: screenId },
@@ -233,7 +211,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Delete a screen
   async deleteScreen(screenId) {
     try {
       const screen = await Screen.findById(screenId);
@@ -242,10 +219,8 @@ class ScreenPermissionService {
         throw new Error('Screen not found');
       }
 
-      // Delete all user permissions for this screen
       await UserScreenPermission.deleteMany({ screenId });
 
-      // Delete the screen
       await Screen.findByIdAndDelete(screenId);
 
       return { message: 'Screen and associated permissions deleted successfully' };
@@ -254,7 +229,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Get a single screen by ID
   async getScreenById(screenId) {
     try {
       const screen = await Screen.findById(screenId);
@@ -269,41 +243,33 @@ class ScreenPermissionService {
     }
   }
 
-  // Initialize default screens (run once during setup)
   async initializeDefaultScreens() {
     try {
       const defaultScreens = [
-        // Core
         { name: 'dashboard', displayName: 'Dashboard', path: '/dashboard', icon: 'DashboardIcon', category: 'Core', isDefault: true, order: 1 },
 
-        // Inventory Management
         { name: 'stock', displayName: 'Stock', path: '/stock', icon: 'PackageIcon', category: 'Inventory', isDefault: true, order: 2 },
         { name: 'inventory', displayName: 'Inventory Items', path: '/inventory', icon: 'InventoryIcon', category: 'Inventory', isDefault: true, order: 3 },
         { name: 'discrepancies', displayName: 'Discrepancies', path: '/discrepancies', icon: 'AlertTriangleIcon', category: 'Inventory', isDefault: true, order: 4 },
 
-        // Daily Operations
         { name: 'orders', displayName: 'Orders', path: '/orders', icon: 'ShoppingCartIcon', category: 'Operations', isDefault: true, order: 5 },
         { name: 'truck-checkouts', displayName: 'Truck Checkouts', path: '/truck-checkouts', icon: 'TruckIcon', category: 'Operations', isDefault: true, order: 6 },
         { name: 'invoices', displayName: 'Invoices', path: '/invoices', icon: 'InvoicesIcon', category: 'Operations', isDefault: true, order: 7 },
         { name: 'invoices-routestar-pending', displayName: 'Pending Invoices (RouteStar)', path: '/invoices/routestar/pending', icon: 'ClockHistoryIcon', category: 'Operations', isDefault: true, order: 8 },
         { name: 'invoices-routestar-closed', displayName: 'Closed Invoices (RouteStar)', path: '/invoices/routestar/closed', icon: 'CheckCircleIcon', category: 'Operations', isDefault: true, order: 9 },
 
-        // RouteStar Integration
         { name: 'routestar-items', displayName: 'RouteStar Items', path: '/routestar/items', icon: 'CubeIcon', category: 'RouteStar', isDefault: false, order: 10 },
         { name: 'routestar-model-mapping', displayName: 'Model Mapping', path: '/routestar/model-mapping', icon: 'LinkIcon', category: 'RouteStar', isDefault: false, order: 11 },
         { name: 'routestar-item-alias-mapping', displayName: 'Item Alias Mapping', path: '/routestar/item-alias-mapping', icon: 'LinkIcon', category: 'RouteStar', isDefault: false, order: 12 },
 
-        // Master Data
         { name: 'vendors', displayName: 'Vendors', path: '/vendors', icon: 'BuildingIcon', category: 'Master Data', isDefault: false, order: 13 },
         { name: 'manual-po-items', displayName: 'Manual PO Items', path: '/manual-po-items', icon: 'TagIcon', category: 'Master Data', isDefault: false, order: 14 },
         { name: 'case-quantity-mapping', displayName: 'Case Quantity Mapping', path: '/case-quantity-mapping', icon: 'CubeIcon', category: 'Master Data', isDefault: false, order: 15 },
 
-        // Reports & Analytics
         { name: 'sales-report', displayName: 'Sales Report', path: '/routestar/sales-report', icon: 'ChartIcon', category: 'Reports', isDefault: false, order: 15 },
         { name: 'items-invoice-usage', displayName: 'Items Invoice Usage', path: '/routestar/items-invoice-usage', icon: 'FolderIcon', category: 'Reports', isDefault: false, order: 16 },
         { name: 'activities', displayName: 'Employee Activities', path: '/activities', icon: 'ActivityIcon', category: 'Reports', isDefault: false, order: 17 },
 
-        // System & Admin
         { name: 'users', displayName: 'Users', path: '/users', icon: 'UsersIcon', category: 'Administration', isDefault: false, order: 18 },
         { name: 'screen-permissions', displayName: 'Screen Permissions', path: '/admin/screen-permissions', icon: 'ShieldCheckIcon', category: 'Administration', isDefault: false, order: 19 },
         { name: 'screen-management', displayName: 'Screen Management', path: '/admin/screens', icon: 'ClipboardListIcon', category: 'Administration', isDefault: false, order: 20 },
@@ -311,7 +277,6 @@ class ScreenPermissionService {
         { name: 'settings', displayName: 'Settings', path: '/settings', icon: 'SettingsIcon', category: 'Administration', isDefault: false, order: 21 },
         { name: 'fetch-history', displayName: 'Fetch History', path: '/system/fetch-history', icon: 'ClockHistoryIcon', category: 'Administration', isDefault: false, order: 22 },
 
-        // Personal
         { name: 'profile', displayName: 'Profile', path: '/profile', icon: 'ProfileIcon', category: 'Personal', isDefault: false, order: 23 }
       ];
 
@@ -327,7 +292,6 @@ class ScreenPermissionService {
     }
   }
 
-  // Get all users with their screen permissions summary
   async getAllUsersWithPermissions(search) {
     try {
       const query = { role: { $ne: 'admin' } };

@@ -38,10 +38,6 @@ module.exports = {
     arrivalTime: 'td:nth-of-type(15)'
   },
   closedInvoicesList: {
-    // RouteStar's closed-invoice grid is date-filtered by two native date
-    // inputs (rendered in DOM order: from, to). The scraper MUST set these —
-    // left alone, the page defaults to a narrow window and the sync silently
-    // only ever sees that slice.
     dateInputs: 'input[type="date"]',
     invoicesTable: 'div.ht_master table.htCore',
     invoiceRows: 'table.htCore tbody tr',
@@ -50,24 +46,24 @@ module.exports = {
     invoiceDate: 'td:nth-of-type(2)',
     enteredBy: 'td:nth-of-type(3)',
     assignedTo: 'td:nth-of-type(4)',
-    customerName: 'td:nth-of-type(5) a',       // Column 5: Customer
-    customerLink: 'td:nth-of-type(5) a',       // Column 5: Customer link
-    invoiceType: 'td:nth-of-type(6)',          // Column 6: Type (Manual Invoice, etc.)
-    serviceNotes: 'td:nth-of-type(7)',         // Column 7: Service Notes
-    status: 'td:nth-of-type(8)',               // Column 8: Status (Closed, etc.)
-    complete: 'td:nth-of-type(9) input[type="checkbox"]',   // Column 9: Complete checkbox
-    posted: 'td:nth-of-type(10) input[type="checkbox"]',    // Column 10: Posted checkbox
-    subtotal: 'td:nth-of-type(11)',            // Column 11: Subtotal
-    invoiceTotal: 'td:nth-of-type(12)',        // Column 12: Total
-    dateCompleted: 'td:nth-of-type(13)',       // Column 13: Date Completed
-    lastModified: 'td:nth-of-type(14)',        // Column 14: Last Modified
-    arrivalTime: 'td:nth-of-type(15)',         // Column 15: Arrival Time
-    departureTime: 'td:nth-of-type(16)',       // Column 16: Departure Time
-    elapsedTime: 'td:nth-of-type(17)',         // Column 17: Elapsed Time
-    customerGrouping: 'td:nth-of-type(18)',    // Column 18: Customer Grouping
-    postedBy: 'td:nth-of-type(19)',            // Column 19: Posted By
-    postedTimestamp: 'td:nth-of-type(20)',     // Column 20: Posted TimeStamp
-    paymentMethod: 'td:nth-of-type(21)',       // Column 21: Payment Method
+    customerName: 'td:nth-of-type(5) a',
+    customerLink: 'td:nth-of-type(5) a',
+    invoiceType: 'td:nth-of-type(6)',
+    serviceNotes: 'td:nth-of-type(7)',
+    status: 'td:nth-of-type(8)',
+    complete: 'td:nth-of-type(9) input[type="checkbox"]',
+    posted: 'td:nth-of-type(10) input[type="checkbox"]',
+    subtotal: 'td:nth-of-type(11)',
+    invoiceTotal: 'td:nth-of-type(12)',
+    dateCompleted: 'td:nth-of-type(13)',
+    lastModified: 'td:nth-of-type(14)',
+    arrivalTime: 'td:nth-of-type(15)',
+    departureTime: 'td:nth-of-type(16)',
+    elapsedTime: 'td:nth-of-type(17)',
+    customerGrouping: 'td:nth-of-type(18)',
+    postedBy: 'td:nth-of-type(19)',
+    postedTimestamp: 'td:nth-of-type(20)',
+    paymentMethod: 'td:nth-of-type(21)',
   },
   invoiceDetail: {
     itemsTable: 'div.ht_master',

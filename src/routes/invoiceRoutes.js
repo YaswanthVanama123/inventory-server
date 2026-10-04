@@ -43,8 +43,6 @@ router.put(
   setActivityMeta('UPDATE', 'INVOICE'),
   updateInvoice
 );
-// Web + mobile Approvals flow issues PATCH /invoices/:id (approve/reject).
-// Mirror the PUT route so partial status/paymentStatus/rejectionReason updates work.
 router.patch(
   '/:id',
   requireAdmin(),

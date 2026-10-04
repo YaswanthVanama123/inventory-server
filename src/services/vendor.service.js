@@ -8,7 +8,6 @@ class VendorService {
       throw new Error('Vendor name is required');
     }
 
-    // Check if vendor already exists
     const existing = await Vendor.getVendorByName(name);
     if (existing) {
       throw new Error(`Vendor '${name}' already exists`);
@@ -45,7 +44,6 @@ class VendorService {
       q = q.skip((pg - 1) * lim).limit(lim);
     }
     const vendors = await q;
-    // Unfiltered counts for the Vendors page stat cards (the list is paged).
     const [allCount, activeCount] = await Promise.all([
       Vendor.countDocuments({}),
       Vendor.countDocuments({ isActive: true })
@@ -81,7 +79,6 @@ class VendorService {
       throw new Error('Vendor not found');
     }
 
-    // Check if name is being changed and new name already exists
     if (updateData.name && updateData.name !== vendor.name) {
       const existing = await Vendor.getVendorByName(updateData.name);
       if (existing) {
@@ -89,7 +86,6 @@ class VendorService {
       }
     }
 
-    // Update fields
     if (updateData.name) vendor.name = updateData.name;
     if (updateData.email !== undefined) vendor.email = updateData.email;
     if (updateData.phone !== undefined) vendor.phone = updateData.phone;

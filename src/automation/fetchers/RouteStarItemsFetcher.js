@@ -96,7 +96,6 @@ class RouteStarItemsFetcher {
         }
       }
       console.log(`   Page ${pageCount + 1} complete: ${totalCount} total items collected so far`);
-      // Stream this page straight to the caller (DB) before moving on.
       if (stream && pageItems.length > 0) {
         await options.onPage(pageItems, pageCount + 1);
         pageItems.length = 0;

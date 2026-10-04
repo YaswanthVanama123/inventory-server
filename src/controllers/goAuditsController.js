@@ -3,12 +3,8 @@ const routeStarCustomerService = require('../services/routeStarCustomer.service'
 const GoAuditsLocation = require('../models/GoAuditsLocation');
 
 class GoAuditsController {
-  /**
-   * Get all GoAudits locations
-   */
   async getLocations(req, res, next) {
     try {
-      // Prevent caching
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -32,9 +28,6 @@ class GoAuditsController {
     }
   }
 
-  /**
-   * Get sync status for all locations
-   */
   async getSyncStatus(req, res, next) {
     try {
       const syncedLocations = await GoAuditsLocation.find()
@@ -66,9 +59,6 @@ class GoAuditsController {
     }
   }
 
-  /**
-   * Sync customers from closed invoices to GoAudits
-   */
   async syncClosedInvoiceCustomers(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
@@ -76,7 +66,6 @@ class GoAuditsController {
       console.log('\n🔄 Starting GoAudits sync for closed invoice customers...');
       console.log(`   Date range: ${startDate || 'all'} to ${endDate || 'all'}`);
 
-      // Get customers from closed invoices
       const customers = await routeStarCustomerService.getCustomersFromClosedInvoices(
         startDate ? new Date(startDate) : null,
         endDate ? new Date(endDate) : null
@@ -100,7 +89,6 @@ class GoAuditsController {
 
       console.log(`   Found ${customers.length} customers to sync`);
 
-      // Sync to GoAudits
       const results = await goAuditsService.syncCustomersToLocations(customers);
 
       console.log('\n✓ Sync completed:');
@@ -125,16 +113,12 @@ class GoAuditsController {
     }
   }
 
-  /**
-   * Sync a single customer to GoAudits
-   */
   async syncSingleCustomer(req, res, next) {
     try {
       const { customerId } = req.params;
 
       console.log(`\n🔄 Syncing single customer ${customerId} to GoAudits...`);
 
-      // Get customer details
       const customer = await routeStarCustomerService.getCustomerById(customerId);
 
       if (!customer) {
@@ -144,7 +128,6 @@ class GoAuditsController {
         });
       }
 
-      // Sync to GoAudits
       const result = await goAuditsService.syncCustomerToLocation(customer);
 
       res.json({
@@ -163,9 +146,6 @@ class GoAuditsController {
     }
   }
 
-  /**
-   * Remove sync mapping (doesn't delete from GoAudits)
-   */
   async removeSyncMapping(req, res, next) {
     try {
       const { customerId } = req.params;
@@ -197,9 +177,6 @@ class GoAuditsController {
     }
   }
 
-  /**
-   * Test GoAudits authentication
-   */
   async testAuthentication(req, res, next) {
     try {
       await goAuditsService.authenticate();

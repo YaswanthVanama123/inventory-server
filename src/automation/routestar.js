@@ -10,7 +10,7 @@ const RouteStarFetcher = require('./fetchers/RouteStarFetcher');
 const RouteStarItemsFetcher = require('./fetchers/RouteStarItemsFetcher');
 const RouteStarCustomerFetcher = require('./fetchers/RouteStarCustomerFetcher');
 const RouteStarParser = require('./parsers/routestar.parser');
-const logger = require('./utils/Logger'); // Fixed: capital L
+const logger = require('./utils/Logger');
 const { retry } = require('./utils/retry');
 const { LoginError, NavigationError, ParsingError } = require('./errors');
 class RouteStarAutomation {
@@ -122,8 +122,6 @@ class RouteStarAutomation {
     if (!this.isLoggedIn) {
       await this.login();
     }
-    // Streaming mode: call the fetcher directly so a whole-list retry can't
-    // restart pagination over already-saved pages (per-page retries remain).
     if (typeof options.onPage === 'function') {
       return await this.fetcher.fetchPendingInvoices(limit, direction, options);
     }
@@ -454,8 +452,6 @@ class RouteStarAutomation {
   async takeScreenshot(name) {
     try {
       const { captureScreenshot } = require('./utils/screenshot');
-      // Returns null when screenshots are disabled (production) — callers
-      // store the path on the sync log, so hand it back.
       const filepath = await captureScreenshot(this.page, name);
       if (filepath) this.logger.info('Error screenshot captured', { name });
       return filepath;

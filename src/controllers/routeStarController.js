@@ -59,19 +59,11 @@ class RouteStarController {
     try {
       const { limit = 0, direction = 'new', triggeredBy = 'manual' } = req.body;
       const userId = req.user?._id;
-      // Optional overrides:
-      //   lookbackDays  – how many days back to re-scan (default 30, env-tunable)
-      //   fullBackfill  – ignore the date window entirely and scan everything
-      //                   (use once to catch up invoices older than the window)
       const options = {};
       if (req.body.lookbackDays != null) options.lookbackDays = req.body.lookbackDays;
       if (req.body.fullBackfill === true || req.body.fullBackfill === 'true') {
         options.fullBackfill = true;
       }
-      // Scraping takes minutes — far longer than the API client's 30s timeout or
-      // the proxy's ~60s ceiling. Run it in the background and hand back the
-      // fetchId so the UI can poll Fetch History for progress. Pass
-      // `background: false` to wait synchronously (scripts / short limits).
       options.background = req.body.background !== false;
       const result = await routeStarService.syncClosed(limit, direction, triggeredBy, userId, options);
       if (result.started) {
@@ -89,7 +81,6 @@ class RouteStarController {
         fetchId: result.fetchId
       });
     } catch (error) {
-      // Already running — 409 so the UI can say so instead of showing a failure.
       if (error.code === 'SYNC_IN_PROGRESS') {
         return res.status(409).json({
           success: false,
@@ -562,7 +553,6 @@ class RouteStarController {
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
 
-      // Hard refuse to delete a synced RouteStar invoice via this endpoint
       if (invoice.source !== 'manual') {
         return res.status(403).json({
           success: false,

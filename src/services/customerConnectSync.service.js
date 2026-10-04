@@ -97,9 +97,6 @@ class CustomerConnectSyncService {
     const errors = [];
     try {
       const onPage = async (pageOrders, pageNumber) => {
-        // Build basic order docs (line items are filled in by the detail
-        // fetch below; the $set deliberately omits `items` so existing line
-        // items are preserved on update).
         const docs = [];
         for (const order of pageOrders) {
           if (!order.orderNumber) {
@@ -130,7 +127,6 @@ class CustomerConnectSyncService {
         updated += res.updated;
         total += pageOrders.length;
 
-        // Decide which orders on this page need their line-item details.
         const pageNumbers = docs.map((d) => d.orderNumber);
         let toDetail;
         if (forceRefetchDetails) {
@@ -283,7 +279,6 @@ class CustomerConnectSyncService {
           }
           for (const item of order.items) {
             if (item.qty <= 0) continue;
-            // Order quantities are per case; stock movements are per selling unit.
             const units = itemCaseQuantityService.toUnits(caseMap, item.sku, item.qty);
             await StockMovement.create({
               sku: item.sku,

@@ -31,22 +31,8 @@ const FetchHistory = require('../models/FetchHistory');
 const AuditLog = require('../models/AuditLog');
 
 const itemCaseQuantityService = require('./itemCaseQuantity.service');
+const manualPurchaseOrderItemService = require('./manualPurchaseOrderItem.service');
 
-/**
- * Permanent data purge (admin-only production cleanup).
- *
- * Every entry in TYPES describes one purgeable collection: how to count it,
- * how to scope it, what dependent records must go with it, and which audit
- * resource to log under. Deletes here are HARD deletes - there is no trash and
- * no undo, which is the point: this exists to strip junk out of production.
- *
- * Cascade rules keep the database consistent after a purge:
- *  - StockMovement rows point at their parent through `refId`, so purging a
- *    parent removes its movements too (otherwise stock history references
- *    documents that no longer exist).
- *  - Any StockSummary touched by a removed movement is recomputed from the
- *    movements that survive, so on-hand numbers stay truthful.
- */
 class DataPurgeService {
   constructor() {
     this.types = this._buildTypes();
@@ -175,10 +161,15 @@ class DataPurgeService {
         key: 'manual-po-items',
         label: 'Manual PO Items',
         group: 'Master Data',
-        description: 'The manual purchase-order item catalog.',
+        description: 'The manual purchase-order item catalog, plus the RouteStar item mapping of each deleted item.',
         model: ManualPurchaseOrderItem,
         labelField: 'sku',
         auditResource: 'INVENTORY',
+        cascade: async (ids, docs) => {
+          const { removed } = await manualPurchaseOrderItemService.removeStockLinkage(docs.map(doc => doc.sku));
+          return { modelCategoryMappings: removed };
+        },
+        onPurged: () => manualPurchaseOrderItemService.invalidateCache(),
       },
       {
         key: 'model-category-mappings',
@@ -268,7 +259,6 @@ class DataPurgeService {
     return type;
   }
 
-  /** Every purgeable type with its current record count, for the cleanup screen. */
   async getTypeSummaries() {
     const entries = Array.from(this.types.values());
     const counts = await Promise.all(
@@ -290,12 +280,6 @@ class DataPurgeService {
     }));
   }
 
-  // ----- cascade helpers -----
-
-  /**
-   * Delete the StockMovement rows that reference these parents and rebuild the
-   * StockSummary for every SKU they touched. Returns a per-collection tally.
-   */
   async _cascadeStockMovements(ids) {
     if (ids.length === 0) return {};
     const movements = await StockMovement.find({ refId: { $in: ids } })
@@ -361,11 +345,6 @@ class DataPurgeService {
     return tally;
   }
 
-  /**
-   * Rebuild StockSummary for the given SKUs from whatever movements remain.
-   * A SKU with no movements left is zeroed rather than deleted, so the row
-   * keeps its threshold and product link.
-   */
   async recalculateSummariesForSkus(skus) {
     if (!skus || skus.length === 0) return 0;
     let updated = 0;
@@ -391,13 +370,6 @@ class DataPurgeService {
     return updated;
   }
 
-  // ----- purge operations -----
-
-  /**
-   * Permanently delete specific records of one type.
-   * @param {string} typeKey
-   * @param {string[]} ids
-   */
   async purgeByIds(typeKey, ids, user) {
     const type = this.getType(typeKey);
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -414,7 +386,6 @@ class DataPurgeService {
     return this._runPurge(type, filter, user, 'selected');
   }
 
-  /** Permanently delete every record of one type. */
   async purgeAll(typeKey, user) {
     const type = this.getType(typeKey);
     return this._runPurge(type, { ...(type.baseFilter || {}) }, user, 'all');
@@ -432,8 +403,6 @@ class DataPurgeService {
 
     const ids = docs.map(doc => doc._id);
 
-    // Stock-ledger rows are their own cascade: capture the SKUs first so the
-    // summaries can be rebuilt from what survives.
     let affectedSkus = [];
     if (type.isStockLedger) {
       affectedSkus = [...new Set(docs.map(doc => doc.sku).filter(Boolean))];
@@ -468,8 +437,6 @@ class DataPurgeService {
   }
 
   async _writeAuditLog(type, deletedCount, cascaded, user, mode, docs) {
-    // Purging the audit log itself must not immediately re-create noise, but a
-    // single record of the purge is still worth keeping.
     try {
       const sample = docs
         .slice(0, 10)
@@ -491,7 +458,6 @@ class DataPurgeService {
         },
       });
     } catch (error) {
-      // Never let audit logging block a purge the admin explicitly asked for.
       console.error('[DataPurge] Failed to write audit log:', error.message);
     }
   }

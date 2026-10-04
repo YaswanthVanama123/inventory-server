@@ -1,8 +1,5 @@
 const dataPurgeService = require('../services/dataPurge.service');
 
-// Purging a whole collection is irreversible, so the client has to say so
-// explicitly. This is a deliberate guard against a stray request wiping a
-// production collection.
 const CONFIRM_PHRASE = 'DELETE';
 
 const requireConfirmation = (req, res) => {
@@ -74,7 +71,6 @@ class DataPurgeController {
     }
   }
 
-  /** One-shot cleanup: purge several whole collections in a single call. */
   async purgeManyTypes(req, res) {
     try {
       if (!requireConfirmation(req, res)) return;
@@ -87,8 +83,6 @@ class DataPurgeController {
       }
       const results = [];
       const failed = [];
-      // Sequential: cascades touch shared collections (stock movements and
-      // summaries), so running them in parallel would race on the rebuild.
       for (const type of types) {
         try {
           results.push(await dataPurgeService.purgeAll(type, req.user));

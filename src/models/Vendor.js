@@ -42,12 +42,10 @@ const vendorSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
 vendorSchema.index({ name: 1 });
 vendorSchema.index({ isActive: 1 });
 vendorSchema.index({ createdAt: -1 });
 
-// Static methods
 vendorSchema.statics.getActiveVendors = function() {
   return this.find({ isActive: true })
     .sort({ name: 1 });

@@ -7,7 +7,6 @@ const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 
 class ModelCategoryService {
   async getUniqueModels(options = {}) {
-    // Fetch CustomerConnect order items
     const ccOrderItems = await CustomerConnectOrder.aggregate([
       { $unwind: '$items' },
       {
@@ -27,20 +26,12 @@ class ModelCategoryService {
       }
     ]).allowDiskUse(true);
 
-    // Fetch Manual PO items. We also pull their own mapping fields: a manual
-    // item can be mapped from the Manual PO Items screen, which writes to
-    // ManualPurchaseOrderItem.mappedCategoryItem* and NOT to ModelCategory.
-    // Without this the model would show as Unmapped here while the Manual PO
-    // screen shows it mapped. (manualPurchaseOrderItem.service does the mirror
-    // of this fallback in the other direction.)
     const manualPOItems = await ManualPurchaseOrderItem.find({ isActive: true })
       .select('sku name mappedCategoryItemName mappedCategoryItemId')
       .lean();
 
-    // Combine both sources into a Map to deduplicate by SKU
     const modelsMap = new Map();
 
-    // Add CustomerConnect items
     for (const item of ccOrderItems) {
       modelsMap.set(item.modelNumber, {
         modelNumber: item.modelNumber,
@@ -49,11 +40,8 @@ class ModelCategoryService {
       });
     }
 
-    // Manual-PO-side mappings, keyed by uppercased SKU (ModelCategory stores
-    // modelNumber uppercased, so both sides must agree on case).
     const manualMappingLookup = new Map();
 
-    // Add Manual PO items (if SKU already exists from CC, mark as 'both')
     for (const item of manualPOItems) {
       if (item.mappedCategoryItemName) {
         manualMappingLookup.set((item.sku || '').toUpperCase(), {
@@ -73,22 +61,17 @@ class ModelCategoryService {
       }
     }
 
-    // Convert Map to Array
     const allModels = Array.from(modelsMap.values());
 
-    // Get all mappings at once
     const mappings = await ModelCategory.find({
       modelNumber: { $in: allModels.map(m => m.modelNumber) }
     }).lean();
 
-    // Create a mapping lookup
     const mappingLookup = new Map();
     for (const mapping of mappings) {
       mappingLookup.set(mapping.modelNumber, mapping);
     }
 
-    // Combine models with their mappings. ModelCategory wins when both exist;
-    // the Manual PO item's own mapping is the fallback.
     const result = allModels.map(model => {
       const mapping = mappingLookup.get(model.modelNumber);
       const manualMapping = manualMappingLookup.get((model.modelNumber || '').toUpperCase());
@@ -102,10 +85,8 @@ class ModelCategoryService {
       };
     });
 
-    // Sort by model number
     result.sort((a, b) => a.modelNumber.localeCompare(b.modelNumber));
 
-    // ----- Server-side filtering / pagination -----
     const { search, status } = options;
     let filtered = result;
 
@@ -124,7 +105,6 @@ class ModelCategoryService {
       filtered = filtered.filter(m => !m.categoryItemName);
     }
 
-    // Stats are always computed over the FULL (unfiltered) set.
     const mappedCount = result.filter(m => m.categoryItemName).length;
     const stats = {
       total: result.length,
@@ -148,12 +128,10 @@ class ModelCategoryService {
         limit,
         totalPages
       },
-      // kept for backward-compat: total of the (filtered) set
       total: filteredTotal
     };
   }
   async getRouteStarItems() {
-    // Fetch both canonical mappings and all RouteStarItems in parallel
     const [allMappings, allRouteStarItems] = await Promise.all([
       RouteStarItemAlias.find({ isActive: true })
         .select('_id canonicalName description aliases')
@@ -165,25 +143,21 @@ class ModelCategoryService {
         .lean()
     ]);
 
-    // Build a Set of mapped item names (lowercase for case-insensitive comparison)
     const mappedItemNames = new Set();
     for (const mapping of allMappings) {
       if (mapping.aliases && Array.isArray(mapping.aliases)) {
         for (const alias of mapping.aliases) {
           if (alias && alias.name) {
-            // Add both the exact name and lowercase version for matching
             mappedItemNames.add(alias.name.toLowerCase().trim());
           }
         }
       }
     }
 
-    // Filter unmapped items efficiently
     const unmappedItems = [];
     for (const item of allRouteStarItems) {
       if (item.itemName) {
         const itemNameLower = item.itemName.toLowerCase().trim();
-        // Only include if NOT mapped to any canonical name
         if (!mappedItemNames.has(itemNameLower)) {
           unmappedItems.push({
             _id: item._id,
@@ -196,7 +170,6 @@ class ModelCategoryService {
       }
     }
 
-    // Format canonical items (these should always appear)
     const canonicalItems = allMappings.map(mapping => ({
       _id: mapping._id,
       itemName: mapping.canonicalName,
@@ -205,7 +178,6 @@ class ModelCategoryService {
       aliasCount: mapping.aliases?.length || 0
     }));
 
-    // Combine and sort alphabetically
     const allItems = [...canonicalItems, ...unmappedItems].sort((a, b) =>
       a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' })
     );
@@ -231,12 +203,6 @@ class ModelCategoryService {
       await mapping.save();
     }
 
-    // Keep any ManualPurchaseOrderItem that shares this SKU in sync so the
-    // mapped name is reflected in the Manual PO Items module too — for ALL
-    // SKUs, not only CUSTOM-* ones (previously plain SKUs like "FLUTE" were
-    // mapped in Model Mapping and shown in Stock but never propagated here).
-    // findOneAndUpdate is a no-op when no manual item has this SKU (e.g. a
-    // CustomerConnect-only model), so this is safe for every mapping.
     await ManualPurchaseOrderItem.findOneAndUpdate(
       { sku: modelNumber.toUpperCase() },
       {
@@ -255,9 +221,6 @@ class ModelCategoryService {
     if (!result) {
       throw new Error('Mapping not found');
     }
-    // Clear the synced mapping on any ManualPurchaseOrderItem with this SKU so
-    // un-mapping is reflected in the Manual PO Items module (mirror of the
-    // sync-back in saveMapping).
     await ManualPurchaseOrderItem.findOneAndUpdate(
       { sku: modelNumber.toUpperCase() },
       { mappedCategoryItemId: null, mappedCategoryItemName: null }
