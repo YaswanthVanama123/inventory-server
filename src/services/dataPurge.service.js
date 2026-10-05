@@ -62,6 +62,17 @@ class DataPurgeService {
         cascade: (ids) => this._cascadeOrder(ids),
       },
       {
+        key: 'order-verifications',
+        label: 'Order Verifications',
+        group: 'Orders',
+        description: 'Received and verified state of purchase orders. Orders go back to needing verification and the stock their verification added is removed.',
+        labelField: 'orderNumber',
+        auditResource: 'ORDER',
+        count: () => this._countVerifiedOrders(),
+        findDocs: (filter) => this._findVerifiedOrders(filter),
+        apply: (docs) => this._resetOrderVerifications(docs),
+      },
+      {
         key: 'truck-checkouts',
         label: 'Truck Checkouts',
         group: 'Operations',
@@ -264,7 +275,7 @@ class DataPurgeService {
     const counts = await Promise.all(
       entries.map(async type => {
         try {
-          return await type.model.countDocuments(type.baseFilter || {});
+          return await (type.count ? type.count() : type.model.countDocuments(type.baseFilter || {}));
         } catch (error) {
           console.error(`[DataPurge] Failed to count ${type.key}:`, error.message);
           return 0;
@@ -395,7 +406,9 @@ class DataPurgeService {
     const selectFields = ['_id', type.labelField, type.extraSelect]
       .filter(Boolean)
       .join(' ');
-    const docs = await type.model.find(filter).select(selectFields).lean();
+    const docs = type.findDocs
+      ? await type.findDocs(filter)
+      : await type.model.find(filter).select(selectFields).lean();
 
     if (docs.length === 0) {
       return { type: type.key, deleted: 0, cascaded: {}, mode };
@@ -408,9 +421,14 @@ class DataPurgeService {
       affectedSkus = [...new Set(docs.map(doc => doc.sku).filter(Boolean))];
     }
 
-    const cascaded = type.cascade ? await type.cascade(ids, docs) : {};
-
-    const result = await type.model.deleteMany({ _id: { $in: ids } });
+    let deletedCount;
+    let cascaded;
+    if (type.apply) {
+      ({ deletedCount, cascaded } = await type.apply(docs));
+    } else {
+      cascaded = type.cascade ? await type.cascade(ids, docs) : {};
+      ({ deletedCount } = await type.model.deleteMany({ _id: { $in: ids } }));
+    }
 
     if (affectedSkus.length > 0) {
       await this.recalculateSummariesForSkus(affectedSkus);
@@ -420,19 +438,115 @@ class DataPurgeService {
       await type.onPurged();
     }
 
-    await this._writeAuditLog(type, result.deletedCount, cascaded, user, mode, docs);
+    await this._writeAuditLog(type, deletedCount, cascaded, user, mode, docs);
 
     console.log(
-      `[DataPurge] ${user?.username || user?.id || 'unknown'} purged ${result.deletedCount} ${type.key} (${mode})`,
+      `[DataPurge] ${user?.username || user?.id || 'unknown'} purged ${deletedCount} ${type.key} (${mode})`,
       cascaded
     );
 
     return {
       type: type.key,
       label: type.label,
-      deleted: result.deletedCount,
+      deleted: deletedCount,
       cascaded,
       mode,
+    };
+  }
+
+  _verifiedOrderFilter() {
+    return {
+      $or: [
+        { verified: true },
+        { 'items.itemVerified': true },
+        { 'items.receivedQuantity': { $gt: 0 } },
+        { 'items.verificationHistory.0': { $exists: true } },
+      ],
+    };
+  }
+
+  async _countVerifiedOrders() {
+    const filter = this._verifiedOrderFilter();
+    const [customerConnect, purchase] = await Promise.all([
+      CustomerConnectOrder.countDocuments(filter),
+      PurchaseOrder.countDocuments(filter),
+    ]);
+    return customerConnect + purchase;
+  }
+
+  async _findVerifiedOrders(filter) {
+    const query = { $and: [filter, this._verifiedOrderFilter()] };
+    const results = await Promise.all(
+      [CustomerConnectOrder, PurchaseOrder].map(async model => {
+        const docs = await model.find(query).select('_id orderNumber').lean();
+        return docs.map(doc => ({ ...doc, kind: model.modelName }));
+      })
+    );
+    return results.flat();
+  }
+
+  _unverifiedFields(order, resetStockProcessed) {
+    const fields = { verified: false, verifiedAt: null, verifiedBy: null };
+    if (resetStockProcessed) {
+      fields.stockProcessed = false;
+      fields.stockProcessedAt = null;
+    }
+    (order.items || []).forEach((item, index) => {
+      fields[`items.${index}.receivedQuantity`] = 0;
+      fields[`items.${index}.remainingQuantity`] = item.qty || 0;
+      fields[`items.${index}.itemVerified`] = false;
+      fields[`items.${index}.itemVerifiedAt`] = null;
+      fields[`items.${index}.itemVerifiedBy`] = null;
+      fields[`items.${index}.verificationHistory`] = [];
+    });
+    return fields;
+  }
+
+  async _resetOrderVerifications(docs) {
+    const ids = docs.map(doc => doc._id);
+    const [verificationMovements, discrepancies, syncedOrderIds] = await Promise.all([
+      StockMovement.find({ refType: 'ITEM_VERIFICATION', refId: { $in: ids } }).select('sku').lean(),
+      OrderDiscrepancy.find({ orderId: { $in: ids } }).select('_id').lean(),
+      StockMovement.distinct('refId', { refType: 'PURCHASE_ORDER', refId: { $in: ids } }),
+    ]);
+    const discrepancyIds = discrepancies.map(d => d._id);
+    const discrepancyMovements = discrepancyIds.length
+      ? await StockMovement.find({ refType: 'ORDER_DISCREPANCY', refId: { $in: discrepancyIds } }).select('sku').lean()
+      : [];
+
+    const [verificationResult, discrepancyMovementResult, discrepancyResult] = await Promise.all([
+      StockMovement.deleteMany({ refType: 'ITEM_VERIFICATION', refId: { $in: ids } }),
+      discrepancyIds.length
+        ? StockMovement.deleteMany({ refType: 'ORDER_DISCREPANCY', refId: { $in: discrepancyIds } })
+        : { deletedCount: 0 },
+      discrepancyIds.length
+        ? OrderDiscrepancy.deleteMany({ _id: { $in: discrepancyIds } })
+        : { deletedCount: 0 },
+    ]);
+
+    const synced = new Set(syncedOrderIds.map(String));
+    for (const model of [CustomerConnectOrder, PurchaseOrder]) {
+      const modelIds = docs.filter(doc => doc.kind === model.modelName).map(doc => doc._id);
+      if (modelIds.length === 0) continue;
+      const orders = await model.find({ _id: { $in: modelIds } }).select('items.qty').lean();
+      if (orders.length === 0) continue;
+      await model.bulkWrite(orders.map(order => ({
+        updateOne: {
+          filter: { _id: order._id },
+          update: { $set: this._unverifiedFields(order, !synced.has(String(order._id))) },
+        },
+      })));
+    }
+
+    const skus = [...new Set([...verificationMovements, ...discrepancyMovements].map(m => m.sku).filter(Boolean))];
+    await this.recalculateSummariesForSkus(skus);
+
+    return {
+      deletedCount: docs.length,
+      cascaded: {
+        stockMovements: verificationResult.deletedCount + discrepancyMovementResult.deletedCount,
+        orderDiscrepancies: discrepancyResult.deletedCount,
+      },
     };
   }
 
