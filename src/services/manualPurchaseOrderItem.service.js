@@ -378,7 +378,7 @@ class ManualPurchaseOrderItemService {
       throw new Error('Item not found');
     }
 
-    await this.removeStockLinkage([normalizedSku]);
+    await require('./dataPurge.service').cascadeManualPOItems([normalizedSku]);
 
     const result = await ManualPurchaseOrderItem.findOneAndDelete({
       sku: normalizedSku

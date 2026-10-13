@@ -2,6 +2,7 @@ const CustomerConnectSyncService = require('./customerConnectSync.service');
 const CustomerConnectOrder = require('../models/CustomerConnectOrder');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const FetchHistory = require('../models/FetchHistory');
+const itemCaseQuantityService = require('./itemCaseQuantity.service');
 
 
 let rangeCache = {
@@ -412,7 +413,7 @@ class CustomerConnectService {
                 }
               }
             },
-            { $project: { unitsPerCase: 1 } }
+            { $project: { unitsPerCase: 1, purchaseUnitLabel: 1, sellingUnitLabel: 1 } }
           ],
           as: 'caseMapping'
         }
@@ -424,7 +425,9 @@ class CustomerConnectService {
               vars: { factor: { $ifNull: [{ $arrayElemAt: ['$caseMapping.unitsPerCase', 0] }, 1] } },
               in: { $cond: [{ $gt: ['$$factor', 0] }, '$$factor', 1] }
             }
-          }
+          },
+          'items.purchaseUnitLabel': { $arrayElemAt: ['$caseMapping.purchaseUnitLabel', 0] },
+          'items.sellingUnitLabel': { $arrayElemAt: ['$caseMapping.sellingUnitLabel', 0] }
         }
       },
       {
@@ -432,6 +435,8 @@ class CustomerConnectService {
           _id: '$items.sku',
           name: { $first: '$items.name' },
           unitsPerCase: { $first: '$items.unitsPerCase' },
+          purchaseUnitLabel: { $first: '$items.purchaseUnitLabel' },
+          sellingUnitLabel: { $first: '$items.sellingUnitLabel' },
           totalCases: { $sum: '$items.qty' },
           totalQuantity: { $sum: { $multiply: ['$items.qty', '$items.unitsPerCase'] } },
           totalValue: { $sum: '$items.lineTotal' },
@@ -450,6 +455,8 @@ class CustomerConnectService {
           sku: '$_id',
           name: 1,
           unitsPerCase: 1,
+          purchaseUnitLabel: 1,
+          sellingUnitLabel: 1,
           totalCases: 1,
           totalQuantity: 1,
           totalValue: { $round: ['$totalValue', 2] },
@@ -467,7 +474,11 @@ class CustomerConnectService {
       }
     ]);
     const total = result[0].metadata[0]?.total || 0;
-    const items = result[0].data || [];
+    const items = (result[0].data || []).map(item => ({
+      ...item,
+      purchaseUnitLabel: item.purchaseUnitLabel || itemCaseQuantityService.purchaseUnitFromName(item.name) || 'Case',
+      sellingUnitLabel: item.sellingUnitLabel || 'Each'
+    }));
     const agg = result[0].totals[0] || {};
     return {
       items,
@@ -677,13 +688,16 @@ class CustomerConnectService {
 
     const newTotalReceived = previouslyReceived + receivingNow;
     const newRemaining = Math.max(0, expectedQuantity - newTotalReceived);
+    const unitsPerCase = itemCaseQuantityService.unitsPerCase(await itemCaseQuantityService.getLookupMap(), item.sku);
 
     if (!item.verificationHistory) item.verificationHistory = [];
     const verificationEntry = {
       receivedQty: receivingNow,
       verifiedAt: new Date(),
       verifiedBy: userId,
-      notes: notes || `Received ${receivingNow} units`,
+      notes: notes || (unitsPerCase > 1
+        ? `Received ${receivingNow} x ${unitsPerCase} = ${receivingNow * unitsPerCase} units`
+        : `Received ${receivingNow} units`),
       stockProcessed: false,
       stockProcessedAt: null
     };

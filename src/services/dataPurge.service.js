@@ -172,14 +172,11 @@ class DataPurgeService {
         key: 'manual-po-items',
         label: 'Manual PO Items',
         group: 'Master Data',
-        description: 'The manual purchase-order item catalog, plus the RouteStar item mapping of each deleted item.',
+        description: 'The manual purchase-order item catalog. Also removes these items from manual orders (orders left empty are deleted), with their stock history, discrepancies, case quantities and RouteStar mappings.',
         model: ManualPurchaseOrderItem,
         labelField: 'sku',
         auditResource: 'INVENTORY',
-        cascade: async (ids, docs) => {
-          const { removed } = await manualPurchaseOrderItemService.removeStockLinkage(docs.map(doc => doc.sku));
-          return { modelCategoryMappings: removed };
-        },
+        cascade: (ids, docs) => this.cascadeManualPOItems(docs.map(doc => doc.sku)),
         onPurged: () => manualPurchaseOrderItemService.invalidateCache(),
       },
       {
@@ -329,6 +326,98 @@ class DataPurgeService {
       ...movements,
       truckDiscrepancies: truckDiscrepancies.deletedCount,
       stockDiscrepancies: stockDiscrepancies.deletedCount,
+    };
+  }
+
+  async cascadeManualPOItems(skus) {
+    const targets = [...new Set((skus || []).filter(Boolean).map(s => String(s).toUpperCase()))];
+    if (targets.length === 0) return {};
+    const targetSet = new Set(targets);
+
+    const orders = await PurchaseOrder.find({ source: 'manual', 'items.sku': { $in: targets } })
+      .select('items.sku items.lineTotal tax shipping')
+      .lean();
+    const emptiedIds = [];
+    const trimmed = [];
+    for (const order of orders) {
+      const remaining = (order.items || []).filter(item => !targetSet.has(String(item.sku || '').toUpperCase()));
+      if (remaining.length === 0) {
+        emptiedIds.push(order._id);
+      } else {
+        const subtotal = remaining.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
+        trimmed.push({ _id: order._id, subtotal, total: subtotal + (order.tax || 0) + (order.shipping || 0) });
+      }
+    }
+    const trimmedIds = trimmed.map(order => order._id);
+
+    const scopes = [];
+    if (emptiedIds.length) scopes.push({ orderIds: emptiedIds, skuFilter: {} });
+    if (trimmedIds.length) scopes.push({ orderIds: trimmedIds, skuFilter: { sku: { $in: targets } } });
+    const movementQuery = scopes.length
+      ? { $or: scopes.map(s => ({ refId: { $in: s.orderIds }, ...s.skuFilter })) }
+      : null;
+    const discrepancyQuery = scopes.length
+      ? { $or: scopes.map(s => ({ orderId: { $in: s.orderIds }, ...s.skuFilter })) }
+      : null;
+
+    const [orderMovements, discrepancies] = await Promise.all([
+      movementQuery ? StockMovement.find(movementQuery).select('sku').lean() : [],
+      discrepancyQuery ? OrderDiscrepancy.find(discrepancyQuery).select('_id').lean() : [],
+    ]);
+    const discrepancyIds = discrepancies.map(d => d._id);
+    const discrepancyMovements = discrepancyIds.length
+      ? await StockMovement.find({ refType: 'ORDER_DISCREPANCY', refId: { $in: discrepancyIds } }).select('sku').lean()
+      : [];
+
+    const [orderMovementResult, discrepancyMovementResult, discrepancyResult] = await Promise.all([
+      movementQuery ? StockMovement.deleteMany(movementQuery) : { deletedCount: 0 },
+      discrepancyIds.length
+        ? StockMovement.deleteMany({ refType: 'ORDER_DISCREPANCY', refId: { $in: discrepancyIds } })
+        : { deletedCount: 0 },
+      discrepancyIds.length ? OrderDiscrepancy.deleteMany({ _id: { $in: discrepancyIds } }) : { deletedCount: 0 },
+    ]);
+
+    const deletedOrders = emptiedIds.length
+      ? await PurchaseOrder.deleteMany({ _id: { $in: emptiedIds } })
+      : { deletedCount: 0 };
+    if (trimmed.length) {
+      await PurchaseOrder.bulkWrite(trimmed.map(order => ({
+        updateOne: {
+          filter: { _id: order._id },
+          update: {
+            $pull: { items: { sku: { $in: targets } } },
+            $set: { subtotal: order.subtotal, total: order.total },
+          },
+        },
+      })));
+    }
+
+    const { removed: mappings, keptShared } = await manualPurchaseOrderItemService.removeStockLinkage(targets);
+    const shared = new Set(keptShared);
+    const ownSkus = targets.filter(sku => !shared.has(sku));
+    const caseQuantities = ownSkus.length
+      ? await ItemCaseQuantity.deleteMany({ sku: { $in: ownSkus } })
+      : { deletedCount: 0 };
+    if (caseQuantities.deletedCount > 0) itemCaseQuantityService.invalidateCache();
+
+    const touchedSkus = [...new Set([...orderMovements, ...discrepancyMovements].map(m => m.sku).filter(Boolean))];
+    await this.recalculateSummariesForSkus(touchedSkus);
+    const stillMoving = new Set(
+      ownSkus.length ? (await StockMovement.distinct('sku', { sku: { $in: ownSkus } })).map(s => String(s).toUpperCase()) : []
+    );
+    const idleSkus = ownSkus.filter(sku => !stillMoving.has(sku));
+    const summaries = idleSkus.length
+      ? await StockSummary.deleteMany({ sku: { $in: idleSkus } })
+      : { deletedCount: 0 };
+
+    return {
+      manualOrders: deletedOrders.deletedCount,
+      manualOrdersUpdated: trimmed.length,
+      stockMovements: orderMovementResult.deletedCount + discrepancyMovementResult.deletedCount,
+      orderDiscrepancies: discrepancyResult.deletedCount,
+      caseQuantities: caseQuantities.deletedCount,
+      modelCategoryMappings: mappings,
+      stockSummaries: summaries.deletedCount,
     };
   }
 

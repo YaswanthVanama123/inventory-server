@@ -97,51 +97,39 @@ class TruckCheckoutController {
 
       const expandedItems = [];
       const seenNames = new Set();
+      const searchTerms = new Map();
+      const aliasOf = new Map();
+      [...sellStock.items, ...useStock.items].forEach(item => {
+        (item.aliases || []).forEach(aliasName => {
+          aliasOf.set(String(aliasName).toLowerCase(), item.categoryName.toLowerCase());
+        });
+      });
 
       const addItem = (item, itemType) => {
         const stockRemaining = item.stockRemaining || 0;
 
         const canonicalKey = item.categoryName.toLowerCase();
-        if (!seenNames.has(canonicalKey)) {
-          seenNames.add(canonicalKey);
-          expandedItems.push({
-            itemName: item.categoryName,
-            sku: item.categoryName,
-            currentStock: stockRemaining,
-            totalPurchased: item.totalPurchased || 0,
-            totalSold: item.totalSold || 0,
-            totalCheckedOut: item.totalCheckedOut || 0,
-            totalDiscrepancies: item.totalDiscrepancies || 0,
-            totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
-            unit: 'pieces',
-            category: item.categoryName,
-            department: item.categoryName,
-            itemType
-          });
-        }
-
-        if (item.aliases && Array.isArray(item.aliases)) {
-          item.aliases.forEach(aliasName => {
-            const aliasKey = aliasName.toLowerCase();
-            if (!seenNames.has(aliasKey)) {
-              seenNames.add(aliasKey);
-              expandedItems.push({
-                itemName: aliasName,
-                sku: aliasName,
-                currentStock: stockRemaining,
-                totalPurchased: item.totalPurchased || 0,
-                totalSold: item.totalSold || 0,
-                totalCheckedOut: item.totalCheckedOut || 0,
-                totalDiscrepancies: item.totalDiscrepancies || 0,
-                totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
-                unit: 'pieces',
-                category: item.categoryName,
-                department: item.categoryName,
-                itemType
-              });
-            }
-          });
-        }
+        const mappedTo = aliasOf.get(canonicalKey);
+        if (seenNames.has(canonicalKey) || (mappedTo && mappedTo !== canonicalKey)) return;
+        seenNames.add(canonicalKey);
+        searchTerms.set(
+          item.categoryName,
+          [item.categoryName, ...(item.aliases || [])].map(name => String(name).toLowerCase())
+        );
+        expandedItems.push({
+          itemName: item.categoryName,
+          sku: item.categoryName,
+          currentStock: stockRemaining,
+          totalPurchased: item.totalPurchased || 0,
+          totalSold: item.totalSold || 0,
+          totalCheckedOut: item.totalCheckedOut || 0,
+          totalDiscrepancies: item.totalDiscrepancies || 0,
+          totalDiscrepancyDifference: item.totalDiscrepancyDifference || 0,
+          unit: 'pieces',
+          category: item.categoryName,
+          department: item.categoryName,
+          itemType
+        });
       };
 
       sellStock.items.forEach(item => addItem(item, 'sell'));
@@ -151,7 +139,7 @@ class TruckCheckoutController {
       if (searchQuery) {
         const queryLower = searchQuery.toLowerCase();
         filteredItems = expandedItems.filter(item =>
-          item.itemName.toLowerCase().includes(queryLower)
+          searchTerms.get(item.itemName).some(term => term.includes(queryLower))
         );
       }
 

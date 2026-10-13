@@ -1,6 +1,7 @@
 const RouteStarItemAlias = require('../models/RouteStarItemAlias');
 const RouteStarItem = require('../models/RouteStarItem');
 const ModelCategory = require('../models/ModelCategory');
+const { fuzzyFilter } = require('../utils/fuzzySearch');
 
 
 class RouteStarItemAliasService {
@@ -339,11 +340,7 @@ class RouteStarItemAliasService {
     let filteredItems = itemsWithMappingStatus;
 
     if (search && String(search).trim()) {
-      const term = String(search).toLowerCase().trim();
-      filteredItems = filteredItems.filter(item =>
-        (item.itemName || '').toLowerCase().includes(term) ||
-        (item.canonicalName || '').toLowerCase().includes(term)
-      );
+      filteredItems = fuzzyFilter(filteredItems, search, item => [item.itemName, item.canonicalName]);
     }
 
     if (status === 'mapped') {
